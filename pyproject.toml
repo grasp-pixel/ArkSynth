@@ -1,0 +1,52 @@
+[project]
+name = "avt"
+version = "0.1.0"
+description = "Arknights Voice Tools - 명일방주 스토리 실시간 음성 더빙"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    # 기존 (음성 추출용)
+    "unitypy>=1.24.2",
+
+    # 백엔드 서버
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+    "websockets>=11.0",
+    "pydantic>=2.0",
+
+    # TTS
+    "edge-tts>=6.1.0",
+
+    # 오디오 처리
+    "librosa>=0.10.0",
+    "soundfile>=0.12.0",
+    "sounddevice>=0.4.6",
+    "numpy>=1.24.0",
+
+    # 화면 캡처
+    "mss>=9.0.0",
+    "pillow>=10.0.0",
+
+    # 유틸리티
+    "aiofiles>=23.0.0",
+]
+
+[project.optional-dependencies]
+ocr = [
+    "paddlepaddle>=2.5.0",
+    "paddleocr>=2.7.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+]
+
+[project.scripts]
+extract-voices = "tools.extractor.cli:main"
+avt-server = "core.backend.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tools", "src/core"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

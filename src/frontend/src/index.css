@@ -1,0 +1,219 @@
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Noto Sans KR', 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #e8e8e8;
+  background-color: #0d0d0d;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+/* ===== Rhodes Island 커스텀 스타일 ===== */
+
+/* Skewed 버튼 (명일방주 특유의 기울어진 버튼) */
+.ark-btn-skew {
+  @apply relative px-6 py-2 font-medium text-ark-white transition-all duration-200;
+  background: linear-gradient(135deg, #262626 0%, #1a1a1a 100%);
+  clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+  border: none;
+}
+
+.ark-btn-skew:hover {
+  background: linear-gradient(135deg, #3d3d3d 0%, #262626 100%);
+  box-shadow: 0 0 15px rgba(255, 102, 0, 0.3);
+}
+
+.ark-btn-skew.active {
+  background: linear-gradient(135deg, #ff6600 0%, #cc5200 100%);
+  color: #0d0d0d;
+  font-weight: 600;
+}
+
+/* Skewed 탭 */
+.ark-tab {
+  @apply relative px-5 py-2 text-sm font-medium text-ark-gray transition-all duration-200;
+  background: transparent;
+  clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+}
+
+.ark-tab:hover {
+  @apply text-ark-white;
+  background: rgba(255, 102, 0, 0.1);
+}
+
+.ark-tab.active {
+  @apply text-ark-black font-semibold;
+  background: linear-gradient(135deg, #ff6600 0%, #ff8c00 100%);
+}
+
+/* 패널 스타일 */
+.ark-panel {
+  @apply bg-ark-panel border border-ark-border;
+  background: linear-gradient(180deg, #262626 0%, #1a1a1a 100%);
+}
+
+/* 주황 액센트 라인 (왼쪽 바) */
+.ark-accent-bar {
+  @apply relative;
+}
+
+.ark-accent-bar::before {
+  content: '';
+  @apply absolute left-0 top-0 bottom-0 w-1 bg-ark-orange;
+}
+
+/* 입력 필드 */
+.ark-input {
+  @apply w-full px-3 py-2 bg-ark-dark border border-ark-border text-sm text-ark-white
+         placeholder-ark-gray transition-all duration-200;
+  background: linear-gradient(180deg, #1a1a1a 0%, #0d0d0d 100%);
+}
+
+.ark-input:focus {
+  @apply outline-none border-ark-orange;
+  box-shadow: 0 0 10px rgba(255, 102, 0, 0.2);
+}
+
+/* 버튼 기본 */
+.ark-btn {
+  @apply px-4 py-2 font-medium text-ark-white transition-all duration-200;
+  background: linear-gradient(180deg, #3d3d3d 0%, #262626 100%);
+  border: 1px solid #4a4a4a;
+}
+
+.ark-btn:hover {
+  background: linear-gradient(180deg, #4a4a4a 0%, #3d3d3d 100%);
+  border-color: #ff6600;
+}
+
+.ark-btn-primary {
+  background: linear-gradient(180deg, #ff6600 0%, #cc5200 100%);
+  border: 1px solid #ff8c00;
+  color: #0d0d0d;
+  font-weight: 600;
+}
+
+.ark-btn-primary:hover {
+  background: linear-gradient(180deg, #ff8c00 0%, #ff6600 100%);
+  box-shadow: 0 0 15px rgba(255, 102, 0, 0.5);
+}
+
+/* 대화 아이템 */
+.ark-dialogue {
+  @apply p-4 transition-all duration-200;
+  background: linear-gradient(180deg, #262626 0%, #1f1f1f 100%);
+  border-left: 3px solid transparent;
+}
+
+.ark-dialogue:hover {
+  border-left-color: #ff6600;
+  background: linear-gradient(180deg, #2d2d2d 0%, #262626 100%);
+}
+
+.ark-dialogue.playing {
+  border-left-color: #ff6600;
+  background: linear-gradient(180deg, rgba(255, 102, 0, 0.15) 0%, rgba(255, 102, 0, 0.05) 100%);
+}
+
+.ark-dialogue.narration {
+  background: linear-gradient(180deg, #1a1a1a 0%, #151515 100%);
+  border-left-color: #3d3d3d;
+}
+
+/* 스크롤바 스타일 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3d3d3d;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #ff6600;
+}
+
+/* 헤더 */
+.ark-header {
+  background: linear-gradient(180deg, #1a1a1a 0%, #0d0d0d 100%);
+  border-bottom: 1px solid #3d3d3d;
+}
+
+.ark-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, #ff6600 50%, transparent 100%);
+}
+
+/* 상태 바 */
+.ark-statusbar {
+  background: linear-gradient(180deg, #1a1a1a 0%, #0d0d0d 100%);
+  border-top: 1px solid #3d3d3d;
+}
+
+/* 선택된 아이템 하이라이트 */
+.ark-selected {
+  @apply relative;
+  background: linear-gradient(90deg, rgba(255, 102, 0, 0.2) 0%, transparent 100%);
+}
+
+.ark-selected::before {
+  content: '';
+  @apply absolute left-0 top-0 bottom-0 w-1 bg-ark-orange;
+}
+
+/* 배지 스타일 */
+.ark-badge {
+  @apply inline-flex items-center px-2 py-0.5 text-xs font-medium;
+  background: rgba(255, 102, 0, 0.2);
+  border: 1px solid #ff6600;
+  color: #ff6600;
+}
+
+/* 글로우 효과 */
+.ark-glow {
+  box-shadow: 0 0 20px rgba(255, 102, 0, 0.3);
+}
+
+/* 애니메이션 */
+@keyframes ark-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.ark-pulse {
+  animation: ark-pulse 1.5s ease-in-out infinite;
+}
+
+/* 대각선 패턴 배경 (선택적 장식) */
+.ark-pattern {
+  background-image:
+    linear-gradient(135deg, rgba(255, 102, 0, 0.03) 25%, transparent 25%),
+    linear-gradient(225deg, rgba(255, 102, 0, 0.03) 25%, transparent 25%),
+    linear-gradient(45deg, rgba(255, 102, 0, 0.03) 25%, transparent 25%),
+    linear-gradient(315deg, rgba(255, 102, 0, 0.03) 25%, transparent 25%);
+  background-size: 20px 20px;
+}

@@ -1,0 +1,22 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Frontend build artifacts
+src/frontend/dist/
+src/frontend/dist-electron/
+src/frontend/release/
+src/frontend/node_modules/
+
+# IDE
+.idea/
+
+# Temporary files
+*.tmp
+*.log

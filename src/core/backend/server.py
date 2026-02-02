@@ -1,0 +1,33 @@
+"""FastAPI 서버 정의"""
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from .routes import episodes, stories, tts, voice, health
+
+
+def create_app() -> FastAPI:
+    """FastAPI 앱 생성"""
+    app = FastAPI(
+        title="AVT API",
+        description="Arknights Voice Tools API - 명일방주 스토리 음성 더빙",
+        version="0.1.0",
+    )
+
+    # CORS 설정 (Electron 프론트엔드 허용)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # 라우터 등록
+    app.include_router(health.router, tags=["health"])
+    app.include_router(episodes.router, prefix="/api/episodes", tags=["episodes"])
+    app.include_router(stories.router, prefix="/api/stories", tags=["stories"])
+    app.include_router(tts.router, prefix="/api/tts", tags=["tts"])
+    app.include_router(voice.router, prefix="/api/voice", tags=["voice"])
+
+    return app
