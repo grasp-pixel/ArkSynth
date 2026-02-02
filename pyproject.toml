@@ -12,6 +12,7 @@ dependencies = [
     "uvicorn[standard]>=0.23.0",
     "websockets>=11.0",
     "pydantic>=2.0",
+    "python-multipart>=0.0.20",
 
     # TTS
     "edge-tts>=6.1.0",
