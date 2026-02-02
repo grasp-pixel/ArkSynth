@@ -3,6 +3,7 @@ import {
   episodesApi,
   storiesApi,
   ttsApi,
+  ocrApi,
   healthCheck,
   type EpisodeDetail,
   type DialogueInfo,
@@ -10,6 +11,8 @@ import {
   type CategoryInfo,
   type StoryGroupInfo,
   type GroupEpisodeInfo,
+  type MonitorInfo,
+  type DetectDialogueResponse,
 } from '../services/api'
 
 interface AppState {
@@ -40,6 +43,16 @@ interface AppState {
   isPlaying: boolean
   currentDialogue: DialogueInfo | null
 
+  // OCR 관련
+  monitors: MonitorInfo[]
+  selectedMonitorId: number
+  ocrLanguage: string
+  isMonitoring: boolean
+  detectedText: string | null
+  detectedConfidence: number
+  capturedImage: string | null  // base64
+  ocrError: string | null
+
   // 액션
   checkBackendStatus: () => Promise<void>
   loadCategories: () => Promise<void>
@@ -52,10 +65,24 @@ interface AppState {
   stopPlayback: () => void
   setSelectedVoice: (voice: string) => void
   loadVoices: () => Promise<void>
+
+  // OCR 액션
+  loadMonitors: () => Promise<void>
+  setMonitor: (monitorId: number) => void
+  setOcrLanguage: (lang: string) => void
+  detectOnce: () => Promise<DetectDialogueResponse | null>
+  captureScreen: () => Promise<void>
+  captureDialogue: () => Promise<void>
+  startMonitoring: () => void
+  stopMonitoring: () => void
+  clearOcrResult: () => void
 }
 
 // 오디오 재생 관리
 let currentAudio: HTMLAudioElement | null = null
+
+// OCR 모니터링 인터벌
+let monitoringInterval: ReturnType<typeof setInterval> | null = null
 
 export const useAppStore = create<AppState>((set, get) => ({
   // 초기 상태
@@ -78,6 +105,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   availableVoices: [],
   isPlaying: false,
   currentDialogue: null,
+
+  // OCR 초기 상태
+  monitors: [],
+  selectedMonitorId: 1,
+  ocrLanguage: 'ko',
+  isMonitoring: false,
+  detectedText: null,
+  detectedConfidence: 0,
+  capturedImage: null,
+  ocrError: null,
 
   // 백엔드 상태 확인
   checkBackendStatus: async () => {
@@ -236,5 +273,104 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (error) {
       console.error('Failed to load voices:', error)
     }
+  },
+
+  // OCR: 모니터 목록 로드
+  loadMonitors: async () => {
+    try {
+      const data = await ocrApi.listMonitors()
+      set({ monitors: data.monitors, ocrError: null })
+    } catch (error) {
+      console.error('Failed to load monitors:', error)
+      set({ ocrError: 'Failed to load monitors' })
+    }
+  },
+
+  // OCR: 모니터 선택
+  setMonitor: (monitorId: number) => {
+    set({ selectedMonitorId: monitorId })
+  },
+
+  // OCR: 언어 선택
+  setOcrLanguage: (lang: string) => {
+    set({ ocrLanguage: lang })
+  },
+
+  // OCR: 한 번 감지
+  detectOnce: async () => {
+    const { selectedMonitorId, ocrLanguage } = get()
+    try {
+      set({ ocrError: null })
+      const result = await ocrApi.detectDialogue(selectedMonitorId, ocrLanguage)
+      set({
+        detectedText: result.text,
+        detectedConfidence: result.confidence,
+      })
+      return result
+    } catch (error) {
+      console.error('Failed to detect dialogue:', error)
+      set({ ocrError: 'Failed to detect dialogue' })
+      return null
+    }
+  },
+
+  // OCR: 화면 캡처
+  captureScreen: async () => {
+    const { selectedMonitorId } = get()
+    try {
+      set({ ocrError: null })
+      const data = await ocrApi.captureScreen(selectedMonitorId)
+      set({ capturedImage: data.image_base64 })
+    } catch (error) {
+      console.error('Failed to capture screen:', error)
+      set({ ocrError: 'Failed to capture screen' })
+    }
+  },
+
+  // OCR: 대사 영역 캡처
+  captureDialogue: async () => {
+    const { selectedMonitorId } = get()
+    try {
+      set({ ocrError: null })
+      const data = await ocrApi.captureDialogue(selectedMonitorId)
+      set({ capturedImage: data.image_base64 })
+    } catch (error) {
+      console.error('Failed to capture dialogue region:', error)
+      set({ ocrError: 'Failed to capture dialogue region' })
+    }
+  },
+
+  // OCR: 모니터링 시작
+  startMonitoring: () => {
+    if (monitoringInterval) return // 이미 실행 중
+
+    set({ isMonitoring: true, ocrError: null })
+
+    // 즉시 한 번 실행
+    get().detectOnce()
+
+    // 주기적 실행 (500ms 간격)
+    monitoringInterval = setInterval(() => {
+      get().detectOnce()
+    }, 500)
+  },
+
+  // OCR: 모니터링 중지
+  stopMonitoring: () => {
+    if (monitoringInterval) {
+      clearInterval(monitoringInterval)
+      monitoringInterval = null
+    }
+    set({ isMonitoring: false })
+  },
+
+  // OCR: 결과 초기화
+  clearOcrResult: () => {
+    set({
+      detectedText: null,
+      detectedConfidence: 0,
+      capturedImage: null,
+      ocrError: null,
+    })
   },
 }))

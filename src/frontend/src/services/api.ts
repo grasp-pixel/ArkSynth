@@ -184,6 +184,98 @@ export const voiceApi = {
   },
 }
 
+// OCR 관련 타입
+export interface BoundingBox {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface OCRResult {
+  text: string
+  confidence: number
+  bounding_box: BoundingBox | null
+}
+
+export interface MonitorInfo {
+  id: number
+  name: string
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+export interface DetectDialogueResponse {
+  text: string | null
+  confidence: number
+  timestamp: number
+}
+
+// OCR API
+export const ocrApi = {
+  // 모니터 목록
+  listMonitors: async () => {
+    const res = await api.get<{ monitors: MonitorInfo[] }>('/api/ocr/monitors')
+    return res.data
+  },
+
+  // 대사 영역 좌표
+  getDialogueRegion: async (width: number, height: number) => {
+    const res = await api.get<{ region: BoundingBox; screen_width: number; screen_height: number }>(
+      '/api/ocr/dialogue-region',
+      { params: { width, height } }
+    )
+    return res.data
+  },
+
+  // 화면 캡처
+  captureScreen: async (monitor: number = 1) => {
+    const res = await api.get<{ image_base64: string; width: number; height: number }>(
+      '/api/ocr/capture',
+      { params: { monitor } }
+    )
+    return res.data
+  },
+
+  // 대사 영역 캡처
+  captureDialogue: async (monitor: number = 1) => {
+    const res = await api.get<{ image_base64: string; width: number; height: number }>(
+      '/api/ocr/capture/dialogue',
+      { params: { monitor } }
+    )
+    return res.data
+  },
+
+  // 대사 감지 (캡처 + OCR)
+  detectDialogue: async (monitor: number = 1, lang: string = 'ko', minConfidence: number = 0.5) => {
+    const res = await api.get<DetectDialogueResponse>(
+      '/api/ocr/detect',
+      { params: { monitor, lang, min_confidence: minConfidence } }
+    )
+    return res.data
+  },
+
+  // 이미지 OCR
+  recognizeImage: async (file: File, lang: string = 'ko') => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await api.post<{ results: OCRResult[]; language: string }>(
+      '/api/ocr/recognize',
+      formData,
+      { params: { lang } }
+    )
+    return res.data
+  },
+
+  // 지원 언어 목록
+  listLanguages: async () => {
+    const res = await api.get<{ languages: Array<{ code: string; name: string }> }>('/api/ocr/languages')
+    return res.data
+  },
+}
+
 // 헬스 체크
 export const healthCheck = async (): Promise<boolean> => {
   try {
