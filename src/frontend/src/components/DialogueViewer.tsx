@@ -28,6 +28,7 @@ export default function DialogueViewer() {
     isPlaying,
     currentDialogue,
     isDubbingMode,
+    isPrepared,
     matchedDialogue,
     matchedIndex,
     matchSimilarity,
@@ -143,6 +144,7 @@ export default function DialogueViewer() {
                 isMatched={isMatched}
                 matchSimilarity={isMatched ? matchSimilarity : 0}
                 speakerColor={speakerColor}
+                isPrepared={isPrepared}
                 onPlay={() => handlePlayClick(dialogue)}
               />
             </div>
@@ -160,10 +162,11 @@ interface DialogueItemProps {
   isMatched?: boolean
   matchSimilarity?: number
   speakerColor?: string  // 음성 있는 캐릭터의 고유 색상
+  isPrepared?: boolean   // 더빙 준비 완료 여부
   onPlay: () => void
 }
 
-function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, speakerColor, onPlay }: DialogueItemProps) {
+function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, speakerColor, isPrepared, onPlay }: DialogueItemProps) {
   const isNarration = !dialogue.speaker_name
   const hasVoice = !!speakerColor
 
@@ -213,28 +216,39 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
           </p>
         </div>
 
-        {/* 재생 버튼 */}
-        <button
-          onClick={onPlay}
-          className={`shrink-0 w-9 h-9 flex items-center justify-center transition-all ${
-            isPlaying
-              ? 'bg-ark-orange text-ark-black ark-glow'
-              : isMatched
-                ? 'bg-ark-orange/30 text-ark-orange hover:bg-ark-orange hover:text-ark-black'
-                : 'bg-ark-panel text-ark-gray hover:bg-ark-border hover:text-ark-white'
-          }`}
-          title={isPlaying ? '재생 중...' : '재생'}
-        >
-          {isPlaying ? (
-            <svg viewBox="0 0 24 24" className="w-4 h-4 ark-pulse" fill="currentColor">
-              <path d="M8 5v14l11-7z"/>
-            </svg>
-          ) : (
+        {/* 재생 버튼 - 더빙 준비 완료 시에만 활성화 */}
+        {isPrepared ? (
+          <button
+            onClick={onPlay}
+            className={`shrink-0 w-9 h-9 flex items-center justify-center rounded transition-all ${
+              isPlaying
+                ? 'bg-ark-orange text-ark-black ark-glow'
+                : isMatched
+                  ? 'bg-ark-orange/30 text-ark-orange hover:bg-ark-orange hover:text-ark-black'
+                  : 'bg-ark-panel text-ark-white hover:bg-ark-orange hover:text-ark-black border border-ark-border hover:border-ark-orange'
+            }`}
+            title={isPlaying ? '재생 중...' : '재생'}
+          >
+            {isPlaying ? (
+              <svg viewBox="0 0 24 24" className="w-4 h-4 ark-pulse" fill="currentColor">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            )}
+          </button>
+        ) : (
+          <div
+            className="shrink-0 w-9 h-9 flex items-center justify-center rounded bg-ark-black/30 text-ark-gray/30"
+            title="더빙 준비 후 사용 가능"
+          >
             <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
               <path d="M8 5v14l11-7z"/>
             </svg>
-          )}
-        </button>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -75,6 +75,13 @@ export interface GroupEpisodeInfo {
   display_name: string
 }
 
+export interface GroupCharacterInfo {
+  char_id: string | null  // null이면 나레이터
+  name: string
+  dialogue_count: number
+  has_voice: boolean
+}
+
 export const episodesApi = {
   // 메인 스토리 에피소드 목록
   listMainEpisodes: async (lang?: string) => {
@@ -132,6 +139,18 @@ export const storiesApi = {
     }>(`/api/stories/groups/${groupId}/episodes`, { params })
     return res.data
   },
+
+  // 그룹별 캐릭터 목록 (음성 보유 여부 포함)
+  listGroupCharacters: async (groupId: string, lang?: string) => {
+    const params = lang ? { lang } : {}
+    const res = await api.get<{
+      group_id: string
+      group_name: string
+      total: number
+      characters: GroupCharacterInfo[]
+    }>(`/api/stories/groups/${groupId}/characters`, { params })
+    return res.data
+  },
 }
 
 // TTS 관련 API
@@ -166,6 +185,7 @@ export interface VoiceCharacter {
   name: string
   file_count: number
   has_voice: boolean
+  dialogue_count?: number  // 전체 스토리 기준 대사 수
 }
 
 export const voiceApi = {
@@ -217,6 +237,21 @@ export interface DetectDialogueResponse {
   text: string | null
   confidence: number
   timestamp: number
+}
+
+export interface StableDetectResponse {
+  text: string | null
+  confidence: number
+  timestamp: number
+  is_stable: boolean
+  is_new: boolean
+}
+
+export interface MatchDialogueResponse {
+  matched: boolean
+  dialogue: DialogueInfo | null
+  similarity: number
+  index: number
 }
 
 export interface WindowInfo {
@@ -339,11 +374,43 @@ export const ocrApi = {
   },
 
   // 윈도우에서 대사 감지
-  detectWindow: async (hwnd: number, lang: string = 'ko', minConfidence: number = 0.5) => {
+  detectWindow: async (hwnd: number, lang: string = 'ko', minConfidence: number = 0.2) => {
     const res = await ocrApiClient.get<DetectDialogueResponse>(
       '/api/ocr/detect/window',
       { params: { hwnd, lang, min_confidence: minConfidence } }
     )
+    return res.data
+  },
+
+  // 윈도우에서 대사 감지 (안정화 적용 - 타이핑 효과 대기)
+  detectWindowStable: async (hwnd: number, lang: string = 'ko', minConfidence: number = 0.2, stabilityThreshold: number = 3) => {
+    const res = await ocrApiClient.get<StableDetectResponse>(
+      '/api/ocr/detect/window/stable',
+      { params: { hwnd, lang, min_confidence: minConfidence, stability_threshold: stabilityThreshold } }
+    )
+    return res.data
+  },
+
+  // 윈도우 안정화 상태 초기화
+  resetWindowStability: async (hwnd?: number) => {
+    const params = hwnd !== undefined ? { hwnd } : {}
+    const res = await api.post<{ reset: boolean }>('/api/ocr/detect/window/reset', null, { params })
+    return res.data
+  },
+
+  // OCR 결과를 에피소드 대사와 매칭
+  matchDialogue: async (episodeId: string, text: string, minSimilarity: number = 0.5) => {
+    const res = await api.post<MatchDialogueResponse>(
+      '/api/ocr/match',
+      { episode_id: episodeId, text, min_similarity: minSimilarity }
+    )
+    return res.data
+  },
+
+  // DialogueMatcher 상태 초기화
+  resetMatcher: async (episodeId?: string) => {
+    const params = episodeId ? { episode_id: episodeId } : {}
+    const res = await api.post<{ reset: boolean; message?: string }>('/api/ocr/match/reset', null, { params })
     return res.data
   },
 }
@@ -355,6 +422,356 @@ export const healthCheck = async (): Promise<boolean> => {
     return res.data.status === 'ok'
   } catch {
     return false
+  }
+}
+
+// SSE 스트리밍 타입
+export interface DialogueStreamEvent {
+  type: 'dialogue' | 'error' | 'status' | 'connected' | 'capture_failed' | 'setup_error'
+  text?: string
+  confidence?: number
+  timestamp?: number
+  is_new?: boolean
+  message?: string
+  hwnd?: number
+}
+
+// === 학습 API ===
+
+export interface TrainingJob {
+  job_id: string
+  char_id: string
+  char_name: string
+  status: 'pending' | 'preprocessing' | 'training' | 'completed' | 'failed' | 'cancelled'
+  progress: number
+  current_epoch: number
+  total_epochs: number
+  message: string
+  error_message: string | null
+  created_at: string | null
+  started_at: string | null
+  completed_at: string | null
+}
+
+export interface TrainingStatusResponse {
+  is_training: boolean
+  current_job: TrainingJob | null
+  queue_length: number
+  trained_count: number
+  total_trainable: number
+}
+
+export interface TrainedModel {
+  char_id: string
+  char_name: string
+  trained_at: string
+  language: string
+}
+
+export const trainingApi = {
+  // 전체 학습 상태 요약
+  getStatus: async () => {
+    const res = await api.get<TrainingStatusResponse>('/api/training/status')
+    return res.data
+  },
+
+  // 학습 작업 목록
+  listJobs: async (status?: string) => {
+    const params = status ? { status } : {}
+    const res = await api.get<{ jobs: TrainingJob[]; total: number }>(
+      '/api/training/jobs',
+      { params }
+    )
+    return res.data
+  },
+
+  // 특정 작업 상태
+  getJob: async (jobId: string) => {
+    const res = await api.get<TrainingJob>(`/api/training/jobs/${jobId}`)
+    return res.data
+  },
+
+  // 단일 캐릭터 학습 시작
+  startTraining: async (charId: string) => {
+    const res = await api.post<{ job: TrainingJob }>(`/api/training/start/${charId}`)
+    return res.data
+  },
+
+  // 일괄 학습 시작
+  startBatchTraining: async (charIds?: string[]) => {
+    const res = await api.post<{ jobs: TrainingJob[]; total: number; message?: string }>(
+      '/api/training/start-batch',
+      { char_ids: charIds || null }
+    )
+    return res.data
+  },
+
+  // 학습 취소
+  cancelTraining: async (jobId: string) => {
+    const res = await api.post<{ cancelled: boolean }>(`/api/training/cancel/${jobId}`)
+    return res.data
+  },
+
+  // 학습된 모델 목록
+  listModels: async () => {
+    const res = await api.get<{ models: TrainedModel[]; total: number }>('/api/training/models')
+    return res.data
+  },
+
+  // 모델 삭제
+  deleteModel: async (charId: string) => {
+    const res = await api.delete<{ deleted: boolean }>(`/api/training/models/${charId}`)
+    return res.data
+  },
+
+  // 모든 모델 삭제
+  deleteAllModels: async () => {
+    const res = await api.delete<{ deleted: boolean; deleted_count: number }>('/api/training/models')
+    return res.data
+  },
+}
+
+// === 렌더링 API ===
+
+export interface RenderProgress {
+  episode_id: string
+  status: 'idle' | 'rendering' | 'completed' | 'cancelled' | 'failed' | 'not_started' | 'partial'
+  total: number
+  completed: number
+  progress_percent: number
+  current_index: number | null
+  current_text: string | null
+  error: string | null
+}
+
+export interface RenderStatusResponse {
+  is_rendering: boolean
+  current_episode_id: string | null
+  cached_episodes: string[]
+  cached_count: number
+  current_progress: RenderProgress | null
+}
+
+export interface CacheInfo {
+  episode_id: string
+  total_dialogues: number
+  rendered_count: number
+  rendered_at: string
+  language: string
+  cache_size: number
+  audios: Array<{
+    index: number
+    char_id: string | null
+    text: string
+    duration: number
+  }>
+}
+
+export const renderApi = {
+  // 전체 렌더링 상태
+  getStatus: async () => {
+    const res = await api.get<RenderStatusResponse>('/api/render/status')
+    return res.data
+  },
+
+  // 에피소드 렌더링 시작
+  startRender: async (episodeId: string, language: string = 'ko') => {
+    const res = await api.post<RenderProgress>(
+      `/api/render/start/${encodeURIComponent(episodeId)}`,
+      { language }
+    )
+    return res.data
+  },
+
+  // 렌더링 취소
+  cancelRender: async (episodeId: string) => {
+    const res = await api.post<{ cancelled: boolean }>(
+      `/api/render/cancel/${encodeURIComponent(episodeId)}`
+    )
+    return res.data
+  },
+
+  // 렌더링 진행률 조회
+  getProgress: async (episodeId: string) => {
+    const res = await api.get<RenderProgress>(
+      `/api/render/progress/${encodeURIComponent(episodeId)}`
+    )
+    return res.data
+  },
+
+  // 렌더링된 오디오 URL
+  getAudioUrl: (episodeId: string, index: number) => {
+    return `${API_BASE}/api/render/audio/${encodeURIComponent(episodeId)}/${index}`
+  },
+
+  // 캐시 정보 조회
+  getCacheInfo: async (episodeId: string) => {
+    const res = await api.get<CacheInfo>(
+      `/api/render/cache/${encodeURIComponent(episodeId)}`
+    )
+    return res.data
+  },
+
+  // 캐시 삭제
+  deleteCache: async (episodeId: string) => {
+    const res = await api.delete<{ deleted: boolean }>(
+      `/api/render/cache/${encodeURIComponent(episodeId)}`
+    )
+    return res.data
+  },
+}
+
+// 렌더링 진행률 SSE 스트림
+export function createRenderStream(
+  episodeId: string,
+  options: {
+    onProgress?: (progress: RenderProgress) => void
+    onComplete?: (progress: RenderProgress) => void
+    onError?: (error: string) => void
+  } = {}
+): { close: () => void } {
+  const { onProgress, onComplete, onError } = options
+
+  const eventSource = new EventSource(
+    `${API_BASE}/api/render/stream/${encodeURIComponent(episodeId)}`
+  )
+
+  eventSource.addEventListener('progress', (event) => {
+    const progress = JSON.parse(event.data) as RenderProgress
+    onProgress?.(progress)
+  })
+
+  eventSource.addEventListener('complete', (event) => {
+    const progress = JSON.parse(event.data) as RenderProgress
+    onComplete?.(progress)
+  })
+
+  eventSource.addEventListener('ping', () => {
+    // 킵얼라이브, 무시
+  })
+
+  eventSource.onerror = () => {
+    onError?.('Render stream connection failed')
+  }
+
+  return {
+    close: () => {
+      eventSource.close()
+    }
+  }
+}
+
+// 학습 진행률 SSE 스트림
+export function createTrainingStream(
+  options: {
+    onProgress?: (job: TrainingJob) => void
+    onComplete?: (job: TrainingJob) => void
+    onStatus?: (status: TrainingStatusResponse) => void
+    onError?: (error: string) => void
+  } = {}
+): { close: () => void } {
+  const { onProgress, onComplete, onStatus, onError } = options
+
+  console.log('[SSE] createTrainingStream: 연결 시작', `${API_BASE}/api/training/stream`)
+  const eventSource = new EventSource(`${API_BASE}/api/training/stream`)
+
+  eventSource.onopen = () => {
+    console.log('[SSE] 연결 성공')
+  }
+
+  eventSource.addEventListener('progress', (event) => {
+    console.log('[SSE] progress 이벤트:', event.data)
+    const job = JSON.parse(event.data) as TrainingJob
+    onProgress?.(job)
+  })
+
+  eventSource.addEventListener('complete', (event) => {
+    console.log('[SSE] complete 이벤트:', event.data)
+    const job = JSON.parse(event.data) as TrainingJob
+    onComplete?.(job)
+  })
+
+  eventSource.addEventListener('status', (event) => {
+    console.log('[SSE] status 이벤트:', event.data)
+    const status = JSON.parse(event.data) as TrainingStatusResponse
+    onStatus?.(status)
+  })
+
+  eventSource.addEventListener('ping', () => {
+    console.log('[SSE] ping')
+  })
+
+  eventSource.onerror = (e) => {
+    console.error('[SSE] 연결 오류:', e, eventSource.readyState)
+    onError?.('Training stream connection failed')
+  }
+
+  return {
+    close: () => {
+      console.log('[SSE] 연결 종료')
+      eventSource.close()
+    }
+  }
+}
+
+// SSE 스트리밍 연결
+export function createDialogueStream(
+  hwnd: number,
+  lang: string = 'ko',
+  options: {
+    minConfidence?: number
+    pollInterval?: number
+    stabilityThreshold?: number
+    onDialogue?: (event: DialogueStreamEvent) => void
+    onError?: (event: DialogueStreamEvent) => void
+    onStatus?: (event: DialogueStreamEvent) => void
+  } = {}
+): { close: () => void } {
+  const {
+    minConfidence = 0.2,
+    pollInterval = 0.3,
+    stabilityThreshold = 3,
+    onDialogue,
+    onError,
+    onStatus,
+  } = options
+
+  const url = new URL(`${API_BASE}/api/ocr/stream/window`)
+  url.searchParams.set('hwnd', hwnd.toString())
+  url.searchParams.set('lang', lang)
+  url.searchParams.set('min_confidence', minConfidence.toString())
+  url.searchParams.set('poll_interval', pollInterval.toString())
+  url.searchParams.set('stability_threshold', stabilityThreshold.toString())
+
+  const eventSource = new EventSource(url.toString())
+
+  eventSource.addEventListener('dialogue', (event) => {
+    const data = JSON.parse(event.data) as DialogueStreamEvent
+    onDialogue?.(data)
+  })
+
+  eventSource.addEventListener('error', (event) => {
+    if (event instanceof MessageEvent) {
+      const data = JSON.parse(event.data) as DialogueStreamEvent
+      onError?.(data)
+    } else {
+      onError?.({ type: 'error', message: 'Connection error' })
+    }
+  })
+
+  eventSource.addEventListener('status', (event) => {
+    const data = JSON.parse(event.data) as DialogueStreamEvent
+    onStatus?.(data)
+  })
+
+  eventSource.onerror = () => {
+    onError?.({ type: 'error', message: 'EventSource connection failed' })
+  }
+
+  return {
+    close: () => {
+      eventSource.close()
+    }
   }
 }
 
