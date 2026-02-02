@@ -7,6 +7,12 @@ const api = axios.create({
   timeout: 30000,
 })
 
+// OCR용 (모델 로드에 시간이 걸림)
+const ocrApiClient = axios.create({
+  baseURL: API_BASE,
+  timeout: 120000,  // 2분 (첫 모델 로드 시)
+})
+
 // 에피소드 관련 API
 export interface DialogueInfo {
   id: string
@@ -213,6 +219,15 @@ export interface DetectDialogueResponse {
   timestamp: number
 }
 
+export interface WindowInfo {
+  hwnd: number
+  title: string
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
 // OCR API
 export const ocrApi = {
   // 모니터 목록
@@ -230,7 +245,7 @@ export const ocrApi = {
     return res.data
   },
 
-  // 화면 캡처
+  // 화면 캡처 (base64)
   captureScreen: async (monitor: number = 1) => {
     const res = await api.get<{ image_base64: string; width: number; height: number }>(
       '/api/ocr/capture',
@@ -239,7 +254,7 @@ export const ocrApi = {
     return res.data
   },
 
-  // 대사 영역 캡처
+  // 대사 영역 캡처 (base64)
   captureDialogue: async (monitor: number = 1) => {
     const res = await api.get<{ image_base64: string; width: number; height: number }>(
       '/api/ocr/capture/dialogue',
@@ -248,9 +263,46 @@ export const ocrApi = {
     return res.data
   },
 
+  // 직접 이미지 URL 생성 (base64 대신 직접 이미지 서빙)
+  getCaptureImageUrl: (monitor: number = 1) => {
+    return `${API_BASE}/api/ocr/capture/image?monitor=${monitor}&t=${Date.now()}`
+  },
+
+  getDialogueImageUrl: (monitor: number = 1) => {
+    return `${API_BASE}/api/ocr/capture/dialogue/image?monitor=${monitor}&t=${Date.now()}`
+  },
+
+  getCustomRegionImageUrl: (region: BoundingBox) => {
+    return `${API_BASE}/api/ocr/capture/region/image?x=${region.x}&y=${region.y}&width=${region.width}&height=${region.height}&t=${Date.now()}`
+  },
+
+  // 사용자 지정 영역 설정
+  setCustomRegion: async (region: BoundingBox) => {
+    const res = await api.post<{ saved: boolean; region: BoundingBox }>(
+      '/api/ocr/region/custom',
+      region
+    )
+    return res.data
+  },
+
+  // 사용자 지정 영역 조회
+  getCustomRegion: async () => {
+    const res = await api.get<{ region: BoundingBox | null }>('/api/ocr/region/custom')
+    return res.data
+  },
+
+  // 사용자 지정 영역에서 텍스트 감지
+  detectCustomRegion: async (lang: string = 'ko', minConfidence: number = 0.5) => {
+    const res = await ocrApiClient.get<DetectDialogueResponse>(
+      '/api/ocr/detect/custom',
+      { params: { lang, min_confidence: minConfidence } }
+    )
+    return res.data
+  },
+
   // 대사 감지 (캡처 + OCR)
   detectDialogue: async (monitor: number = 1, lang: string = 'ko', minConfidence: number = 0.5) => {
-    const res = await api.get<DetectDialogueResponse>(
+    const res = await ocrApiClient.get<DetectDialogueResponse>(
       '/api/ocr/detect',
       { params: { monitor, lang, min_confidence: minConfidence } }
     )
@@ -261,7 +313,7 @@ export const ocrApi = {
   recognizeImage: async (file: File, lang: string = 'ko') => {
     const formData = new FormData()
     formData.append('file', file)
-    const res = await api.post<{ results: OCRResult[]; language: string }>(
+    const res = await ocrApiClient.post<{ results: OCRResult[]; language: string }>(
       '/api/ocr/recognize',
       formData,
       { params: { lang } }
@@ -272,6 +324,26 @@ export const ocrApi = {
   // 지원 언어 목록
   listLanguages: async () => {
     const res = await api.get<{ languages: Array<{ code: string; name: string }> }>('/api/ocr/languages')
+    return res.data
+  },
+
+  // 윈도우 목록 (Windows 전용)
+  listWindows: async () => {
+    const res = await api.get<{ windows: WindowInfo[] }>('/api/ocr/windows')
+    return res.data
+  },
+
+  // 윈도우 캡처 이미지 URL (상단 15% UI 영역 제외)
+  getWindowImageUrl: (hwnd: number, ignoreTopRatio: number = 0.15) => {
+    return `${API_BASE}/api/ocr/capture/window/image?hwnd=${hwnd}&ignore_top_ratio=${ignoreTopRatio}&t=${Date.now()}`
+  },
+
+  // 윈도우에서 대사 감지
+  detectWindow: async (hwnd: number, lang: string = 'ko', minConfidence: number = 0.5) => {
+    const res = await ocrApiClient.get<DetectDialogueResponse>(
+      '/api/ocr/detect/window',
+      { params: { hwnd, lang, min_confidence: minConfidence } }
+    )
     return res.data
   },
 }

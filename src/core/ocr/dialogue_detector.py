@@ -7,7 +7,7 @@ from typing import Callable
 from PIL import Image
 
 from ..interfaces.ocr import BoundingBox, OCRResult
-from .paddle_ocr import PaddleOCRProvider
+from .easyocr_provider import EasyOCRProvider
 from .screen_capture import ScreenCapture, get_dialogue_region
 
 
@@ -49,7 +49,7 @@ class DialogueDetector:
     def __init__(self, config: DetectorConfig | None = None):
         self.config = config or DetectorConfig()
         self._capture = ScreenCapture()
-        self._ocr = PaddleOCRProvider(language=self.config.language)
+        self._ocr = EasyOCRProvider(language=self.config.language)
         self._running = False
         self._last_text: str = ""
         self._callbacks: list[Callable[[DialogueDetection], None]] = []
@@ -114,21 +114,54 @@ class DialogueDetector:
         """
         import time
 
-        region = self._get_dialogue_region()
-        image = await self._capture.capture_region_async(region)
-        result = await self._ocr.recognize_region(image, BoundingBox(
-            x=0, y=0, width=image.width, height=image.height
-        ))
+        try:
+            # 모니터 정보 가져오기
+            monitors = self._capture.get_monitors()
+            print(f"[DialogueDetector] Found {len(monitors)} monitors, requested id={self.config.monitor_id}")
 
-        if not result or result.confidence < self.config.min_confidence:
-            return None
+            if self.config.monitor_id >= len(monitors):
+                print(f"[DialogueDetector] Monitor ID {self.config.monitor_id} out of range")
+                return None
 
-        return DialogueDetection(
-            text=result.text,
-            confidence=result.confidence,
-            timestamp=time.time(),
-            region=region,
-        )
+            monitor = monitors[self.config.monitor_id]
+            print(f"[DialogueDetector] Using monitor: {monitor.name} ({monitor.width}x{monitor.height}) at ({monitor.left}, {monitor.top})")
+
+            rel_region = self._get_dialogue_region()
+            print(f"[DialogueDetector] Dialogue region: x={rel_region.x}, y={rel_region.y}, w={rel_region.width}, h={rel_region.height}")
+
+            # 절대 좌표로 변환 (모니터 오프셋 적용)
+            abs_region = BoundingBox(
+                x=monitor.left + rel_region.x,
+                y=monitor.top + rel_region.y,
+                width=rel_region.width,
+                height=rel_region.height,
+            )
+            print(f"[DialogueDetector] Absolute region: x={abs_region.x}, y={abs_region.y}")
+
+            image = await self._capture.capture_region_async(abs_region)
+            print(f"[DialogueDetector] Captured image: {image.width}x{image.height}")
+
+            result = await self._ocr.recognize_region(image, BoundingBox(
+                x=0, y=0, width=image.width, height=image.height
+            ))
+            print(f"[DialogueDetector] OCR result: {result}")
+
+            if not result or result.confidence < self.config.min_confidence:
+                print(f"[DialogueDetector] No result or low confidence")
+                return None
+
+            return DialogueDetection(
+                text=result.text,
+                confidence=result.confidence,
+                timestamp=time.time(),
+                region=rel_region,
+            )
+
+        except Exception as e:
+            print(f"[DialogueDetector] Error in detect_once: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
 
     async def detect_from_image(self, image: Image.Image) -> DialogueDetection | None:
         """이미지에서 대사 감지

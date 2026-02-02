@@ -33,8 +33,13 @@ dependencies = [
 
 [project.optional-dependencies]
 ocr = [
-    "paddlepaddle>=2.5.0",
-    "paddleocr>=2.7.0",
+    # EasyOCR: 한국어 인식 성능 우수, 다양한 폰트/스타일 지원
+    "easyocr>=1.7.0",
+    # 이미지 전처리
+    "opencv-python>=4.8.0",
+]
+windows = [
+    "pywin32>=306",  # Windows 윈도우 캡처용
 ]
 dev = [
     "pytest>=7.0.0",

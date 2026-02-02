@@ -12,8 +12,12 @@ import {
   type StoryGroupInfo,
   type GroupEpisodeInfo,
   type MonitorInfo,
+  type WindowInfo,
   type DetectDialogueResponse,
+  type BoundingBox,
 } from '../services/api'
+
+type CaptureMode = 'monitor' | 'window'
 
 interface AppState {
   // 연결 상태
@@ -46,12 +50,18 @@ interface AppState {
   // OCR 관련
   monitors: MonitorInfo[]
   selectedMonitorId: number
+  windows: WindowInfo[]
+  selectedWindowHwnd: number | null
+  captureMode: CaptureMode
   ocrLanguage: string
   isMonitoring: boolean
   detectedText: string | null
   detectedConfidence: number
-  capturedImage: string | null  // base64
+  capturedImage: string | null  // base64 (legacy)
+  capturedImageUrl: string | null  // 직접 이미지 URL
   ocrError: string | null
+  customRegion: BoundingBox | null  // 사용자 지정 영역
+  useCustomRegion: boolean  // 사용자 지정 영역 사용 여부
 
   // 액션
   checkBackendStatus: () => Promise<void>
@@ -69,13 +79,22 @@ interface AppState {
   // OCR 액션
   loadMonitors: () => Promise<void>
   setMonitor: (monitorId: number) => void
+  loadWindows: () => Promise<void>
+  setWindow: (hwnd: number) => void
+  setCaptureMode: (mode: CaptureMode) => void
   setOcrLanguage: (lang: string) => void
   detectOnce: () => Promise<DetectDialogueResponse | null>
   captureScreen: () => Promise<void>
   captureDialogue: () => Promise<void>
+  captureWindow: () => void
   startMonitoring: () => void
   stopMonitoring: () => void
   clearOcrResult: () => void
+  // 사용자 지정 영역
+  setCustomRegion: (region: BoundingBox) => Promise<void>
+  setUseCustomRegion: (use: boolean) => void
+  detectCustomRegion: () => Promise<DetectDialogueResponse | null>
+  captureCustomRegion: () => void
 }
 
 // 오디오 재생 관리
@@ -109,12 +128,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   // OCR 초기 상태
   monitors: [],
   selectedMonitorId: 1,
+  windows: [],
+  selectedWindowHwnd: null,
+  captureMode: 'monitor',
   ocrLanguage: 'ko',
   isMonitoring: false,
   detectedText: null,
   detectedConfidence: 0,
   capturedImage: null,
+  capturedImageUrl: null,
   ocrError: null,
+  customRegion: null,
+  useCustomRegion: false,
 
   // 백엔드 상태 확인
   checkBackendStatus: async () => {
@@ -291,17 +316,49 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ selectedMonitorId: monitorId })
   },
 
+  // OCR: 윈도우 목록 로드
+  loadWindows: async () => {
+    try {
+      const data = await ocrApi.listWindows()
+      set({ windows: data.windows, ocrError: null })
+    } catch (error) {
+      console.error('Failed to load windows:', error)
+      set({ ocrError: 'Failed to load windows' })
+    }
+  },
+
+  // OCR: 윈도우 선택
+  setWindow: (hwnd: number) => {
+    set({ selectedWindowHwnd: hwnd })
+  },
+
+  // OCR: 캡처 모드 설정
+  setCaptureMode: (mode: CaptureMode) => {
+    set({ captureMode: mode })
+    // 윈도우 모드로 전환 시 윈도우 목록 새로고침
+    if (mode === 'window') {
+      get().loadWindows()
+    }
+  },
+
   // OCR: 언어 선택
   setOcrLanguage: (lang: string) => {
     set({ ocrLanguage: lang })
   },
 
-  // OCR: 한 번 감지
+  // OCR: 한 번 감지 (모드에 따라 모니터 또는 윈도우)
   detectOnce: async () => {
-    const { selectedMonitorId, ocrLanguage } = get()
+    const { selectedMonitorId, selectedWindowHwnd, captureMode, ocrLanguage } = get()
     try {
       set({ ocrError: null })
-      const result = await ocrApi.detectDialogue(selectedMonitorId, ocrLanguage)
+
+      let result: DetectDialogueResponse
+      if (captureMode === 'window' && selectedWindowHwnd) {
+        result = await ocrApi.detectWindow(selectedWindowHwnd, ocrLanguage)
+      } else {
+        result = await ocrApi.detectDialogue(selectedMonitorId, ocrLanguage)
+      }
+
       set({
         detectedText: result.text,
         detectedConfidence: result.confidence,
@@ -314,30 +371,43 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  // OCR: 화면 캡처
+  // OCR: 화면 캡처 (직접 이미지 URL 사용)
   captureScreen: async () => {
     const { selectedMonitorId } = get()
     try {
       set({ ocrError: null })
-      const data = await ocrApi.captureScreen(selectedMonitorId)
-      set({ capturedImage: data.image_base64 })
+      // 직접 이미지 URL 사용 (base64 대신)
+      const imageUrl = ocrApi.getCaptureImageUrl(selectedMonitorId)
+      set({ capturedImageUrl: imageUrl, capturedImage: null })
     } catch (error) {
       console.error('Failed to capture screen:', error)
       set({ ocrError: 'Failed to capture screen' })
     }
   },
 
-  // OCR: 대사 영역 캡처
+  // OCR: 대사 영역 캡처 (직접 이미지 URL 사용)
   captureDialogue: async () => {
     const { selectedMonitorId } = get()
     try {
       set({ ocrError: null })
-      const data = await ocrApi.captureDialogue(selectedMonitorId)
-      set({ capturedImage: data.image_base64 })
+      // 직접 이미지 URL 사용 (base64 대신)
+      const imageUrl = ocrApi.getDialogueImageUrl(selectedMonitorId)
+      set({ capturedImageUrl: imageUrl, capturedImage: null })
     } catch (error) {
       console.error('Failed to capture dialogue region:', error)
       set({ ocrError: 'Failed to capture dialogue region' })
     }
+  },
+
+  // OCR: 윈도우 캡처
+  captureWindow: () => {
+    const { selectedWindowHwnd } = get()
+    if (!selectedWindowHwnd) {
+      set({ ocrError: 'No window selected' })
+      return
+    }
+    const imageUrl = ocrApi.getWindowImageUrl(selectedWindowHwnd)
+    set({ capturedImageUrl: imageUrl, capturedImage: null, ocrError: null })
   },
 
   // OCR: 모니터링 시작
@@ -370,7 +440,57 @@ export const useAppStore = create<AppState>((set, get) => ({
       detectedText: null,
       detectedConfidence: 0,
       capturedImage: null,
+      capturedImageUrl: null,
       ocrError: null,
     })
+  },
+
+  // 사용자 지정 영역 설정
+  setCustomRegion: async (region: BoundingBox) => {
+    try {
+      await ocrApi.setCustomRegion(region)
+      set({ customRegion: region, ocrError: null })
+    } catch (error) {
+      console.error('Failed to set custom region:', error)
+      set({ ocrError: 'Failed to set custom region' })
+    }
+  },
+
+  // 사용자 지정 영역 사용 토글
+  setUseCustomRegion: (use: boolean) => {
+    set({ useCustomRegion: use })
+  },
+
+  // 사용자 지정 영역에서 텍스트 감지
+  detectCustomRegion: async () => {
+    const { ocrLanguage, customRegion } = get()
+    if (!customRegion) {
+      set({ ocrError: 'Custom region not set' })
+      return null
+    }
+    try {
+      set({ ocrError: null })
+      const result = await ocrApi.detectCustomRegion(ocrLanguage)
+      set({
+        detectedText: result.text,
+        detectedConfidence: result.confidence,
+      })
+      return result
+    } catch (error) {
+      console.error('Failed to detect custom region:', error)
+      set({ ocrError: 'Failed to detect custom region' })
+      return null
+    }
+  },
+
+  // 사용자 지정 영역 캡처
+  captureCustomRegion: () => {
+    const { customRegion } = get()
+    if (!customRegion) {
+      set({ ocrError: 'Custom region not set' })
+      return
+    }
+    const imageUrl = ocrApi.getCustomRegionImageUrl(customRegion)
+    set({ capturedImageUrl: imageUrl, capturedImage: null, ocrError: null })
   },
 }))
