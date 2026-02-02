@@ -27,36 +27,30 @@ class ScreenCapture:
 
     mss 라이브러리를 사용하여 빠른 화면 캡처 제공.
     게임 창 영역 또는 전체 화면 캡처 지원.
+
+    Note: mss는 thread-local storage를 사용하므로 async 환경에서는
+    각 캡처마다 새 인스턴스를 생성해야 합니다.
     """
-
-    def __init__(self):
-        self._sct: mss.mss | None = None
-
-    @property
-    def sct(self) -> mss.mss:
-        """mss 인스턴스 (lazy loading)"""
-        if self._sct is None:
-            self._sct = mss.mss()
-        return self._sct
 
     def get_monitors(self) -> list[Monitor]:
         """사용 가능한 모니터 목록"""
         monitors = []
-        for i, m in enumerate(self.sct.monitors):
-            if i == 0:
-                # 첫 번째는 전체 가상 스크린
-                name = "All Monitors"
-            else:
-                name = f"Monitor {i}"
+        with mss.mss() as sct:
+            for i, m in enumerate(sct.monitors):
+                if i == 0:
+                    # 첫 번째는 전체 가상 스크린
+                    name = "All Monitors"
+                else:
+                    name = f"Monitor {i}"
 
-            monitors.append(Monitor(
-                id=i,
-                left=m["left"],
-                top=m["top"],
-                width=m["width"],
-                height=m["height"],
-                name=name,
-            ))
+                monitors.append(Monitor(
+                    id=i,
+                    left=m["left"],
+                    top=m["top"],
+                    width=m["width"],
+                    height=m["height"],
+                    name=name,
+                ))
         return monitors
 
     def capture_monitor(self, monitor_id: int = 1) -> Image.Image:
@@ -68,9 +62,10 @@ class ScreenCapture:
         Returns:
             캡처된 이미지
         """
-        monitor = self.sct.monitors[monitor_id]
-        screenshot = self.sct.grab(monitor)
-        return Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
+        with mss.mss() as sct:
+            monitor = sct.monitors[monitor_id]
+            screenshot = sct.grab(monitor)
+            return Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
 
     def capture_region(self, region: BoundingBox) -> Image.Image:
         """특정 영역 캡처
@@ -87,8 +82,9 @@ class ScreenCapture:
             "width": region.width,
             "height": region.height,
         }
-        screenshot = self.sct.grab(monitor)
-        return Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
+        with mss.mss() as sct:
+            screenshot = sct.grab(monitor)
+            return Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
 
     async def capture_monitor_async(self, monitor_id: int = 1) -> Image.Image:
         """모니터 전체 비동기 캡처"""
@@ -101,16 +97,14 @@ class ScreenCapture:
         return await loop.run_in_executor(None, self.capture_region, region)
 
     def close(self):
-        """리소스 정리"""
-        if self._sct:
-            self._sct.close()
-            self._sct = None
+        """리소스 정리 (호환성 유지)"""
+        pass
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
+        pass
 
 
 # 명일방주 대사 영역 프리셋 (1920x1080 기준)
