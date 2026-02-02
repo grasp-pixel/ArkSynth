@@ -13,6 +13,7 @@ dependencies = [
     "websockets>=11.0",
     "pydantic>=2.0",
     "python-multipart>=0.0.20",
+    "sse-starlette>=1.6.0",
 
     # TTS
     "edge-tts>=6.1.0",
@@ -27,21 +28,37 @@ dependencies = [
     "mss>=9.0.0",
     "pillow>=10.0.0",
 
+    # HTTP 클라이언트 (GPT-SoVITS API)
+    "aiohttp>=3.9.0",
+
     # 유틸리티
     "aiofiles>=23.0.0",
+
+    # Windows 윈도우 캡처 (Windows 전용)
+    "pywin32>=306; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]
 ocr = [
-    # EasyOCR: 한국어 인식 성능 우수, 다양한 폰트/스타일 지원
     "easyocr>=1.7.0",
-    # 이미지 전처리
     "opencv-python>=4.8.0",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
 ]
 windows = [
-    "pywin32>=306",  # Windows 윈도우 캡처용
+    "pywin32>=306",
 ]
 dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+]
+# 모든 선택적 종속성 (Windows 개발 환경 기준)
+all = [
+    "easyocr>=1.7.0",
+    "opencv-python>=4.8.0",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "pywin32>=306",
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
 ]
@@ -56,3 +73,13 @@ packages = ["src/tools", "src/core"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+# CUDA PyTorch 소스 (GPU 가속)
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu121" }
+torchvision = { index = "pytorch-cu121" }
