@@ -180,7 +180,7 @@ class TrainingManager:
                         job.message = "학습 취소됨"
                     else:
                         job.status = TrainingStatus.FAILED
-                        job.error_message = "학습 실패"
+                        job.error_message = self.trainer.last_error or "학습 실패"
 
                 job.completed_at = datetime.now()
                 self._notify_progress(job)

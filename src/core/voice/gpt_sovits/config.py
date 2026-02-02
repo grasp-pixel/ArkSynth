@@ -1,5 +1,6 @@
 """GPT-SoVITS 설정"""
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -7,6 +8,17 @@ from pathlib import Path
 @dataclass
 class GPTSoVITSConfig:
     """GPT-SoVITS 학습 및 추론 설정"""
+
+    # GPT-SoVITS 설치 경로 (환경변수 또는 기본값)
+    gpt_sovits_path: Path = field(
+        default_factory=lambda: Path(
+            os.environ.get("GPT_SOVITS_PATH", "C:/GPT-SoVITS")
+        )
+    )
+
+    # API 서버 설정
+    api_host: str = "127.0.0.1"
+    api_port: int = 9880
 
     # 경로 설정
     models_path: Path = field(default_factory=lambda: Path("models/gpt_sovits"))
@@ -39,6 +51,16 @@ class GPTSoVITSConfig:
     max_ref_audio_length: float = 10.0  # 최대 참조 오디오 길이 (초)
     ref_audio_count: int = 5  # 학습에 사용할 참조 오디오 개수
 
+    @property
+    def api_url(self) -> str:
+        """GPT-SoVITS API 서버 URL"""
+        return f"http://{self.api_host}:{self.api_port}"
+
+    @property
+    def is_gpt_sovits_installed(self) -> bool:
+        """GPT-SoVITS 설치 여부 확인"""
+        return (self.gpt_sovits_path / "api.py").exists()
+
     def ensure_directories(self):
         """필요한 디렉토리 생성"""
         self.models_path.mkdir(parents=True, exist_ok=True)
@@ -59,3 +81,11 @@ class GPTSoVITSConfig:
     def get_config_path(self, char_id: str) -> Path:
         """설정 파일 경로"""
         return self.get_model_path(char_id) / "config.json"
+
+    def get_ref_audio_path(self, char_id: str) -> Path:
+        """참조 오디오 경로"""
+        return self.get_model_path(char_id) / "ref.wav"
+
+    def get_ref_text_path(self, char_id: str) -> Path:
+        """참조 오디오 텍스트 경로"""
+        return self.get_model_path(char_id) / "ref.txt"

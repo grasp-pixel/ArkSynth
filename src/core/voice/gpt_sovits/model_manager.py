@@ -41,23 +41,39 @@ class GPTSoVITSModelManager:
         self.config.ensure_directories()
 
     def is_trained(self, char_id: str) -> bool:
-        """모델 학습 완료 여부"""
+        """모델 준비 완료 여부 (학습 또는 zero-shot)"""
+        # Zero-shot 모드: 참조 오디오 + 텍스트만 있으면 됨
+        if self.is_zero_shot_ready(char_id):
+            return True
+        # 학습 모드: sovits.pth + gpt.ckpt 필요
+        sovits_path = self.config.get_sovits_model_path(char_id)
+        gpt_path = self.config.get_gpt_model_path(char_id)
+        return sovits_path.exists() and gpt_path.exists()
+
+    def is_zero_shot_ready(self, char_id: str) -> bool:
+        """Zero-shot 합성 준비 여부 (참조 오디오만 필요)"""
+        ref_audio = self.config.get_ref_audio_path(char_id)
+        ref_text = self.config.get_ref_text_path(char_id)
+        return ref_audio.exists() and ref_text.exists()
+
+    def has_trained_model(self, char_id: str) -> bool:
+        """전체 학습된 모델이 있는지 (zero-shot이 아닌)"""
         sovits_path = self.config.get_sovits_model_path(char_id)
         gpt_path = self.config.get_gpt_model_path(char_id)
         return sovits_path.exists() and gpt_path.exists()
 
     def get_trained_characters(self) -> list[str]:
-        """학습 완료된 캐릭터 ID 목록"""
+        """준비 완료된 캐릭터 ID 목록 (학습 또는 zero-shot)"""
         if not self.config.models_path.exists():
             return []
 
-        trained = []
+        ready = []
         for model_dir in self.config.models_path.iterdir():
             if model_dir.is_dir() and model_dir.name != "pretrained":
                 if self.is_trained(model_dir.name):
-                    trained.append(model_dir.name)
+                    ready.append(model_dir.name)
 
-        return sorted(trained)
+        return sorted(ready)
 
     def get_model_info(self, char_id: str) -> ModelInfo | None:
         """모델 정보 조회"""

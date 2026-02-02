@@ -1,16 +1,18 @@
-"""GPT-SoVITS 학습 로직
+"""GPT-SoVITS 음성 준비 로직
 
-GPT-SoVITS를 사용한 캐릭터 음성 모델 학습.
-실제 학습은 GPT-SoVITS 라이브러리를 호출하여 수행.
+GPT-SoVITS를 사용한 캐릭터 음성 클로닝.
+Zero-shot 모드: 참조 오디오만 준비하면 사전 학습된 모델로 합성 가능.
+(전체 학습 없이도 음성 클로닝 가능)
 """
 
 import asyncio
+import json
 import logging
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional
 
 from .config import GPTSoVITSConfig
 from .model_manager import GPTSoVITSModelManager
@@ -20,248 +22,203 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TrainingProgress:
-    """학습 진행 상황"""
+    """음성 준비 진행 상황"""
 
-    stage: str  # preprocessing, sovits_training, gpt_training, complete
+    stage: str  # preprocessing, complete
     progress: float  # 0.0 ~ 1.0
-    current_epoch: int = 0
-    total_epochs: int = 0
+    current_epoch: int = 0  # 미사용 (zero-shot 모드)
+    total_epochs: int = 0   # 미사용 (zero-shot 모드)
     message: str = ""
 
 
 class GPTSoVITSTrainer:
-    """GPT-SoVITS 모델 학습기
+    """GPT-SoVITS 음성 준비기
 
-    학습 단계:
-    1. 오디오 전처리 (리샘플링, 노이즈 제거)
-    2. 참조 오디오 선택
-    3. SoVITS 모델 fine-tuning
-    4. GPT 모델 fine-tuning
+    Zero-shot 모드: 참조 오디오와 텍스트만 준비합니다.
+    사전 학습된 GPT-SoVITS 모델을 사용해 바로 합성 가능.
+    subprocess로 training_worker.py를 실행하여 비동기 처리.
     """
 
     def __init__(
         self,
-        config: GPTSoVITSConfig | None = None,
-        model_manager: GPTSoVITSModelManager | None = None,
+        config: Optional[GPTSoVITSConfig] = None,
+        model_manager: Optional[GPTSoVITSModelManager] = None,
     ):
         self.config = config or GPTSoVITSConfig()
         self.model_manager = model_manager or GPTSoVITSModelManager(self.config)
         self._cancelled = False
+        self._process: Optional[subprocess.Popen] = None
+        self._last_error: str = ""
+
+    @property
+    def last_error(self) -> str:
+        """마지막 에러 메시지"""
+        return self._last_error
 
     def cancel(self):
         """학습 취소"""
         self._cancelled = True
+        if self._process and self._process.poll() is None:
+            self._process.terminate()
+            try:
+                self._process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._process.kill()
 
     async def train(
         self,
         char_id: str,
         char_name: str,
         audio_files: list[Path],
-        on_progress: Callable[[TrainingProgress], None] | None = None,
+        on_progress: Optional[Callable[[TrainingProgress], None]] = None,
     ) -> bool:
         """캐릭터 음성 모델 학습
 
         Args:
             char_id: 캐릭터 ID
             char_name: 캐릭터 이름
-            audio_files: 학습용 오디오 파일 목록
+            audio_files: 학습용 오디오 파일 목록 (사용하지 않음, audio_dir에서 자동 탐색)
             on_progress: 진행 상황 콜백
 
         Returns:
             bool: 학습 성공 여부
         """
         self._cancelled = False
+        self._last_error = ""
+
+        # 오디오 디렉토리 결정
+        if audio_files:
+            audio_dir = audio_files[0].parent
+        else:
+            audio_dir = self.config.extracted_path / char_id
+
+        if not audio_dir.exists():
+            logger.error(f"오디오 디렉토리가 없습니다: {audio_dir}")
+            return False
+
+        output_dir = self.config.get_model_path(char_id)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # training_worker.py 경로
+        worker_script = Path(__file__).parent / "training_worker.py"
+
+        # gamedata 경로 (charword_table.json 위치)
+        gamedata_path = Path("data/gamedata_yostar")
+
+        cmd = [
+            sys.executable,
+            str(worker_script),
+            "--char-id", char_id,
+            "--char-name", char_name,
+            "--audio-dir", str(audio_dir),
+            "--output-dir", str(output_dir),
+            "--gamedata-path", str(gamedata_path),
+            "--gpt-sovits-path", str(self.config.gpt_sovits_path),
+            "--epochs-sovits", str(self.config.epochs_sovits),
+            "--epochs-gpt", str(self.config.epochs_gpt),
+            "--language", self.config.default_language,
+        ]
+
+        logger.info(f"학습 시작: {char_id} ({char_name})")
+        logger.debug(f"명령: {' '.join(cmd)}")
 
         try:
-            # 1. 전처리
-            if on_progress:
-                on_progress(
-                    TrainingProgress(
-                        stage="preprocessing",
-                        progress=0.0,
-                        message=f"{char_name} 오디오 전처리 중...",
-                    )
-                )
-
-            if self._cancelled:
-                return False
-
-            # 참조 오디오 선택 및 전처리
-            ref_audios = await self._prepare_reference_audios(audio_files)
-            if not ref_audios:
-                logger.error(f"참조 오디오 준비 실패: {char_id}")
-                return False
-
-            if on_progress:
-                on_progress(
-                    TrainingProgress(
-                        stage="preprocessing",
-                        progress=0.2,
-                        message=f"참조 오디오 {len(ref_audios)}개 준비 완료",
-                    )
-                )
-
-            if self._cancelled:
-                return False
-
-            # 2. SoVITS 학습
-            if on_progress:
-                on_progress(
-                    TrainingProgress(
-                        stage="sovits_training",
-                        progress=0.3,
-                        current_epoch=0,
-                        total_epochs=self.config.epochs_sovits,
-                        message="SoVITS 모델 학습 시작...",
-                    )
-                )
-
-            sovits_success = await self._train_sovits(
-                char_id, ref_audios, on_progress
-            )
-            if not sovits_success:
-                logger.error(f"SoVITS 학습 실패: {char_id}")
-                return False
-
-            if self._cancelled:
-                return False
-
-            # 3. GPT 학습
-            if on_progress:
-                on_progress(
-                    TrainingProgress(
-                        stage="gpt_training",
-                        progress=0.6,
-                        current_epoch=0,
-                        total_epochs=self.config.epochs_gpt,
-                        message="GPT 모델 학습 시작...",
-                    )
-                )
-
-            gpt_success = await self._train_gpt(char_id, ref_audios, on_progress)
-            if not gpt_success:
-                logger.error(f"GPT 학습 실패: {char_id}")
-                return False
-
-            # 4. 모델 정보 저장
-            self.model_manager.create_model_info(
-                char_id=char_id,
-                char_name=char_name,
-                epochs_sovits=self.config.epochs_sovits,
-                epochs_gpt=self.config.epochs_gpt,
-                ref_audio_count=len(ref_audios),
-                language=self.config.default_language,
+            self._process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,  # 라인 버퍼링
             )
 
-            if on_progress:
-                on_progress(
-                    TrainingProgress(
-                        stage="complete",
-                        progress=1.0,
-                        message=f"{char_name} 학습 완료!",
-                    )
-                )
+            # stdout에서 진행 상황 읽기
+            success = await self._read_progress(on_progress)
 
-            logger.info(f"학습 완료: {char_id} ({char_name})")
-            return True
+            if success:
+                # 모델 정보 저장 (zero-shot 모드: epochs=0)
+                self.model_manager.create_model_info(
+                    char_id=char_id,
+                    char_name=char_name,
+                    epochs_sovits=0,  # zero-shot 모드
+                    epochs_gpt=0,     # zero-shot 모드
+                    ref_audio_count=len(list(audio_dir.glob("*.mp3"))) + len(list(audio_dir.glob("*.wav"))),
+                    language=self.config.default_language,
+                )
+                logger.info(f"음성 준비 완료: {char_id} ({char_name})")
+            else:
+                logger.error(f"음성 준비 실패: {char_id}")
+
+            return success
 
         except Exception as e:
             logger.error(f"학습 중 오류 ({char_id}): {e}")
             return False
 
-    async def _prepare_reference_audios(
-        self, audio_files: list[Path]
-    ) -> list[Path]:
-        """참조 오디오 준비 (전처리)
+        finally:
+            self._process = None
 
-        Args:
-            audio_files: 원본 오디오 파일 목록
-
-        Returns:
-            전처리된 참조 오디오 경로 목록
-        """
-        # TODO: 실제 구현 시 오디오 전처리 로직 추가
-        # - 리샘플링 (32kHz)
-        # - 노이즈 제거
-        # - 적절한 길이의 오디오 선택
-
-        # 현재는 원본 파일 중 일부 선택
-        selected = audio_files[: self.config.ref_audio_count]
-        return selected
-
-    async def _train_sovits(
+    async def _read_progress(
         self,
-        char_id: str,
-        ref_audios: list[Path],
-        on_progress: Callable[[TrainingProgress], None] | None = None,
+        on_progress: Optional[Callable[[TrainingProgress], None]] = None,
     ) -> bool:
-        """SoVITS 모델 학습
+        """subprocess stdout에서 진행 상황 읽기"""
+        if not self._process or not self._process.stdout:
+            return False
 
-        TODO: 실제 GPT-SoVITS 라이브러리 연동 필요
-        현재는 모델 파일 생성 시뮬레이션
-        """
-        model_dir = self.config.get_model_path(char_id)
-        model_dir.mkdir(parents=True, exist_ok=True)
+        loop = asyncio.get_event_loop()
 
-        # 학습 시뮬레이션 (실제 구현 시 GPT-SoVITS 호출)
-        for epoch in range(self.config.epochs_sovits):
+        while True:
             if self._cancelled:
                 return False
 
-            await asyncio.sleep(0.5)  # 시뮬레이션용 딜레이 (진행 상황 확인용)
+            # 비동기로 stdout 읽기
+            line = await loop.run_in_executor(None, self._process.stdout.readline)
 
-            if on_progress:
-                progress = 0.3 + (0.3 * (epoch + 1) / self.config.epochs_sovits)
-                on_progress(
-                    TrainingProgress(
-                        stage="sovits_training",
-                        progress=progress,
-                        current_epoch=epoch + 1,
-                        total_epochs=self.config.epochs_sovits,
-                        message=f"SoVITS Epoch {epoch + 1}/{self.config.epochs_sovits}",
-                    )
-                )
-                logger.info(f"[Train] SoVITS {epoch + 1}/{self.config.epochs_sovits}")
+            if not line:
+                # 프로세스 종료
+                break
 
-        # 모델 파일 생성 (플레이스홀더)
-        sovits_path = self.config.get_sovits_model_path(char_id)
-        sovits_path.write_text(f"sovits_model_placeholder_{char_id}")
+            line = line.strip()
+            if not line:
+                continue
 
-        return True
+            try:
+                data = json.loads(line)
+                msg_type = data.get("type")
 
-    async def _train_gpt(
-        self,
-        char_id: str,
-        ref_audios: list[Path],
-        on_progress: Callable[[TrainingProgress], None] | None = None,
-    ) -> bool:
-        """GPT 모델 학습
+                if msg_type == "progress":
+                    if on_progress:
+                        on_progress(
+                            TrainingProgress(
+                                stage=data.get("stage", ""),
+                                progress=data.get("progress", 0),
+                                current_epoch=data.get("current_epoch", 0),
+                                total_epochs=data.get("total_epochs", 0),
+                                message=data.get("message", ""),
+                            )
+                        )
 
-        TODO: 실제 GPT-SoVITS 라이브러리 연동 필요
-        현재는 모델 파일 생성 시뮬레이션
-        """
-        # 학습 시뮬레이션
-        for epoch in range(self.config.epochs_gpt):
-            if self._cancelled:
-                return False
+                elif msg_type == "error":
+                    error_msg = data.get('message', '학습 실패')
+                    error_detail = data.get('error', '')
+                    self._last_error = f"{error_msg}: {error_detail}" if error_detail else error_msg
+                    logger.error(f"워커 에러: {self._last_error}")
+                    return False
 
-            await asyncio.sleep(0.5)  # 시뮬레이션용 딜레이 (진행 상황 확인용)
+                elif msg_type == "complete":
+                    if on_progress:
+                        on_progress(
+                            TrainingProgress(
+                                stage="complete",
+                                progress=1.0,
+                                message=f"{data.get('char_name')} 학습 완료!",
+                            )
+                        )
+                    return True
 
-            if on_progress:
-                progress = 0.6 + (0.35 * (epoch + 1) / self.config.epochs_gpt)
-                on_progress(
-                    TrainingProgress(
-                        stage="gpt_training",
-                        progress=progress,
-                        current_epoch=epoch + 1,
-                        total_epochs=self.config.epochs_gpt,
-                        message=f"GPT Epoch {epoch + 1}/{self.config.epochs_gpt}",
-                    )
-                )
-                logger.info(f"[Train] GPT {epoch + 1}/{self.config.epochs_gpt}")
+            except json.JSONDecodeError:
+                logger.debug(f"워커 출력: {line}")
 
-        # 모델 파일 생성 (플레이스홀더)
-        gpt_path = self.config.get_gpt_model_path(char_id)
-        gpt_path.write_text(f"gpt_model_placeholder_{char_id}")
-
-        return True
+        # 프로세스 종료 코드 확인
+        return_code = self._process.wait()
+        return return_code == 0

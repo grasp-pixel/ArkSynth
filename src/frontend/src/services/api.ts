@@ -155,10 +155,10 @@ export const storiesApi = {
 
 // TTS 관련 API
 export const ttsApi = {
-  // 음성 합성
-  synthesize: async (text: string, voiceId?: string): Promise<Blob> => {
+  // 음성 합성 (GPT-SoVITS)
+  synthesize: async (text: string, charId: string): Promise<Blob> => {
     const res = await api.post('/api/tts/synthesize',
-      { text, voice_id: voiceId },
+      { text, char_id: charId },
       { responseType: 'blob' }
     )
     return res.data

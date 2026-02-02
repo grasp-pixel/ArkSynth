@@ -452,7 +452,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ selectedEpisodeId: null, selectedEpisode: null })
   },
 
-  // 대사 재생
+  // 대사 재생 (GPT-SoVITS)
   playDialogue: async (dialogue: DialogueInfo) => {
     const { defaultCharId, narratorCharId, trainedCharIds } = get()
 
@@ -474,40 +474,23 @@ export const useAppStore = create<AppState>((set, get) => ({
       currentAudio = null
     }
 
-    set({ isPlaying: true, currentDialogue: dialogue })
-
-    // TODO: GPT-SoVITS 통합 시 실제 음성 합성 구현
-    // 현재는 학습된 모델이 있으면 테스트용으로 Edge-TTS 사용
-    if (!charIdToUse || !trainedCharIds.has(charIdToUse)) {
-      console.warn('[playDialogue] 학습된 모델 없음:', charIdToUse)
-      // 임시로 Edge-TTS 사용 (GPT-SoVITS 통합 전까지)
-      try {
-        const audioBlob = await ttsApi.synthesize(dialogue.text, 'ko')
-        const audioUrl = URL.createObjectURL(audioBlob)
-
-        currentAudio = new Audio(audioUrl)
-        currentAudio.onended = () => {
-          set({ isPlaying: false, currentDialogue: null })
-          URL.revokeObjectURL(audioUrl)
-        }
-        currentAudio.onerror = () => {
-          set({ isPlaying: false, currentDialogue: null })
-          URL.revokeObjectURL(audioUrl)
-        }
-
-        await currentAudio.play()
-      } catch (error) {
-        console.error('Failed to play dialogue:', error)
-        set({ isPlaying: false, currentDialogue: null })
-      }
+    // char_id 없으면 재생 불가
+    if (!charIdToUse) {
+      console.warn('[playDialogue] 캐릭터 ID 없음 - 재생 불가')
       return
     }
 
-    // TODO: GPT-SoVITS 합성 API 호출
-    console.log('[playDialogue] GPT-SoVITS 합성 (미구현):', charIdToUse, dialogue.text)
+    // 학습된 모델 없으면 재생 불가
+    if (!trainedCharIds.has(charIdToUse)) {
+      console.warn('[playDialogue] 학습된 모델 없음:', charIdToUse)
+      return
+    }
+
+    set({ isPlaying: true, currentDialogue: dialogue })
+
     try {
-      // 임시: Edge-TTS로 재생 (GPT-SoVITS 통합 후 교체 예정)
-      const audioBlob = await ttsApi.synthesize(dialogue.text, 'ko')
+      console.log('[playDialogue] GPT-SoVITS 합성:', charIdToUse, dialogue.text.substring(0, 30))
+      const audioBlob = await ttsApi.synthesize(dialogue.text, charIdToUse)
       const audioUrl = URL.createObjectURL(audioBlob)
 
       currentAudio = new Audio(audioUrl)
@@ -515,14 +498,15 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ isPlaying: false, currentDialogue: null })
         URL.revokeObjectURL(audioUrl)
       }
-      currentAudio.onerror = () => {
+      currentAudio.onerror = (e) => {
+        console.error('[playDialogue] 오디오 재생 오류:', e)
         set({ isPlaying: false, currentDialogue: null })
         URL.revokeObjectURL(audioUrl)
       }
 
       await currentAudio.play()
     } catch (error) {
-      console.error('Failed to play dialogue:', error)
+      console.error('[playDialogue] GPT-SoVITS 합성 실패:', error)
       set({ isPlaying: false, currentDialogue: null })
     }
   },

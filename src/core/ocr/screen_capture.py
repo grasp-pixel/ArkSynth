@@ -127,18 +127,21 @@ class ScreenCapture:
             WindowInfo 목록 (타이틀이 있는 표시된 창들)
         """
         if not HAS_WIN32:
+            print("[ScreenCapture] win32 모듈 없음")
             return []
 
         windows = []
+        error_count = 0
 
         def enum_callback(hwnd, _):
-            if not win32gui.IsWindowVisible(hwnd):
-                return True
-            title = win32gui.GetWindowText(hwnd)
-            if not title:
-                return True
-
+            nonlocal error_count
             try:
+                if not win32gui.IsWindowVisible(hwnd):
+                    return True
+                title = win32gui.GetWindowText(hwnd)
+                if not title:
+                    return True
+
                 rect = win32gui.GetWindowRect(hwnd)
                 left, top, right, bottom = rect
                 width = right - left
@@ -156,11 +159,20 @@ class ScreenCapture:
                     width=width,
                     height=height,
                 ))
-            except Exception:
-                pass
+            except Exception as e:
+                error_count += 1
+                if error_count <= 3:  # 처음 3개 에러만 출력
+                    print(f"[ScreenCapture] 윈도우 열거 오류: {e}")
             return True
 
-        win32gui.EnumWindows(enum_callback, None)
+        try:
+            win32gui.EnumWindows(enum_callback, None)
+            print(f"[ScreenCapture] 윈도우 {len(windows)}개 발견 (오류: {error_count}개)")
+        except Exception as e:
+            print(f"[ScreenCapture] EnumWindows 실패: {e}")
+            import traceback
+            traceback.print_exc()
+
         return windows
 
     def capture_window(self, hwnd: int) -> Image.Image | None:

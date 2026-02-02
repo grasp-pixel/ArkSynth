@@ -2,13 +2,13 @@
 
 import asyncio
 import logging
-import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncIterator
 
 from .config import GPTSoVITSConfig
 from .model_manager import GPTSoVITSModelManager
+from .api_client import GPTSoVITSAPIClient
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class SynthesisResult:
 class GPTSoVITSSynthesizer:
     """GPT-SoVITS 음성 합성기
 
-    학습된 모델을 사용하여 텍스트를 음성으로 합성합니다.
+    GPT-SoVITS API 서버를 통해 텍스트를 음성으로 합성합니다.
     """
 
     def __init__(
@@ -37,10 +37,41 @@ class GPTSoVITSSynthesizer:
     ):
         self.config = config or GPTSoVITSConfig()
         self.model_manager = model_manager or GPTSoVITSModelManager(self.config)
+        self.api_client = GPTSoVITSAPIClient(self.config)
 
         # 현재 로드된 모델 캐시
         self._loaded_model_id: str | None = None
         self._model_loaded = False
+        self._api_started = False
+
+    async def ensure_api_running(self) -> bool:
+        """API 서버가 실행 중인지 확인하고 필요 시 시작
+
+        Returns:
+            bool: API 서버 준비 완료 여부
+        """
+        # 이미 실행 중인지 확인
+        if await self.api_client.is_api_running():
+            self._api_started = True
+            return True
+
+        # GPT-SoVITS 설치 확인
+        if not self.config.is_gpt_sovits_installed:
+            logger.error(f"GPT-SoVITS가 설치되어 있지 않습니다: {self.config.gpt_sovits_path}")
+            return False
+
+        # API 서버 시작
+        if not self.api_client.start_api_server():
+            logger.error("GPT-SoVITS API 서버 시작 실패")
+            return False
+
+        # 준비될 때까지 대기
+        if await self.api_client.wait_for_api_ready(timeout=60.0):
+            self._api_started = True
+            return True
+
+        logger.error("GPT-SoVITS API 서버 준비 시간 초과")
+        return False
 
     async def is_available(self, char_id: str) -> bool:
         """해당 캐릭터 모델 사용 가능 여부"""
@@ -50,6 +81,7 @@ class GPTSoVITSSynthesizer:
         """모델 로드
 
         이미 로드된 모델이면 스킵합니다.
+        Zero-shot 모드에서는 사전 학습된 모델을 사용합니다.
         """
         if self._loaded_model_id == char_id and self._model_loaded:
             return True
@@ -58,23 +90,40 @@ class GPTSoVITSSynthesizer:
             logger.error(f"모델이 존재하지 않음: {char_id}")
             return False
 
-        sovits_path = self.model_manager.get_sovits_path(char_id)
-        gpt_path = self.model_manager.get_gpt_path(char_id)
-
-        if not sovits_path or not gpt_path:
-            logger.error(f"모델 파일 없음: {char_id}")
-            return False
-
         try:
-            # TODO: 실제 GPT-SoVITS 모델 로드
-            # 현재는 시뮬레이션 모드
-            logger.info(f"모델 로드 중: {char_id}")
-            await asyncio.sleep(0.1)  # 시뮬레이션
+            # API 서버 확인
+            if not await self.ensure_api_running():
+                logger.error("API 서버가 실행 중이 아닙니다")
+                return False
 
-            self._loaded_model_id = char_id
-            self._model_loaded = True
-            logger.info(f"모델 로드 완료: {char_id}")
-            return True
+            # Zero-shot 모드인지 확인
+            is_zero_shot = self.model_manager.is_zero_shot_ready(char_id) and \
+                           not self.model_manager.has_trained_model(char_id)
+
+            if is_zero_shot:
+                # Zero-shot: 사전 학습된 모델 사용 (모델 로드 불필요)
+                logger.info(f"Zero-shot 모드: {char_id} (사전 학습 모델 사용)")
+                self._loaded_model_id = char_id
+                self._model_loaded = True
+                return True
+            else:
+                # 학습된 모델 로드
+                sovits_path = self.model_manager.get_sovits_path(char_id)
+                gpt_path = self.model_manager.get_gpt_path(char_id)
+
+                if not sovits_path or not gpt_path:
+                    logger.error(f"모델 파일 없음: {char_id}")
+                    return False
+
+                logger.info(f"학습된 모델 로드 중: {char_id}")
+                if await self.api_client.set_model(char_id):
+                    self._loaded_model_id = char_id
+                    self._model_loaded = True
+                    logger.info(f"모델 로드 완료: {char_id}")
+                    return True
+                else:
+                    logger.error(f"API를 통한 모델 로드 실패: {char_id}")
+                    return False
 
         except Exception as e:
             logger.error(f"모델 로드 실패 ({char_id}): {e}")
@@ -86,7 +135,6 @@ class GPTSoVITSSynthesizer:
         """현재 모델 언로드"""
         if self._model_loaded:
             logger.info(f"모델 언로드: {self._loaded_model_id}")
-            # TODO: 실제 모델 언로드 (메모리 해제)
             self._loaded_model_id = None
             self._model_loaded = False
 
@@ -124,29 +172,36 @@ class GPTSoVITSSynthesizer:
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            # TODO: 실제 GPT-SoVITS 합성
-            # 현재는 시뮬레이션 모드 - 더미 파일 생성
             logger.info(f"음성 합성 중: {char_id} - {text[:20]}...")
 
-            # 시뮬레이션: 텍스트 길이 기반 예상 길이
-            estimated_duration = len(text) * 0.1  # 글자당 0.1초
+            # API 서버 확인
+            if not self._api_started or not await self.api_client.is_api_running():
+                logger.error("GPT-SoVITS API 서버가 실행 중이 아닙니다")
+                return None
 
-            await asyncio.sleep(0.2)  # 합성 시뮬레이션
-
-            # 더미 WAV 파일 생성 (실제 구현 시 제거)
-            if not output_path.exists():
-                self._create_dummy_wav(output_path, estimated_duration)
-
-            result = SynthesisResult(
-                char_id=char_id,
+            # 음성 합성
+            success = await self.api_client.synthesize_to_file(
                 text=text,
-                audio_path=output_path,
-                duration=estimated_duration,
-                sample_rate=self.config.sample_rate,
+                char_id=char_id,
+                output_path=output_path,
+                language=language,
             )
 
-            logger.info(f"음성 합성 완료: {output_path}")
-            return result
+            if success:
+                # 오디오 파일에서 실제 길이 계산
+                duration = self._get_audio_duration(output_path)
+                result = SynthesisResult(
+                    char_id=char_id,
+                    text=text,
+                    audio_path=output_path,
+                    duration=duration,
+                    sample_rate=self.config.sample_rate,
+                )
+                logger.info(f"음성 합성 완료: {output_path}")
+                return result
+            else:
+                logger.error("API 음성 합성 실패")
+                return None
 
         except Exception as e:
             logger.error(f"음성 합성 실패: {e}")
@@ -196,28 +251,25 @@ class GPTSoVITSSynthesizer:
 
         return None
 
-    def _create_dummy_wav(self, path: Path, duration: float):
-        """더미 WAV 파일 생성 (테스트용)"""
+    def _get_audio_duration(self, path: Path) -> float:
+        """오디오 파일 길이 계산 (초)"""
         try:
             import wave
-            import struct
 
-            sample_rate = self.config.sample_rate
-            num_samples = int(sample_rate * duration)
-
-            with wave.open(str(path), "w") as wav_file:
-                wav_file.setnchannels(1)
-                wav_file.setsampwidth(2)
-                wav_file.setframerate(sample_rate)
-
-                # 무음 데이터 생성
-                silence = struct.pack("<h", 0) * num_samples
-                wav_file.writeframes(silence)
-
+            with wave.open(str(path), "rb") as wav_file:
+                frames = wav_file.getnframes()
+                rate = wav_file.getframerate()
+                return frames / float(rate)
         except Exception as e:
-            logger.warning(f"더미 WAV 생성 실패: {e}")
-            # 빈 파일 생성
-            path.touch()
+            logger.warning(f"오디오 길이 계산 실패: {e}")
+            return 0.0
+
+    async def shutdown(self):
+        """리소스 정리"""
+        await self.api_client.close()
+        self._api_started = False
+        self._loaded_model_id = None
+        self._model_loaded = False
 
 
 # 싱글톤 인스턴스
