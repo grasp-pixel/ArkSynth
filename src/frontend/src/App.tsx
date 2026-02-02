@@ -45,12 +45,15 @@ function DubbingPreview() {
       {/* 캡처된 이미지 */}
       {capturedImage ? (
         <div className="mb-6">
-          <h3 className="text-sm font-medium text-ark-gray mb-3">캡처된 화면</h3>
+          <h3 className="text-sm font-medium text-ark-gray mb-3">
+            캡처된 화면 ({capturedImage.length.toLocaleString()} bytes)
+          </h3>
           <div className="border border-ark-border rounded overflow-hidden bg-ark-dark">
             <img
-              src={`data:image/png;base64,${capturedImage}`}
+              src={`data:image/jpeg;base64,${capturedImage}`}
               alt="Captured screen"
               className="w-full h-auto max-h-64 object-contain"
+              onError={(e) => console.error('Image load error:', e)}
             />
           </div>
         </div>

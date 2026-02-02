@@ -169,10 +169,11 @@ async def capture_screen(
         image = await capture.capture_monitor_async(monitor)
         capture.close()
 
-        # Base64 인코딩
+        # Base64 인코딩 (JPEG로 압축하여 크기 축소)
         buffer = io.BytesIO()
-        image.save(buffer, format="PNG")
-        image_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        image.save(buffer, format="JPEG", quality=85)
+        buffer.seek(0)
+        image_base64 = base64.b64encode(buffer.read()).decode("utf-8")
 
         return ScreenCaptureResponse(
             image_base64=image_base64,
@@ -214,10 +215,11 @@ async def capture_dialogue_region(
         image = await capture.capture_region_async(abs_region)
         capture.close()
 
-        # Base64 인코딩
+        # Base64 인코딩 (JPEG로 압축하여 크기 축소)
         buffer = io.BytesIO()
-        image.save(buffer, format="PNG")
-        image_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        image.save(buffer, format="JPEG", quality=85)
+        buffer.seek(0)
+        image_base64 = base64.b64encode(buffer.read()).decode("utf-8")
 
         return ScreenCaptureResponse(
             image_base64=image_base64,
