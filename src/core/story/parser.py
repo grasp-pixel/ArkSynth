@@ -89,6 +89,10 @@ class StoryParser:
                     # char_002_amiya_1#6 -> char_002_amiya 형태로 정규화
                     normalized_id = self._normalize_char_id(speaker_id)
                     characters.add(normalized_id)
+                elif speaker_name:
+                    # 캐릭터 ID가 없어도 화자 이름이 있으면 캐릭터로 취급
+                    # NPC, 일반인 등도 캐릭터로 인식
+                    characters.add(speaker_name)
 
                 dialogue = Dialogue(
                     id=f"{episode_id}_{dialogue_index:04d}",
@@ -122,6 +126,30 @@ class StoryParser:
                 # Character 커맨드에서 현재 캐릭터 목록 업데이트
                 if cmd.type == CommandType.CHARACTER:
                     self._update_current_characters(cmd.params)
+
+                continue
+
+            # 순수 텍스트 줄 = 나레이션 (커맨드로 시작하지 않는 줄)
+            # [로 시작하지 않고, 빈 줄이 아닌 경우
+            if not line.startswith("[") and line.strip():
+                dialogue = Dialogue(
+                    id=f"{episode_id}_{dialogue_index:04d}",
+                    speaker_id=None,
+                    speaker_name="",
+                    text=line.strip(),
+                    line_number=line_num,
+                )
+                dialogues.append(dialogue)
+                dialogue_index += 1
+
+                # 커맨드로도 저장
+                cmd = StoryCommand(
+                    type=CommandType.NARRATION,
+                    params={},
+                    text=line.strip(),
+                    line_number=line_num,
+                )
+                commands.append(cmd)
 
         return Episode(
             id=episode_id,

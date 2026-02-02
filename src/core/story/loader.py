@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Iterator
 
 from ..models.story import Character, Episode, StoryCategory, StoryGroup
+from .character_name_mapper import CharacterNameMapper
 from .parser import StoryParser
 
 
@@ -52,6 +53,10 @@ class StoryLoader:
         self._chapter_names: dict[str, dict[str, str]] = {}
         self._story_groups_cache: dict[str, dict[str, StoryGroup]] = {}
         self._story_review_raw: dict[str, dict] = {}  # 원본 JSON 캐시
+
+        # 캐릭터 이름 매퍼 (화자 이름 -> 캐릭터 ID)
+        self._name_mapper: CharacterNameMapper | None = None
+        self._name_mapper_cache_path = self.data_root / "cache" / "character_name_mapping.json"
 
     @property
     def available_languages(self) -> list[str]:
@@ -150,11 +155,27 @@ class StoryLoader:
         return None
 
     def _normalize_char_id(self, char_id: str) -> str:
-        """캐릭터 ID 정규화"""
+        """캐릭터 ID 정규화
+
+        예시:
+        - char_002_amiya_1#6 → char_002_amiya (오퍼레이터 인스턴스 제거)
+        - char_220_grani#5 → char_220_grani (프레임 번호 제거)
+        - avg_npc_008 → avg_npc_008 (NPC ID 유지)
+        - avg_npc_010#2 → avg_npc_010 (프레임 번호만 제거)
+        """
         char_id = char_id.strip()
+
+        # #N 프레임 번호 제거 (모든 ID 유형)
         char_id = re.sub(r"#\d+$", "", char_id)
-        char_id = re.sub(r"_\d+$", "", char_id)
+
+        # char_로 시작하는 오퍼레이터 ID만 인스턴스 번호 제거
+        # char_XXX_name_N 패턴에서 마지막 _N 제거 (N은 1-9 단일 숫자)
+        if char_id.startswith("char_"):
+            char_id = re.sub(r"_\d$", "", char_id)
+
+        # _ex 접미사 제거
         char_id = re.sub(r"_ex$", "", char_id)
+
         return char_id
 
     def build_episode_index(self, lang: str = "ko_KR") -> dict[str, Path]:
@@ -263,6 +284,33 @@ class StoryLoader:
             return (chapter, stage, order)
         return (999, 999, 0)
 
+    def get_name_mapper(self, lang: str = "ko_KR") -> CharacterNameMapper:
+        """캐릭터 이름 매퍼 로드 (캐시에서 또는 새로 빌드)"""
+        if self._name_mapper is not None:
+            return self._name_mapper
+
+        self._name_mapper = CharacterNameMapper()
+
+        # 캐시 파일이 있으면 로드
+        if self._name_mapper_cache_path.exists():
+            try:
+                self._name_mapper.load_mapping(self._name_mapper_cache_path)
+                return self._name_mapper
+            except Exception:
+                pass
+
+        # 캐시가 없으면 스토리에서 빌드
+        story_root = self.get_lang_path(lang) / "story"
+        self._name_mapper.build_mapping_from_stories(story_root)
+
+        # 캐시 저장
+        try:
+            self._name_mapper.save_mapping(self._name_mapper_cache_path)
+        except Exception:
+            pass
+
+        return self._name_mapper
+
     def load_episode(self, episode_id: str, lang: str = "ko_KR") -> Episode | None:
         """에피소드 로드"""
         index = self.build_episode_index(lang)
@@ -279,7 +327,39 @@ class StoryLoader:
         if meta and not episode.title:
             episode.title = f"{meta.story_code} {meta.story_name}"
 
+        # 대사의 speaker_id 보정 (화자 이름으로 캐릭터 ID 찾기)
+        self._enrich_dialogue_speaker_ids(episode, lang)
+
         return episode
+
+    def _enrich_dialogue_speaker_ids(self, episode: Episode, lang: str) -> None:
+        """대사의 speaker_id를 화자 이름 매핑으로 보정
+
+        파서가 speaker_id를 찾지 못한 경우 (None),
+        화자 이름(speaker_name)으로 캐릭터 ID를 찾아 설정합니다.
+        """
+        mapper = self.get_name_mapper(lang)
+        enriched_characters: set[str] = set()
+
+        for dialogue in episode.dialogues:
+            # speaker_id가 이미 있으면 정규화만
+            if dialogue.speaker_id:
+                normalized = self._normalize_char_id(dialogue.speaker_id)
+                enriched_characters.add(normalized)
+                continue
+
+            # speaker_name으로 캐릭터 ID 찾기
+            if dialogue.speaker_name:
+                char_id = mapper.get_char_id(dialogue.speaker_name)
+                if char_id:
+                    dialogue.speaker_id = char_id
+                    enriched_characters.add(char_id)
+                else:
+                    # 매핑 없으면 speaker_name을 캐릭터로 사용
+                    enriched_characters.add(dialogue.speaker_name)
+
+        # 에피소드 캐릭터 목록 업데이트
+        episode.characters = enriched_characters
 
     def iter_episodes(
         self, category: str | None = None, lang: str = "ko_KR"
@@ -452,3 +532,56 @@ class StoryLoader:
             }
 
         return stats
+
+    def get_group_characters(self, group_id: str, lang: str = "ko_KR") -> list[dict]:
+        """스토리 그룹의 모든 캐릭터 목록 (대사 수 포함)
+
+        Args:
+            group_id: 스토리 그룹 ID
+            lang: 언어 코드
+
+        Returns:
+            list[dict]: [{"char_id": str|None, "name": str, "dialogue_count": int}, ...]
+        """
+        episodes = self.list_episodes_by_group(group_id, lang)
+        characters = self.load_characters(lang)
+
+        # 캐릭터별 대사 수 집계
+        char_dialogue_count: dict[str | None, int] = {}
+        char_names: dict[str | None, str] = {None: "나레이터"}
+
+        for ep_info in episodes:
+            episode = self.load_episode(ep_info["id"], lang)
+            if not episode:
+                continue
+
+            for dialogue in episode.dialogues:
+                # speaker_id 정규화
+                raw_id = dialogue.speaker_id
+                normalized_id = self._normalize_char_id(raw_id) if raw_id else None
+
+                # 대사 수 집계
+                char_dialogue_count[normalized_id] = (
+                    char_dialogue_count.get(normalized_id, 0) + 1
+                )
+
+                # 이름 저장 (처음 발견한 이름 사용)
+                if normalized_id not in char_names:
+                    if normalized_id and normalized_id in characters:
+                        char_names[normalized_id] = characters[normalized_id].name_ko
+                    elif dialogue.speaker_name:
+                        char_names[normalized_id] = dialogue.speaker_name
+                    else:
+                        char_names[normalized_id] = normalized_id or "나레이터"
+
+        # 결과 정리 (대사 수 내림차순)
+        result = []
+        for char_id, count in char_dialogue_count.items():
+            result.append({
+                "char_id": char_id,
+                "name": char_names.get(char_id, char_id or "나레이터"),
+                "dialogue_count": count,
+            })
+
+        result.sort(key=lambda x: x["dialogue_count"], reverse=True)
+        return result
