@@ -978,6 +978,115 @@ export const settingsApi = {
   },
 }
 
+// === 음성 추출 API ===
+
+export interface ExtractProgress {
+  stage: 'scanning' | 'extracting' | 'complete' | 'error'
+  current_lang?: string
+  current_file?: string
+  processed: number
+  total: number
+  extracted: number
+  message: string
+  error?: string
+}
+
+export interface VoiceAssetsStatus {
+  exists: boolean
+  path?: string
+  languages?: Record<string, number>
+  total_bundles?: number
+  message?: string
+  hint?: string
+}
+
+export const extractApi = {
+  // VoiceAssets 상태 확인
+  checkVoiceAssets: async () => {
+    const res = await api.get<VoiceAssetsStatus>('/api/settings/extract/check-source')
+    return res.data
+  },
+
+  // 추출 상태 확인
+  getStatus: async () => {
+    const res = await api.get<{ status: string; message?: string; result?: Record<string, unknown> }>(
+      '/api/settings/extract/status'
+    )
+    return res.data
+  },
+
+  // 추출 시작
+  startExtract: async (languages: string[] = ['voice', 'voice_kr']) => {
+    const res = await api.post<{ status: string; message: string; languages: string[] }>(
+      '/api/settings/extract/start',
+      { languages }
+    )
+    return res.data
+  },
+
+  // 추출 취소
+  cancelExtract: async () => {
+    const res = await api.post<{ status: string; message: string }>(
+      '/api/settings/extract/cancel'
+    )
+    return res.data
+  },
+}
+
+// 추출 진행률 SSE 스트림
+export function createExtractStream(
+  options: {
+    onProgress?: (progress: ExtractProgress) => void
+    onComplete?: (extracted: number) => void
+    onError?: (error: string) => void
+  } = {}
+): { close: () => void } {
+  const { onProgress, onComplete, onError } = options
+
+  console.log('[SSE] createExtractStream: 연결 시작')
+  const eventSource = new EventSource(`${API_BASE}/api/settings/extract/stream`)
+
+  eventSource.onopen = () => {
+    console.log('[SSE] 추출 스트림 연결 성공')
+  }
+
+  eventSource.addEventListener('progress', (event) => {
+    const progress = JSON.parse(event.data) as ExtractProgress
+    onProgress?.(progress)
+  })
+
+  eventSource.addEventListener('complete', (event) => {
+    const data = JSON.parse(event.data) as { success: boolean; extracted: number }
+    console.log('[SSE] 추출 완료:', data)
+    onComplete?.(data.extracted)
+    eventSource.close()
+  })
+
+  eventSource.addEventListener('error', (event) => {
+    if (event instanceof MessageEvent) {
+      const data = JSON.parse(event.data)
+      console.error('[SSE] 추출 에러:', data)
+      onError?.(data.error || '추출 실패')
+    }
+    eventSource.close()
+  })
+
+  eventSource.addEventListener('ping', () => {
+    // keep-alive
+  })
+
+  eventSource.onerror = (e) => {
+    console.error('[SSE] 추출 스트림 연결 오류:', e)
+  }
+
+  return {
+    close: () => {
+      console.log('[SSE] 추출 스트림 종료')
+      eventSource.close()
+    }
+  }
+}
+
 // GPT-SoVITS 설치 진행률 SSE 스트림
 export function createInstallStream(
   options: {

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { settingsApi, type SettingsResponse, type DependencyStatus, type FFmpegInstallGuide, type SevenZipInstallGuide } from '../services/api'
+import { useEffect, useState, useRef } from 'react'
+import { settingsApi, extractApi, createExtractStream, type SettingsResponse, type DependencyStatus, type FFmpegInstallGuide, type SevenZipInstallGuide, type VoiceAssetsStatus, type ExtractProgress } from '../services/api'
 import GPTSoVITSInstallDialog from './GPTSoVITSInstallDialog'
 
 interface SettingsModalProps {
@@ -17,9 +17,21 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [show7ZipGuide, setShow7ZipGuide] = useState(false)
   const [showGptSovitsInstall, setShowGptSovitsInstall] = useState(false)
 
+  // 추출 관련 상태
+  const [voiceAssetsStatus, setVoiceAssetsStatus] = useState<VoiceAssetsStatus | null>(null)
+  const [isExtracting, setIsExtracting] = useState(false)
+  const [extractProgress, setExtractProgress] = useState<ExtractProgress | null>(null)
+  const [extractError, setExtractError] = useState<string | null>(null)
+  const extractStreamRef = useRef<{ close: () => void } | null>(null)
+
   useEffect(() => {
     if (isOpen) {
       loadSettings()
+      checkVoiceAssets()
+    }
+    return () => {
+      // 모달 닫힐 때 스트림 정리
+      extractStreamRef.current?.close()
     }
   }, [isOpen])
 
@@ -62,6 +74,66 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       await settingsApi.openFolder(path)
     } catch (err) {
       console.error('폴더 열기 실패:', err)
+    }
+  }
+
+  const checkVoiceAssets = async () => {
+    try {
+      const status = await extractApi.checkVoiceAssets()
+      setVoiceAssetsStatus(status)
+    } catch (err) {
+      console.error('VoiceAssets 확인 실패:', err)
+    }
+  }
+
+  const startExtraction = async () => {
+    if (!voiceAssetsStatus?.exists) return
+
+    setIsExtracting(true)
+    setExtractProgress(null)
+    setExtractError(null)
+
+    try {
+      // 추출 시작
+      const languages = Object.keys(voiceAssetsStatus.languages || {})
+      await extractApi.startExtract(languages.length > 0 ? languages : ['voice', 'voice_kr'])
+
+      // SSE 스트림 연결
+      extractStreamRef.current = createExtractStream({
+        onProgress: (progress) => {
+          setExtractProgress(progress)
+        },
+        onComplete: (extracted) => {
+          setIsExtracting(false)
+          setExtractProgress({
+            stage: 'complete',
+            processed: 0,
+            total: 0,
+            extracted,
+            message: `추출 완료: ${extracted}개 파일`
+          })
+          // 설정 새로고침
+          loadSettings()
+        },
+        onError: (error) => {
+          setIsExtracting(false)
+          setExtractError(error)
+        }
+      })
+    } catch (err) {
+      setIsExtracting(false)
+      setExtractError(err instanceof Error ? err.message : '추출 시작 실패')
+    }
+  }
+
+  const cancelExtraction = async () => {
+    try {
+      await extractApi.cancelExtract()
+      extractStreamRef.current?.close()
+      setIsExtracting(false)
+      setExtractProgress(null)
+    } catch (err) {
+      console.error('추출 취소 실패:', err)
     }
   }
 
@@ -301,6 +373,86 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </div>
                   </div>
                 )}
+              </section>
+
+              {/* 음성 추출 */}
+              <section>
+                <h3 className="text-sm font-medium text-ark-white mb-3">음성 추출</h3>
+                <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
+                  {voiceAssetsStatus === null ? (
+                    <p className="text-sm text-ark-gray">확인 중...</p>
+                  ) : !voiceAssetsStatus.exists ? (
+                    <div>
+                      <p className="text-sm text-red-400 mb-2">{voiceAssetsStatus.message}</p>
+                      <p className="text-xs text-ark-gray">{voiceAssetsStatus.hint}</p>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <p className="text-sm text-ark-white">
+                            VoiceAssets 준비됨
+                          </p>
+                          <p className="text-xs text-ark-gray mt-1">
+                            {Object.entries(voiceAssetsStatus.languages || {}).map(([lang, count]) => (
+                              <span key={lang} className="mr-3">{lang}: {count}개 번들</span>
+                            ))}
+                          </p>
+                        </div>
+                        {!isExtracting && extractProgress?.stage !== 'complete' && (
+                          <button
+                            onClick={startExtraction}
+                            className="ark-btn ark-btn-primary text-sm"
+                          >
+                            원클릭 추출
+                          </button>
+                        )}
+                      </div>
+
+                      {/* 추출 진행률 */}
+                      {isExtracting && extractProgress && (
+                        <div className="mt-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs text-ark-gray">
+                              {extractProgress.message}
+                            </span>
+                            <button
+                              onClick={cancelExtraction}
+                              className="text-xs text-red-400 hover:text-red-300"
+                            >
+                              취소
+                            </button>
+                          </div>
+                          {extractProgress.total > 0 && (
+                            <div className="relative h-2 bg-ark-panel rounded overflow-hidden">
+                              <div
+                                className="absolute inset-y-0 left-0 bg-ark-orange transition-all duration-300"
+                                style={{ width: `${(extractProgress.processed / extractProgress.total) * 100}%` }}
+                              />
+                            </div>
+                          )}
+                          <p className="text-xs text-ark-gray mt-1">
+                            {extractProgress.processed} / {extractProgress.total} 파일 처리됨 • {extractProgress.extracted}개 추출됨
+                          </p>
+                        </div>
+                      )}
+
+                      {/* 완료 메시지 */}
+                      {extractProgress?.stage === 'complete' && !isExtracting && (
+                        <div className="mt-3 p-2 bg-green-500/10 border border-green-500/30 rounded">
+                          <p className="text-xs text-green-400">{extractProgress.message}</p>
+                        </div>
+                      )}
+
+                      {/* 에러 메시지 */}
+                      {extractError && (
+                        <div className="mt-3 p-2 bg-red-500/10 border border-red-500/30 rounded">
+                          <p className="text-xs text-red-400">{extractError}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </section>
 
               {/* 경로 설정 */}

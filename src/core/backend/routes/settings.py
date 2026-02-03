@@ -468,3 +468,235 @@ async def cleanup_gpt_sovits_install():
         return {"status": "ok", "message": "설치 폴더가 삭제되었습니다"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"삭제 실패: {e}")
+
+
+# ============================================================================
+# 음성 추출 관련 엔드포인트
+# ============================================================================
+
+# 추출 작업 상태
+_extract_task: Optional[asyncio.Task] = None
+_extract_progress_queue: Optional[asyncio.Queue] = None
+_extract_cancel_flag = False
+
+
+class ExtractRequest(BaseModel):
+    """추출 요청"""
+    languages: list[str] = ["voice", "voice_kr"]  # 기본: 일본어, 한국어
+
+
+class ExtractProgress(BaseModel):
+    """추출 진행 상태"""
+    stage: str  # scanning, extracting, complete, error
+    current_lang: Optional[str] = None
+    current_file: Optional[str] = None
+    processed: int = 0
+    total: int = 0
+    extracted: int = 0
+    message: str = ""
+    error: Optional[str] = None
+
+
+@router.get("/extract/status")
+async def get_extract_status():
+    """추출 작업 상태 확인"""
+    global _extract_task
+
+    if _extract_task is None:
+        return {"status": "idle", "message": "대기 중"}
+
+    if _extract_task.done():
+        try:
+            result = _extract_task.result()
+            return {"status": "complete", "result": result}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+
+    return {"status": "running", "message": "추출 진행 중"}
+
+
+@router.post("/extract/start")
+async def start_voice_extraction(request: ExtractRequest):
+    """음성 추출 시작"""
+    global _extract_task, _extract_progress_queue, _extract_cancel_flag
+
+    # 이미 추출 중인지 확인
+    if _extract_task and not _extract_task.done():
+        raise HTTPException(status_code=409, detail="이미 추출이 진행 중입니다")
+
+    # VoiceAssets 경로 확인
+    voice_assets_dir = Path("VoiceAssets")
+    if not voice_assets_dir.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="VoiceAssets 폴더가 없습니다. 게임 리소스를 먼저 복사해주세요."
+        )
+
+    # 진행률 큐 생성
+    _extract_progress_queue = asyncio.Queue()
+    _extract_cancel_flag = False
+
+    async def extract_task():
+        from src.tools.extractor.core import extract_audio_from_bundle
+
+        all_stats = {}
+        total_extracted = 0
+
+        try:
+            for lang in request.languages:
+                if _extract_cancel_flag:
+                    break
+
+                lang_source = voice_assets_dir / lang
+                if not lang_source.exists():
+                    continue
+
+                lang_output = config.extracted_path / lang
+
+                # 스캔 단계
+                await _extract_progress_queue.put(ExtractProgress(
+                    stage="scanning",
+                    current_lang=lang,
+                    message=f"{lang} 폴더 스캔 중..."
+                ))
+
+                ab_files = list(lang_source.glob("*.ab"))
+                total = len(ab_files)
+                stats = {"processed": 0, "extracted": 0, "failed": 0}
+
+                for i, ab_path in enumerate(ab_files, 1):
+                    if _extract_cancel_flag:
+                        break
+
+                    # 진행률 전송
+                    await _extract_progress_queue.put(ExtractProgress(
+                        stage="extracting",
+                        current_lang=lang,
+                        current_file=ab_path.name,
+                        processed=i,
+                        total=total,
+                        extracted=stats["extracted"],
+                        message=f"[{lang}] {ab_path.name} 처리 중..."
+                    ))
+
+                    try:
+                        # 동기 함수를 별도 스레드에서 실행
+                        extracted = await asyncio.get_event_loop().run_in_executor(
+                            None,
+                            extract_audio_from_bundle,
+                            ab_path,
+                            lang_output,
+                            "mp3"
+                        )
+                        stats["processed"] += 1
+                        stats["extracted"] += len(extracted)
+                    except Exception as e:
+                        stats["failed"] += 1
+
+                all_stats[lang] = stats
+                total_extracted += stats["extracted"]
+
+            # 완료
+            await _extract_progress_queue.put(ExtractProgress(
+                stage="complete",
+                extracted=total_extracted,
+                message=f"추출 완료: {total_extracted}개 파일"
+            ))
+
+            return all_stats
+
+        except Exception as e:
+            await _extract_progress_queue.put(ExtractProgress(
+                stage="error",
+                error=str(e),
+                message="추출 실패"
+            ))
+            raise
+
+    _extract_task = asyncio.create_task(extract_task())
+
+    return {"status": "started", "message": "추출이 시작되었습니다", "languages": request.languages}
+
+
+@router.get("/extract/stream")
+async def stream_extract_progress():
+    """추출 진행률 SSE 스트림"""
+    global _extract_progress_queue
+
+    if _extract_progress_queue is None:
+        raise HTTPException(status_code=404, detail="진행 중인 추출이 없습니다")
+
+    async def event_generator():
+        try:
+            while True:
+                try:
+                    progress = await asyncio.wait_for(
+                        _extract_progress_queue.get(),
+                        timeout=30.0
+                    )
+
+                    data = progress.model_dump() if hasattr(progress, 'model_dump') else progress.__dict__
+                    yield f"event: progress\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+                    if progress.stage in ("complete", "error"):
+                        if progress.stage == "complete":
+                            yield f"event: complete\ndata: {json.dumps({'success': True, 'extracted': progress.extracted})}\n\n"
+                        else:
+                            yield f"event: error\ndata: {json.dumps({'error': progress.error})}\n\n"
+                        break
+
+                except asyncio.TimeoutError:
+                    yield f"event: ping\ndata: {json.dumps({'status': 'alive'})}\n\n"
+
+        except asyncio.CancelledError:
+            pass
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
+@router.post("/extract/cancel")
+async def cancel_voice_extraction():
+    """추출 취소"""
+    global _extract_task, _extract_cancel_flag
+
+    if _extract_task is None or _extract_task.done():
+        raise HTTPException(status_code=404, detail="진행 중인 추출이 없습니다")
+
+    _extract_cancel_flag = True
+
+    return {"status": "cancelling", "message": "추출 취소 요청됨"}
+
+
+@router.get("/extract/check-source")
+async def check_voice_assets():
+    """VoiceAssets 폴더 상태 확인"""
+    voice_assets_dir = Path("VoiceAssets")
+
+    if not voice_assets_dir.exists():
+        return {
+            "exists": False,
+            "message": "VoiceAssets 폴더가 없습니다",
+            "hint": "게임 클라이언트의 assets/AB/Windows/voice 폴더를 VoiceAssets로 복사해주세요"
+        }
+
+    languages = {}
+    for lang_dir in voice_assets_dir.iterdir():
+        if lang_dir.is_dir():
+            ab_count = len(list(lang_dir.glob("*.ab")))
+            if ab_count > 0:
+                languages[lang_dir.name] = ab_count
+
+    return {
+        "exists": True,
+        "path": str(voice_assets_dir.absolute()),
+        "languages": languages,
+        "total_bundles": sum(languages.values())
+    }
