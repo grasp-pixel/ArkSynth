@@ -157,32 +157,14 @@ export const storiesApi = {
   },
 }
 
-// TTS 설정 타입
-export interface TTSSettings {
-  speedFactor: number    // 음성 속도 (0.5~2.0)
-  topK: number           // 샘플링 다양성 (1~20)
-  topP: number           // Nucleus sampling (0.1~1.0)
-  temperature: number    // 음성 랜덤성 (0.1~2.0)
-}
-
 // TTS 관련 API
 export const ttsApi = {
   // 음성 합성 (GPT-SoVITS)
+  // TTS 파라미터는 백엔드 config의 기본값 사용
   // 첫 합성은 API 서버 시작 + 참조 오디오 준비로 오래 걸릴 수 있음 (최대 120초)
-  synthesize: async (
-    text: string,
-    charId: string,
-    settings?: Partial<TTSSettings>
-  ): Promise<Blob> => {
+  synthesize: async (text: string, charId: string): Promise<Blob> => {
     const res = await api.post('/api/tts/synthesize',
-      {
-        text,
-        char_id: charId,
-        speed_factor: settings?.speedFactor ?? 1.0,
-        top_k: settings?.topK ?? 5,
-        top_p: settings?.topP ?? 1.0,
-        temperature: settings?.temperature ?? 1.0,
-      },
+      { text, char_id: charId },
       {
         responseType: 'blob',
         timeout: 120000,  // 120초 (첫 합성 시 API 서버 시작 + 참조 준비 포함)

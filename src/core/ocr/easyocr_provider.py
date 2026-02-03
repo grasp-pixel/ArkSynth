@@ -8,7 +8,8 @@ EasyOCR: 딥러닝 기반 OCR
 """
 
 import asyncio
-from functools import lru_cache
+import threading
+import time
 from typing import Any
 
 import numpy as np
@@ -23,7 +24,7 @@ def _detect_gpu() -> bool:
         import torch
         available = torch.cuda.is_available()
         if available:
-            print(f"[EasyOCR] CUDA GPU 감지: {torch.cuda.get_device_name(0)}")
+            print(f"[EasyOCR] CUDA GPU 감지: {torch.cuda.get_device_name(0)}", flush=True)
         return available
     except ImportError:
         return False
@@ -39,6 +40,64 @@ def is_gpu_available() -> bool:
     if _GPU_AVAILABLE is None:
         _GPU_AVAILABLE = _detect_gpu()
     return _GPU_AVAILABLE
+
+
+# === 전역 Reader 캐시 (모든 인스턴스가 공유) ===
+_READER_CACHE: dict[str, Any] = {}
+_READER_LOCK = threading.Lock()
+_READER_LOADING: set[str] = set()  # 현재 로딩 중인 키
+
+
+def _get_global_reader(lang_tuple: tuple[str, ...], use_gpu: bool) -> Any:
+    """전역 EasyOCR Reader 가져오기 (스레드 안전)
+
+    모든 EasyOCRProvider 인스턴스가 공유하는 Reader 캐시.
+    """
+    cache_key = f"{lang_tuple}_{use_gpu}"
+
+    # 이미 캐시에 있으면 바로 반환
+    if cache_key in _READER_CACHE:
+        print(f"[EasyOCR] Reader 캐시 히트: {cache_key}", flush=True)
+        return _READER_CACHE[cache_key]
+
+    with _READER_LOCK:
+        # 더블 체크
+        if cache_key in _READER_CACHE:
+            return _READER_CACHE[cache_key]
+
+        # 이미 로딩 중이면 대기
+        if cache_key in _READER_LOADING:
+            print(f"[EasyOCR] Reader 로딩 대기 중: {cache_key}", flush=True)
+
+        _READER_LOADING.add(cache_key)
+
+    try:
+        lang_list = list(lang_tuple)
+        print(f"[EasyOCR] Reader 로딩 시작: {lang_list}, GPU={use_gpu}", flush=True)
+        start_time = time.time()
+
+        import easyocr
+        reader = easyocr.Reader(
+            lang_list,
+            gpu=use_gpu,
+            verbose=False,
+        )
+
+        elapsed = time.time() - start_time
+        print(f"[EasyOCR] Reader 로딩 완료: {elapsed:.2f}초", flush=True)
+
+        with _READER_LOCK:
+            _READER_CACHE[cache_key] = reader
+            _READER_LOADING.discard(cache_key)
+
+        return reader
+    except Exception as e:
+        print(f"[EasyOCR] Reader 로딩 실패: {e}", flush=True)
+        with _READER_LOCK:
+            _READER_LOADING.discard(cache_key)
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 class EasyOCRProvider(OCRProvider):
@@ -80,41 +139,21 @@ class EasyOCRProvider(OCRProvider):
         self._reader: Any = None  # lazy loading
 
         if self._use_gpu:
-            print(f"[EasyOCR] GPU 모드 활성화")
+            print(f"[EasyOCR] GPU 모드 활성화", flush=True)
         else:
-            print(f"[EasyOCR] CPU 모드 (이미지 리사이즈: max_width={max_width})")
+            print(f"[EasyOCR] CPU 모드 (이미지 리사이즈: max_width={max_width})", flush=True)
 
     def _get_lang_list(self, lang: str) -> list[str]:
         """언어 코드를 EasyOCR 언어 리스트로 변환"""
         return self.LANGUAGE_MAP.get(lang, ["ko", "en"])
 
-    @lru_cache(maxsize=4)
-    def _get_reader(self, lang_tuple: tuple) -> Any:
-        """EasyOCR Reader 가져오기 (캐싱)"""
-        try:
-            lang_list = list(lang_tuple)
-            print(f"[EasyOCR] Loading reader for languages: {lang_list}")
-            import easyocr
-
-            reader = easyocr.Reader(
-                lang_list,
-                gpu=self._use_gpu,
-                verbose=False,
-            )
-            print(f"[EasyOCR] Reader loaded successfully")
-            return reader
-        except Exception as e:
-            print(f"[EasyOCR] Failed to load reader: {e}")
-            import traceback
-            traceback.print_exc()
-            raise
-
     @property
     def reader(self) -> Any:
-        """EasyOCR Reader (lazy loading)"""
+        """EasyOCR Reader (lazy loading, 전역 캐시 사용)"""
         if self._reader is None:
             lang_list = self._get_lang_list(self._language)
-            self._reader = self._get_reader(tuple(lang_list))
+            # 전역 캐시에서 Reader 가져오기
+            self._reader = _get_global_reader(tuple(lang_list), self._use_gpu)
         return self._reader
 
     def _image_to_array(self, image: Image.Image) -> np.ndarray:
@@ -169,11 +208,14 @@ class EasyOCRProvider(OCRProvider):
         ratio = self._max_width / image.width
         new_height = int(image.height * ratio)
         resized = image.resize((self._max_width, new_height), Image.Resampling.LANCZOS)
-        print(f"[EasyOCR] 이미지 리사이즈: {image.width}x{image.height} → {resized.width}x{resized.height}")
+        print(f"[EasyOCR] 이미지 리사이즈: {image.width}x{image.height} → {resized.width}x{resized.height}", flush=True)
         return resized
 
     def _run_ocr(self, img_array: np.ndarray) -> list:
         """OCR 실행 (동기)"""
+        start_time = time.time()
+        print(f"[EasyOCR] OCR 시작: 이미지 크기 {img_array.shape}", flush=True)
+
         # EasyOCR readtext 실행
         # detail=1: 바운딩 박스 + 텍스트 + 신뢰도 반환
         # paragraph=True: 문단 단위로 그룹화
@@ -182,6 +224,9 @@ class EasyOCRProvider(OCRProvider):
             detail=1,
             paragraph=False,  # 개별 텍스트 블록 유지
         )
+
+        elapsed = time.time() - start_time
+        print(f"[EasyOCR] OCR 완료: {len(result)}개 결과, {elapsed:.2f}초 소요", flush=True)
         return result
 
     def _parse_result(self, result: list) -> list[OCRResult]:
@@ -235,12 +280,17 @@ class EasyOCRProvider(OCRProvider):
         Returns:
             인식된 텍스트 목록
         """
+        total_start = time.time()
+        print(f"[EasyOCR] recognize 시작: 원본 이미지 {image.width}x{image.height}", flush=True)
+
         # 이미지 리사이즈 (CPU 모드에서 성능 최적화)
         resized = self._resize_image(image)
 
         # 전처리 적용 (대비/선명도 향상)
         if preprocess:
+            preprocess_start = time.time()
             resized = self._preprocess_for_ocr(resized)
+            print(f"[EasyOCR] 전처리 완료: {time.time() - preprocess_start:.2f}초", flush=True)
 
         img_array = self._image_to_array(resized)
 
@@ -248,7 +298,11 @@ class EasyOCRProvider(OCRProvider):
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, self._run_ocr, img_array)
 
-        return self._parse_result(result)
+        parsed = self._parse_result(result)
+        total_elapsed = time.time() - total_start
+        print(f"[EasyOCR] recognize 완료: 총 {total_elapsed:.2f}초, {len(parsed)}개 결과", flush=True)
+
+        return parsed
 
     async def recognize_region(
         self, image: Image.Image, region: BoundingBox
@@ -270,10 +324,10 @@ class EasyOCRProvider(OCRProvider):
                 region.x + region.width,
                 region.y + region.height,
             ))
-            print(f"[EasyOCR] Cropped image: {cropped.width}x{cropped.height}")
+            print(f"[EasyOCR] Cropped image: {cropped.width}x{cropped.height}", flush=True)
 
             results = await self.recognize(cropped)
-            print(f"[EasyOCR] Recognition returned {len(results) if results else 0} results")
+            print(f"[EasyOCR] Recognition returned {len(results) if results else 0} results", flush=True)
 
             if not results:
                 return None
@@ -296,7 +350,7 @@ class EasyOCRProvider(OCRProvider):
                 bounding_box=region,
             )
         except Exception as e:
-            print(f"[EasyOCR] Error in recognize_region: {e}")
+            print(f"[EasyOCR] Error in recognize_region: {e}", flush=True)
             import traceback
             traceback.print_exc()
             raise
@@ -394,12 +448,12 @@ class EasyOCRProvider(OCRProvider):
 
             avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
 
-            print(f"[EasyOCR] Color+Position separated - Speaker: {speaker}, Dialogue: {dialogue[:50] if dialogue else 'None'}...")
+            print(f"[EasyOCR] Color+Position separated - Speaker: {speaker}, Dialogue: {dialogue[:50] if dialogue else 'None'}...", flush=True)
 
             return speaker, dialogue, avg_confidence
 
         except Exception as e:
-            print(f"[EasyOCR] Error in recognize_dialogue: {e}")
+            print(f"[EasyOCR] Error in recognize_dialogue: {e}", flush=True)
             import traceback
             traceback.print_exc()
             raise

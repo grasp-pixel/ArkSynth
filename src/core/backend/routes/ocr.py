@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from PIL import Image
 
 from .episodes import get_loader, DialogueInfo
+from .. import get_gpu_semaphore
 
 router = APIRouter()
 
@@ -202,15 +203,24 @@ async def detect_window_dialogue(
     """윈도우에서 대사 감지 (캡처 + OCR)"""
     import traceback
 
+    total_start = time.time()
+    print(f"[OCR-API] detect_window_dialogue 시작: hwnd={hwnd}, lang={lang}")
+
     try:
         from ...ocr import ScreenCapture, EasyOCRProvider
 
+        # 1. 캡처
+        capture_start = time.time()
         capture = ScreenCapture()
         image = await capture.capture_window_async(hwnd)
         capture.close()
+        print(f"[OCR-API] 캡처 완료: {time.time() - capture_start:.2f}초")
 
         if image is None:
+            print(f"[OCR-API] 캡처 실패: hwnd={hwnd}")
             raise HTTPException(status_code=400, detail="Failed to capture window")
+
+        print(f"[OCR-API] 캡처 이미지: {image.width}x{image.height}")
 
         # 상단 UI 영역 제외 (LOG, AUTO, SKIP 등)
         if ignore_top_ratio > 0:
@@ -223,9 +233,13 @@ async def detect_window_dialogue(
                     image.height,
                 )
             )
+            print(f"[OCR-API] 상단 {ignore_top_ratio*100:.0f}% 제외 후: {image.width}x{image.height}")
 
+        # 2. OCR
+        ocr_start = time.time()
         ocr = EasyOCRProvider(language=lang)
         results = await ocr.recognize(image)
+        print(f"[OCR-API] OCR 완료: {time.time() - ocr_start:.2f}초")
 
         if results:
             # 디버깅: 모든 OCR 결과 출력
@@ -253,26 +267,29 @@ async def detect_window_dialogue(
                 avg_confidence = sum(r.confidence for r in sorted_results) / len(
                     sorted_results
                 )
-                print(f"[OCR] Final text: '{combined_text}'")
+                total_elapsed = time.time() - total_start
+                print(f"[OCR-API] 완료: '{combined_text[:50]}...' (총 {total_elapsed:.2f}초)")
                 return DetectDialogueResponse(
                     text=combined_text,
                     confidence=avg_confidence,
                     timestamp=time.time(),
                 )
 
+        total_elapsed = time.time() - total_start
+        print(f"[OCR-API] 완료: 텍스트 없음 (총 {total_elapsed:.2f}초)")
         return DetectDialogueResponse(
             text=None,
             confidence=0.0,
             timestamp=time.time(),
         )
     except ImportError as e:
-        print(f"[OCR] ImportError: {e}")
+        print(f"[OCR-API] ImportError: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=501, detail=f"OCR module not available: {e}")
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[OCR] Error in detect_window_dialogue: {e}")
+        print(f"[OCR-API] 에러: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -997,7 +1014,10 @@ async def stream_window_dialogue(
     import traceback
 
     async def event_generator():
+        import sys
         global _window_stability
+
+        print(f"[SSE] 스트림 시작: hwnd={hwnd}, lang={lang}", flush=True)
 
         # 상태 초기화
         if hwnd not in _window_stability:
@@ -1009,6 +1029,7 @@ async def stream_window_dialogue(
 
             capture = ScreenCapture()
             ocr = EasyOCRProvider(language=lang)
+            print(f"[SSE] OCR Provider 초기화 완료 (하이브리드 모드)", flush=True)
 
             # 연결 성공 알림
             yield {
@@ -1016,14 +1037,21 @@ async def stream_window_dialogue(
                 "data": json.dumps({"type": "connected", "hwnd": hwnd}),
             }
 
-            # Heartbeat 카운터 (연결 유지 확인용)
+            # 하이브리드 모드 설정
+            FORCE_OCR_INTERVAL = 1.0  # 1초마다 강제 OCR (이펙트 내성)
+            last_ocr_time = 0.0
             heartbeat_counter = 0
+            loop_count = 0
 
             while True:
+                loop_count += 1
+                current_time = time.time()
+
                 # 주기적 heartbeat (10번마다 = 3초마다)
                 heartbeat_counter += 1
                 if heartbeat_counter >= 10:
                     heartbeat_counter = 0
+                    print(f"[SSE] Heartbeat #{loop_count // 10}", flush=True)
                     yield {
                         "event": "heartbeat",
                         "data": json.dumps({"timestamp": time.time()}),
@@ -1032,6 +1060,7 @@ async def stream_window_dialogue(
                     # 캡처
                     image = await capture.capture_window_async(hwnd)
                     if image is None:
+                        print(f"[SSE] 캡처 실패", flush=True)
                         yield {
                             "event": "error",
                             "data": json.dumps(
@@ -1058,50 +1087,50 @@ async def stream_window_dialogue(
                         state.stability_count = 1
                         state.last_image_hash = current_hash
 
-                    # 안정화되지 않음 - 대기
-                    if state.stability_count < stability_threshold:
+                    # === 하이브리드 OCR 트리거 로직 ===
+                    should_ocr = False
+                    ocr_reason = ""
+
+                    # 조건 1: 화면 안정화 + 새 화면
+                    if state.stability_count >= stability_threshold and current_hash != state.last_stable_hash:
+                        should_ocr = True
+                        ocr_reason = "안정화"
+                        state.last_stable_hash = current_hash
+
+                    # 조건 2: 1초 경과 (이펙트 있어도 OCR 시도)
+                    elif current_time - last_ocr_time >= FORCE_OCR_INTERVAL:
+                        should_ocr = True
+                        ocr_reason = "시간 기반"
+
+                    if not should_ocr:
                         await asyncio.sleep(poll_interval)
                         continue
 
-                    # 이미 처리한 화면 - 스킵
-                    if current_hash == state.last_stable_hash:
-                        await asyncio.sleep(poll_interval)
-                        continue
+                    print(f"[SSE] OCR 시작 ({ocr_reason})...", flush=True)
+                    last_ocr_time = current_time
 
-                    state.last_stable_hash = current_hash
-
-                    # OCR 실행 (타임아웃 적용 - 느린 OCR이 전체 루프를 블로킹하지 않도록)
+                    # OCR 실행 (GPU 세마포어 + 타임아웃 적용)
+                    # GPU 세마포어: TTS와 동시 실행 방지 (메모리 부족 크래시 방지)
+                    gpu_sem = get_gpu_semaphore()
+                    ocr_start = time.time()
                     try:
-                        results = await asyncio.wait_for(
-                            ocr.recognize(image),
-                            timeout=10.0,  # 10초 타임아웃
-                        )
+                        async with gpu_sem:
+                            print(f"[SSE] GPU 세마포어 획득", flush=True)
+                            results = await asyncio.wait_for(
+                                ocr.recognize(image),
+                                timeout=10.0,  # 10초 타임아웃
+                            )
+                        print(f"[SSE] OCR 완료: {len(results) if results else 0}개 결과, {time.time() - ocr_start:.2f}초", flush=True)
                     except asyncio.TimeoutError:
-                        print("[SSE-OCR] OCR 타임아웃 (10초)")
+                        print("[SSE] OCR 타임아웃 (10초)", flush=True)
                         await asyncio.sleep(poll_interval)
                         continue
 
                     if results:
-                        # 디버깅: 모든 OCR 결과 출력
-                        print(f"[SSE-OCR] Raw results ({len(results)} items):")
-                        for i, r in enumerate(results):
-                            bbox = r.bounding_box
-                            pos = f"({bbox.x}, {bbox.y})" if bbox else "?"
-                            print(
-                                f"  [{i}] conf={r.confidence:.2f} pos={pos} text='{r.text}'"
-                            )
-
                         sorted_results = sorted(
                             [r for r in results if r.confidence >= min_confidence],
                             key=lambda r: r.bounding_box.y if r.bounding_box else 0,
                         )
-
-                        # 디버깅: 필터링 후 결과
-                        filtered_count = len(results) - len(sorted_results)
-                        if filtered_count > 0:
-                            print(
-                                f"[SSE-OCR] Filtered out {filtered_count} results (confidence < {min_confidence})"
-                            )
 
                         if sorted_results:
                             combined_text = "\n".join(r.text for r in sorted_results)
@@ -1113,7 +1142,7 @@ async def stream_window_dialogue(
                             is_new = combined_text != state.last_text
                             if is_new:
                                 state.last_text = combined_text
-                                print(f"[SSE-OCR] New dialogue: '{combined_text}'")
+                                print(f"[SSE] 새 대사 감지: '{combined_text[:50]}...' (신뢰도: {avg_confidence:.2f})", flush=True)
                                 yield {
                                     "event": "dialogue",
                                     "data": json.dumps(
@@ -1128,9 +1157,10 @@ async def stream_window_dialogue(
                                 }
 
                 except asyncio.CancelledError:
+                    print(f"[SSE] 스트림 취소됨", flush=True)
                     break
                 except Exception as e:
-                    print(f"[SSE] Error in stream: {e}")
+                    print(f"[SSE] 루프 에러: {e}", flush=True)
                     traceback.print_exc()
                     yield {
                         "event": "error",
@@ -1140,7 +1170,7 @@ async def stream_window_dialogue(
                 await asyncio.sleep(poll_interval)
 
         except Exception as e:
-            print(f"[SSE] Stream setup error: {e}")
+            print(f"[SSE] 스트림 설정 에러: {e}", flush=True)
             traceback.print_exc()
             yield {
                 "event": "error",

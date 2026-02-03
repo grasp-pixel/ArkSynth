@@ -1,6 +1,9 @@
-import { useEffect, useRef, useMemo } from 'react'
+import { useEffect, useRef, useMemo, useState } from 'react'
 import { useAppStore } from '../stores/appStore'
 import type { DialogueInfo } from '../services/api'
+
+// 디버그 모드 (캐릭터 ID 표시)
+const DEBUG_SHOW_CHAR_ID = true
 
 // 문자열 해시 → HSL 색상 (부드러운 톤으로 제한)
 function getColorFromName(name: string): string {
@@ -35,7 +38,15 @@ export default function DialogueViewer() {
     groupCharacters,
     renderProgress,
     isRendering,
+    getSpeakerVoice,
+    narratorCharId,
+    defaultFemaleVoices,
+    defaultVoices,
+    voiceCharacters,
   } = useAppStore()
+
+  // 디버그: 캐릭터 ID 표시 토글
+  const [showCharIds, setShowCharIds] = useState(DEBUG_SHOW_CHAR_ID)
 
   // 음성 있는 캐릭터 ID Set (빠른 조회용)
   const voicedCharacterIds = useMemo(() => {
@@ -97,11 +108,25 @@ export default function DialogueViewer() {
           <h2 className="text-lg font-bold text-ark-white">
             {selectedEpisode.title || selectedEpisode.id}
           </h2>
-          {isDubbingMode && (
-            <span className="ark-tag text-ark-orange">
-              더빙 모드
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {/* 캐릭터 ID 표시 토글 */}
+            <button
+              onClick={() => setShowCharIds(!showCharIds)}
+              className={`text-xs px-2 py-1 rounded transition-colors ${
+                showCharIds
+                  ? 'bg-ark-cyan/20 text-ark-cyan border border-ark-cyan/50'
+                  : 'bg-ark-panel text-ark-gray border border-ark-border hover:border-ark-gray'
+              }`}
+              title="캐릭터 ID 표시"
+            >
+              ID
+            </button>
+            {isDubbingMode && (
+              <span className="ark-tag text-ark-orange">
+                더빙 모드
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-4 text-sm text-ark-gray mt-2">
           <span className="flex items-center gap-1">
@@ -137,6 +162,25 @@ export default function DialogueViewer() {
           // 렌더링 상태 확인
           const isRendered = renderProgress ? index < renderProgress.completed : false
 
+          // 사용될 캐릭터 ID 계산 (디버그용)
+          let resolvedCharId: string | null = null
+          if (showCharIds) {
+            if (dialogue.speaker_id) {
+              resolvedCharId = getSpeakerVoice(dialogue.speaker_id, dialogue.speaker_name || undefined)
+            } else if (dialogue.speaker_name) {
+              const nameKey = `name:${dialogue.speaker_name}`
+              resolvedCharId = getSpeakerVoice(nameKey, dialogue.speaker_name)
+            } else {
+              // 나레이션
+              resolvedCharId = narratorCharId || (defaultFemaleVoices.length > 0 ? defaultFemaleVoices[0] : (defaultVoices.length > 0 ? defaultVoices[0] : null))
+            }
+          }
+
+          // 캐릭터 이름 조회
+          const resolvedCharName = resolvedCharId
+            ? voiceCharacters.find(v => v.char_id === resolvedCharId)?.name
+            : null
+
           return (
             <div
               key={dialogue.id}
@@ -153,6 +197,9 @@ export default function DialogueViewer() {
                 isRendered={isRendered}
                 isRendering={isRendering && renderProgress?.completed === index}
                 onPlay={() => handlePlayClick(dialogue)}
+                showCharId={showCharIds}
+                resolvedCharId={resolvedCharId}
+                resolvedCharName={resolvedCharName}
               />
             </div>
           )
@@ -173,9 +220,12 @@ interface DialogueItemProps {
   isRendered?: boolean   // 사전 렌더링 완료 여부
   isRendering?: boolean  // 현재 렌더링 중인 대사
   onPlay: () => void
+  showCharId?: boolean   // 캐릭터 ID 표시 여부
+  resolvedCharId?: string | null  // 실제 사용될 캐릭터 ID
+  resolvedCharName?: string | null  // 캐릭터 이름
 }
 
-function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, speakerColor, isPrepared, isRendered, isRendering, onPlay }: DialogueItemProps) {
+function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, speakerColor, isPrepared, isRendered, isRendering, onPlay, showCharId, resolvedCharId, resolvedCharName }: DialogueItemProps) {
   const isNarration = !dialogue.speaker_name
   const hasVoice = !!speakerColor
 
@@ -201,8 +251,8 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
 
         {/* 내용 */}
         <div className="flex-1 min-w-0">
-          {/* 화자 + 매칭 표시 */}
-          <div className="flex items-center gap-2 mb-1">
+          {/* 화자 + 캐릭터 ID + 매칭 표시 */}
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             {dialogue.speaker_name && (
               <>
                 <span
@@ -219,6 +269,20 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
                   />
                 )}
               </>
+            )}
+            {/* 캐릭터 ID 표시 (디버그) */}
+            {showCharId && resolvedCharId && (
+              <span
+                className="text-xs px-1.5 py-0.5 bg-ark-cyan/20 text-ark-cyan rounded font-mono"
+                title={`음성: ${resolvedCharId}${resolvedCharName ? ` (${resolvedCharName})` : ''}`}
+              >
+                → {resolvedCharName || resolvedCharId}
+              </span>
+            )}
+            {showCharId && !resolvedCharId && (
+              <span className="text-xs px-1.5 py-0.5 bg-red-500/20 text-red-400 rounded">
+                음성 없음
+              </span>
             )}
             {isMatched && matchSimilarity !== undefined && (
               <span className="ml-auto text-xs px-2 py-0.5 bg-ark-orange text-ark-black rounded font-medium">

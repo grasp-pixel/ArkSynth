@@ -10,6 +10,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from ..config import config
+from .. import get_gpu_semaphore
 from ...voice.providers.edge_tts import EdgeTTSProvider
 from ...voice.gpt_sovits import GPTSoVITSConfig, GPTSoVITSModelManager
 from ...voice.gpt_sovits.synthesizer import GPTSoVITSSynthesizer
@@ -50,18 +51,13 @@ def get_gpt_model_manager() -> GPTSoVITSModelManager:
 
 
 class SynthesizeRequest(BaseModel):
-    """TTS 합성 요청"""
+    """TTS 합성 요청
+
+    TTS 파라미터는 GPTSoVITSConfig의 기본값을 사용합니다.
+    """
 
     text: str
-    voice_id: str | None = None
     char_id: str | None = None  # 캐릭터 ID (GPT-SoVITS용)
-    use_gpt_sovits: bool = True  # GPT-SoVITS 사용 여부 (기본 True)
-
-    # GPT-SoVITS 파라미터 (전역 설정)
-    speed_factor: float = 1.0  # 음성 속도 (0.5~2.0)
-    top_k: int = 5  # 샘플링 다양성 (1~20)
-    top_p: float = 1.0  # Nucleus sampling (0.1~1.0)
-    temperature: float = 1.0  # 음성 랜덤성 (0.1~2.0)
 
 
 class SynthesizeResponse(BaseModel):
@@ -150,23 +146,29 @@ async def synthesize(request: SynthesizeRequest):
                 detail=f"GPT-SoVITS API 서버가 응답하지 않습니다. 상태: {status}"
             )
 
-        # 모델 로드
-        if not await synthesizer.load_model(request.char_id):
-            raise HTTPException(
-                status_code=500,
-                detail=f"GPT-SoVITS 모델 로드 실패: {request.char_id}"
-            )
+        # GPU 세마포어: OCR과 동시 실행 방지 (메모리 부족 크래시 방지)
+        gpu_sem = get_gpu_semaphore()
+        async with gpu_sem:
+            logger.info(f"GPU 세마포어 획득: {request.char_id}")
 
-        # 합성
-        result = await synthesizer.synthesize(
-            char_id=request.char_id,
-            text=request.text,
-            language=config.gpt_sovits_language,
-            speed_factor=request.speed_factor,
-            top_k=request.top_k,
-            top_p=request.top_p,
-            temperature=request.temperature,
-        )
+            # 모델 로드
+            if not await synthesizer.load_model(request.char_id):
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"GPT-SoVITS 모델 로드 실패: {request.char_id}"
+                )
+
+            # 합성 (GPTSoVITSConfig의 기본값 사용)
+            gpt_config = synthesizer.config
+            result = await synthesizer.synthesize(
+                char_id=request.char_id,
+                text=request.text,
+                language=config.gpt_sovits_language,
+                speed_factor=gpt_config.speed_factor,
+                top_k=gpt_config.top_k,
+                top_p=gpt_config.top_p,
+                temperature=gpt_config.temperature,
+            )
 
         if not result:
             raise HTTPException(

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Callable, Any
 
 from .render_cache import RenderCache, get_render_cache
+from ..backend import get_gpu_semaphore
 
 logger = logging.getLogger(__name__)
 
@@ -287,6 +288,7 @@ class RenderManager:
                 char_id_to_use = char_id
 
                 # 매핑 키 (char_id가 없으면 name: 접두사 사용)
+                # 따옴표는 게임 내 역할극 강조 표시이므로 유지 (예: '오니')
                 mapping_key = char_id or (f"name:{speaker_name}" if speaker_name else None)
 
                 logger.info(f"[RenderManager] 대사 {index}: char_id={char_id}, speaker_name={speaker_name}, mapping_key={mapping_key}")
@@ -319,10 +321,13 @@ class RenderManager:
                 audio_path.parent.mkdir(parents=True, exist_ok=True)
 
                 if char_id_to_use and await synthesizer.is_available(char_id_to_use):
-                    # GPT-SoVITS로 합성
-                    result = await synthesizer.synthesize(
-                        char_id_to_use, text, output_path=audio_path, language=job.language
-                    )
+                    # GPU 세마포어: OCR과 동시 실행 방지
+                    gpu_sem = get_gpu_semaphore()
+                    async with gpu_sem:
+                        # GPT-SoVITS로 합성
+                        result = await synthesizer.synthesize(
+                            char_id_to_use, text, output_path=audio_path, language=job.language
+                        )
                     duration = result.duration if result else 0.0
                 else:
                     # 사용 가능한 모델 없음 - 스킵

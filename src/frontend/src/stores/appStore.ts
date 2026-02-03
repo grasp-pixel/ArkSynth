@@ -27,7 +27,6 @@ import {
   type TrainedModel,
   type RenderProgress,
   type VoiceCharacter,
-  type TTSSettings,
   type CharacterAliases,
 } from '../services/api'
 
@@ -125,8 +124,7 @@ interface AppState {
   isStartingGptSovits: boolean
   gptSovitsError: string | null
 
-  // TTS 설정
-  ttsSettings: TTSSettings
+  // 볼륨 설정
   volume: number  // 재생 볼륨 (0.0~1.0)
   isMuted: boolean
 
@@ -228,8 +226,7 @@ interface AppState {
   checkGptSovitsStatus: () => Promise<void>
   startGptSovits: () => Promise<void>
 
-  // TTS 설정
-  setTtsSettings: (settings: Partial<TTSSettings>) => void
+  // 볼륨 설정
   setVolume: (volume: number) => void
   toggleMute: () => void
 
@@ -253,8 +250,7 @@ interface PersistedState {
   narratorCharId: string | null
   autoPlayOnMatch: boolean
   npcVoiceMap: Record<string, string>  // NPC 음성 매핑 (char_id → voice_id)
-  // TTS 설정
-  ttsSettings?: TTSSettings
+  // 볼륨 설정
   volume?: number
   isMuted?: boolean
   // 패널 접기 상태
@@ -305,7 +301,6 @@ const persistCurrentState = (get: () => AppState) => {
     narratorCharId: state.narratorCharId,
     autoPlayOnMatch: state.autoPlayOnMatch,
     npcVoiceMap: state.speakerVoiceMap,  // NPC 음성 매핑 저장
-    ttsSettings: state.ttsSettings,
     volume: state.volume,
     isMuted: state.isMuted,
     isLeftPanelCollapsed: state.isLeftPanelCollapsed,
@@ -326,6 +321,8 @@ export const simpleHash = (str: string): number => {
 
 // 오디오 재생 관리
 let currentAudio: HTMLAudioElement | null = null
+let lastPlayStartTime = 0  // 마지막 재생 시작 시간 (중복 방지)
+let lastPlayedDialogueId: string | null = null  // 마지막 재생한 대사 ID
 
 // 실시간 TTS 합성 및 재생 헬퍼 함수
 async function synthesizeAndPlayDialogue(
@@ -335,10 +332,10 @@ async function synthesizeAndPlayDialogue(
   get: () => AppState
 ) {
   try {
-    const { ttsSettings, volume, isMuted } = get()
+    const { volume, isMuted } = get()
 
-    console.log('[playDialogue] GPT-SoVITS 합성:', charId, text.substring(0, 30), 'settings:', ttsSettings)
-    const audioBlob = await ttsApi.synthesize(text, charId, ttsSettings)
+    console.log('[playDialogue] GPT-SoVITS 합성:', charId, text.substring(0, 30))
+    const audioBlob = await ttsApi.synthesize(text, charId)
     const audioUrl = URL.createObjectURL(audioBlob)
 
     currentAudio = new Audio(audioUrl)
@@ -461,13 +458,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   isStartingGptSovits: false,
   gptSovitsError: null,
 
-  // TTS 설정 초기 상태 (localStorage에서 복원)
-  ttsSettings: persistedState.ttsSettings ?? {
-    speedFactor: 1.0,
-    topK: 5,
-    topP: 1.0,
-    temperature: 1.0,
-  },
+  // 볼륨 설정 초기 상태 (localStorage에서 복원)
   volume: persistedState.volume ?? 1.0,
   isMuted: persistedState.isMuted ?? false,
 
@@ -633,13 +624,30 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ selectedEpisodeId: null, selectedEpisode: null })
   },
 
-  // 대사 재생 (캐시 우선, 없으면 GPT-SoVITS 실시간 합성)
+  // 대사 재생 (캐시 우선, 렌더링 중이면 캐시만 사용)
   playDialogue: async (dialogue: DialogueInfo) => {
     const {
       narratorCharId, defaultVoices,
       selectedEpisodeId, cachedEpisodes, renderProgress,
-      getSpeakerVoice
+      getSpeakerVoice, currentDialogue, isPlaying,
+      isRendering,
     } = get()
+
+    // === 중복 재생 방지 ===
+    // 1. 이미 같은 대사를 재생 중이면 스킵
+    if (isPlaying && currentDialogue?.id === dialogue.id) {
+      console.log('[playDialogue] 중복 스킵 - 이미 재생 중:', dialogue.id)
+      return
+    }
+
+    // 2. 마지막 재생 시작으로부터 0.5초 이내면 스킵 (빠른 연속 호출 방지)
+    const now = Date.now()
+    if (now - lastPlayStartTime < 500) {
+      console.log('[playDialogue] 중복 스킵 - 0.5초 이내 연속 호출')
+      return
+    }
+    lastPlayStartTime = now
+    lastPlayedDialogueId = dialogue.id
 
     // 캐릭터 ID 결정 우선순위:
     // 1. dialogue.speaker_id (화자) → getSpeakerVoice로 음성 결정 (성별 기반)
@@ -684,8 +692,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       return
     }
 
-    set({ isPlaying: true, currentDialogue: dialogue })
-
     // 캐시 확인 - 배열 인덱스 찾기 (line_number가 아닌 실제 배열 인덱스 사용)
     const { selectedEpisode } = get()
     const dialogueIndex = selectedEpisode?.dialogues.findIndex(d => d.id === dialogue.id) ?? -1
@@ -698,7 +704,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       dialogueIndex < renderProgress.completed
 
     // 캐시된 오디오 사용 시도
-    console.log('[playDialogue] 캐시 확인:', { dialogueIndex, isCached, isRendered, completed: renderProgress?.completed })
+    console.log('[playDialogue] 캐시 확인:', { dialogueIndex, isCached, isRendered, completed: renderProgress?.completed, isRendering })
+
+    // === 렌더링 중이면 캐시만 사용 (실시간 합성 차단) ===
+    if (isRendering) {
+      if (!isRendered) {
+        // 아직 렌더링되지 않은 대사 - 재생 불가
+        console.log('[playDialogue] 렌더링 중 - 아직 완료되지 않은 대사, 스킵:', dialogueIndex)
+        return
+      }
+    }
+
+    set({ isPlaying: true, currentDialogue: dialogue })
+
     if ((isCached || isRendered) && selectedEpisodeId && dialogueIndex >= 0) {
       const cachedAudioUrl = renderApi.getAudioUrl(selectedEpisodeId, dialogueIndex)
       console.log('[playDialogue] 캐시 재생:', dialogueIndex, cachedAudioUrl)
@@ -713,10 +731,17 @@ export const useAppStore = create<AppState>((set, get) => ({
           set({ isPlaying: false, currentDialogue: null })
         }
 
-        // 캐시 재생 실패 시 실시간 합성으로 폴백
+        // 캐시 재생 실패 시 - 더빙 모드 또는 렌더링 중이면 실시간 합성 차단
         currentAudio.onerror = async () => {
-          console.warn('[playDialogue] 캐시 재생 실패, 실시간 합성으로 폴백')
+          console.warn('[playDialogue] 캐시 재생 실패')
           currentAudio = null
+          const { isRendering: stillRendering, isDubbingMode: inDubbingMode } = get()
+          if (inDubbingMode || stillRendering) {
+            console.log(`[playDialogue] 실시간 합성 차단 (더빙모드=${inDubbingMode}, 렌더링중=${stillRendering})`)
+            set({ isPlaying: false, currentDialogue: null })
+            return
+          }
+          // 테스트 모드에서만 실시간 합성으로 폴백
           await synthesizeAndPlayDialogue(dialogue.text, charIdToUse!, set, get)
         }
 
@@ -725,11 +750,26 @@ export const useAppStore = create<AppState>((set, get) => ({
         return
       } catch (error) {
         console.warn('[playDialogue] 캐시 로드 실패:', error)
-        // 폴백으로 진행
+        set({ isPlaying: false, currentDialogue: null })
+        // 더빙 모드 또는 렌더링 중이면 실시간 합성 차단
+        const { isDubbingMode: inDubbingMode } = get()
+        if (inDubbingMode || isRendering) {
+          console.log(`[playDialogue] 실시간 합성 차단 (더빙모드=${inDubbingMode}, 렌더링중=${isRendering})`)
+          return
+        }
       }
     }
 
-    // 실시간 GPT-SoVITS 합성
+    // 더빙 모드 또는 렌더링 중이면 실시간 합성 차단
+    // 더빙 모드에서는 사전 렌더링된 캐시만 사용
+    const { isDubbingMode } = get()
+    if (isDubbingMode || isRendering) {
+      console.log(`[playDialogue] 캐시 없음 - 실시간 합성 차단 (더빙모드=${isDubbingMode}, 렌더링중=${isRendering})`)
+      set({ isPlaying: false, currentDialogue: null })
+      return
+    }
+
+    // 실시간 GPT-SoVITS 합성 (테스트 용도 - 더빙 모드가 아닐 때만)
     await synthesizeAndPlayDialogue(dialogue.text, charIdToUse, set, get)
   },
 
@@ -1303,7 +1343,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
           // 이전 매칭 대사와 다른 경우 재생 중단 후 새 대사 재생
           const { autoPlayOnMatch, playDialogue, stopPlayback, matchedDialogue: prevMatched, isPlaying } = get()
-          const isNewDialogue = !prevMatched || prevMatched.id !== result.dialogue.id
+          // 새 대사인지 확인: 이전 매칭 대사와 다르고, 마지막 재생 대사와도 다름
+          const isNewDialogue = (!prevMatched || prevMatched.id !== result.dialogue.id) &&
+                                result.dialogue.id !== lastPlayedDialogueId
 
           set({
             matchedDialogue: result.dialogue,
@@ -1314,6 +1356,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
           // 자동 재생 (새 대사이면 현재 재생 중단 후 재생)
           if (autoPlayOnMatch && isNewDialogue) {
+            console.log('[Match] 새 대사 자동 재생:', result.dialogue.id)
             if (isPlaying) {
               stopPlayback()
             }
@@ -1729,10 +1772,60 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // 렌더링 시작
   startRender: async (episodeId: string, force: boolean = false) => {
-    const { defaultCharId, narratorCharId, speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices } = get()
+    const { defaultCharId, narratorCharId, speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices, getSpeakerVoice, loadEpisodeCharacters, loadVoiceCharacters } = get()
 
-    // speakerVoiceMap의 특수 값들을 실제 char_id로 해석
+    // voiceCharacters가 비어있으면 먼저 로드 (getSpeakerVoice에서 사용)
+    let { voiceCharacters } = get()
+    if (voiceCharacters.length === 0) {
+      console.log('[startRender] voiceCharacters 비어있음, 로드 중...')
+      await loadVoiceCharacters()
+      voiceCharacters = get().voiceCharacters
+      console.log('[startRender] voiceCharacters 로드 완료:', voiceCharacters.length)
+    }
+
+    // episodeCharacters가 비어있으면 먼저 로드
+    let { episodeCharacters } = get()
+    if (episodeCharacters.length === 0) {
+      console.log('[startRender] episodeCharacters 비어있음, 로드 중...')
+      await loadEpisodeCharacters(episodeId)
+      // 로드 후 다시 가져오기
+      episodeCharacters = get().episodeCharacters
+      console.log('[startRender] episodeCharacters 로드 완료:', episodeCharacters.length)
+    }
+
+    // 1. episodeCharacters에서 voice_char_id가 있는 캐릭터들의 매핑 추가
+    // (실시간 재생과 동일한 로직 적용)
     const resolvedVoiceMap: Record<string, string> = {}
+
+    console.log('[startRender] episodeCharacters 수:', episodeCharacters.length)
+
+    // voice_char_id가 있는 캐릭터들 자동 매핑
+    for (const char of episodeCharacters) {
+      // char_id가 있는 경우: char_id와 name: 키 모두 매핑
+      if (char.char_id) {
+        const voiceId = getSpeakerVoice(char.char_id, char.name)
+        if (voiceId) {
+          resolvedVoiceMap[char.char_id] = voiceId
+          console.log(`[startRender] 캐릭터 매핑: ${char.char_id} (${char.name}) → ${voiceId}`)
+
+          // name: 키도 추가 (speaker_id가 없는 대사용)
+          const nameKey = `name:${char.name}`
+          if (!resolvedVoiceMap[nameKey]) {
+            resolvedVoiceMap[nameKey] = voiceId
+          }
+        } else {
+          console.log(`[startRender] 캐릭터 음성 없음: ${char.char_id} (${char.name})`)
+        }
+      }
+      // char_id가 없지만 voice_char_id가 있는 경우: 별칭 캐릭터 (예: '오니' → 하루카)
+      else if (char.voice_char_id && char.name) {
+        const nameKey = `name:${char.name}`
+        resolvedVoiceMap[nameKey] = char.voice_char_id
+        console.log(`[startRender] 별칭 매핑: ${char.name} → ${char.voice_char_id}`)
+      }
+    }
+
+    // 2. speakerVoiceMap의 특수 값들을 실제 char_id로 해석 (수동 매핑 우선)
     for (const [speakerId, voiceId] of Object.entries(speakerVoiceMap)) {
       if (voiceId === AUTO_VOICE_FEMALE) {
         // 여성 자동 → 기본 여성 음성 중 하나
@@ -1747,7 +1840,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           resolvedVoiceMap[speakerId] = defaultMaleVoices[hash % defaultMaleVoices.length]
         }
       } else {
-        // 일반 매핑
+        // 일반 매핑 (수동 매핑이 자동 매핑보다 우선)
         resolvedVoiceMap[speakerId] = voiceId
       }
     }
@@ -1913,14 +2006,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     } finally {
       set({ isStartingGptSovits: false })
     }
-  },
-
-  // TTS 설정 변경
-  setTtsSettings: (settings: Partial<TTSSettings>) => {
-    set((state) => ({
-      ttsSettings: { ...state.ttsSettings, ...settings },
-    }))
-    persistCurrentState(get)
   },
 
   // 볼륨 설정
