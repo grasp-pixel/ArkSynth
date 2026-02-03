@@ -38,15 +38,10 @@ def preprocess_text_for_tts(text: str) -> str | None:
     # TTS로 읽을 필요 없는 연출 지시문
     text = re.sub(r"\([^)]+\)", "", text)
 
-    # 연속된 마침표 및 말줄임표 처리 (... 또는 … -> 쉼표)
-    # GPT-SoVITS는 ...을 무시하거나 앞 문장을 스킵할 수 있음
-    text = re.sub(r"\.{2,}", ", ", text)
-    text = re.sub(r"…+", ", ", text)  # 유니코드 말줄임표(…)도 처리
-
-    # 문장 중간의 마침표를 쉼표로 대체 (GPT-SoVITS 문장 분할 방지)
-    # 마침표 뒤에 텍스트가 더 있는 경우에만 변환
-    # "하이디 씨. 겨우" -> "하이디 씨, 겨우"
-    text = re.sub(r"\.\s+(?=\S)", ", ", text)
+    # 연속된 마침표 및 말줄임표 정리 (... 또는 … -> 단일 마침표)
+    # 분할 시 마침표 기준으로 나뉘므로 단일화만 수행
+    text = re.sub(r"\.{2,}", ".", text)
+    text = re.sub(r"…+", ".", text)  # 유니코드 말줄임표(…)도 처리
 
     # 연속된 물음표/느낌표 단순화
     text = re.sub(r"[?!]{2,}", "?", text)
@@ -71,7 +66,7 @@ def split_text_for_tts(text: str, max_length: int = 35) -> list[str]:
     """텍스트를 TTS용 세그먼트로 분할
 
     GPT-SoVITS는 긴 텍스트에서 조기 EOS가 발생하여 앞부분이 잘리는 문제가 있음.
-    쉼표/문장부호 기준으로 공격적으로 분할하여 개별 합성 후 연결합니다.
+    문장부호 → 쉼표 → 한국어 연결어미 순으로 분할하여 개별 합성 후 연결합니다.
 
     Args:
         text: 분할할 텍스트
@@ -82,9 +77,9 @@ def split_text_for_tts(text: str, max_length: int = 35) -> list[str]:
     """
     import re
 
-    # 쉼표, 느낌표, 물음표 기준으로 무조건 분할
-    # 구분자를 캡처하여 앞 세그먼트에 붙임
-    parts = re.split(r"([!?])|,\s*", text)
+    # 문장 종결 부호(. ! ?)로만 분할 (쉼표는 분할하지 않음)
+    # 종결 구분자는 캡처하여 앞 세그먼트에 붙임
+    parts = re.split(r"([.!?])", text)
 
     segments = []
     current = ""
@@ -101,8 +96,8 @@ def split_text_for_tts(text: str, max_length: int = 35) -> list[str]:
             i += 1
             continue
 
-        # 구분자(!, ?)는 이전 세그먼트에 붙임
-        if part in ("!", "?"):
+        # 종결 구분자(. ! ?)는 이전 세그먼트에 붙임
+        if part in (".", "!", "?"):
             if current:
                 current += part
             i += 1
@@ -110,7 +105,7 @@ def split_text_for_tts(text: str, max_length: int = 35) -> list[str]:
 
         # 현재 세그먼트가 있고 합치면 max_length 초과하면 저장 후 새로 시작
         if current:
-            test = f"{current}, {part}"
+            test = f"{current} {part}"
             if len(test) <= max_length:
                 current = test
             else:
@@ -125,28 +120,62 @@ def split_text_for_tts(text: str, max_length: int = 35) -> list[str]:
     if current:
         segments.append(current)
 
-    # 너무 긴 세그먼트는 공백 기준으로 추가 분할
-    final_segments = []
+    # 긴 세그먼트를 쉼표로 분할
+    comma_split_segments = []
     for seg in segments:
+        seg = seg.strip()
+        if not seg:
+            continue
+        if len(seg) <= max_length:
+            comma_split_segments.append(seg)
+        else:
+            # 쉼표로 분할 시도
+            comma_parts = [p.strip() for p in seg.split(",") if p.strip()]
+            if len(comma_parts) > 1:
+                comma_split_segments.extend(comma_parts)
+            else:
+                comma_split_segments.append(seg)
+
+    # 여전히 긴 세그먼트를 한국어 연결어미로 분할
+    # 연결어미 패턴: ~고, ~며, ~면서, ~지만, ~는데, ~니까, ~서, ~면, ~다면
+    # 연결어미 뒤의 공백을 기준으로 분할 (어조 유지)
+    korean_connective_pattern = re.compile(
+        r"(고\s|며\s|면서\s|지만\s|는데\s|니까\s|서\s|면\s|다면\s|하여\s)"
+    )
+
+    final_segments = []
+    for seg in comma_split_segments:
         if len(seg) <= max_length:
             final_segments.append(seg)
         else:
-            # 공백 기준 분할
-            words = seg.split()
-            word_seg = ""
-            for word in words:
-                test = f"{word_seg} {word}" if word_seg else word
-                if len(test) <= max_length:
-                    word_seg = test
-                else:
-                    if word_seg:
-                        final_segments.append(word_seg)
-                    word_seg = word
-            if word_seg:
-                final_segments.append(word_seg)
+            # 한국어 연결어미로 분할
+            conn_parts = korean_connective_pattern.split(seg)
+            if len(conn_parts) > 1:
+                # 연결어미를 앞 세그먼트에 붙임
+                rebuilt = []
+                temp = ""
+                for j, p in enumerate(conn_parts):
+                    if not p:
+                        continue
+                    # 연결어미 패턴인지 확인
+                    if korean_connective_pattern.fullmatch(p):
+                        temp += p.rstrip()  # 연결어미는 앞에 붙임 (공백 제거)
+                    else:
+                        if temp:
+                            rebuilt.append(temp)
+                            temp = p.strip()
+                        else:
+                            temp = p.strip()
+                if temp:
+                    rebuilt.append(temp)
 
-    # 빈 세그먼트 제거
-    final_segments = [s.strip() for s in final_segments if s.strip()]
+                # 분할된 파트 추가
+                for part in rebuilt:
+                    if part.strip():
+                        final_segments.append(part.strip())
+            else:
+                # 연결어미도 없음: 그대로 전달
+                final_segments.append(seg)
 
     return final_segments if final_segments else [text]
 
@@ -729,7 +758,7 @@ class GPTSoVITSAPIClient:
             "top_k": top_k,
             "top_p": top_p,
             "temperature": temperature,
-            "text_split_method": "cut0",  # GPT-SoVITS 내부 분할 비활성화 (앱에서 직접 분할)
+            "text_split_method": "cut5",  # GPT-SoVITS 내부 분할 (어조 유지)
             "speed_factor": speed_factor,
         }
 
