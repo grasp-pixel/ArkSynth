@@ -53,6 +53,73 @@ def preprocess_text_for_tts(text: str) -> str:
     return text
 
 
+def split_text_for_tts(text: str, max_length: int = 50) -> list[str]:
+    """긴 텍스트를 TTS용 세그먼트로 분할
+
+    GPT-SoVITS는 긴 텍스트 처리 시 앞부분이 잘리는 문제가 있어서
+    적절한 길이로 분할해서 개별 합성 후 연결해야 합니다.
+
+    Args:
+        text: 분할할 텍스트
+        max_length: 세그먼트 최대 길이 (기본 50자)
+
+    Returns:
+        분할된 텍스트 세그먼트 목록
+    """
+    import re
+
+    if len(text) <= max_length:
+        return [text]
+
+    segments = []
+
+    # 1차: 쉼표로 분할
+    parts = re.split(r',\s*', text)
+
+    current = ""
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+
+        # 현재 세그먼트에 추가해도 max_length 이하면 추가
+        test = f"{current}, {part}" if current else part
+        if len(test) <= max_length:
+            current = test
+        else:
+            # 현재 세그먼트 저장
+            if current:
+                segments.append(current)
+
+            # part 자체가 max_length보다 길면 강제 분할
+            if len(part) > max_length:
+                # 공백 기준으로 분할 시도
+                words = part.split()
+                word_segment = ""
+                for word in words:
+                    test_word = f"{word_segment} {word}" if word_segment else word
+                    if len(test_word) <= max_length:
+                        word_segment = test_word
+                    else:
+                        if word_segment:
+                            segments.append(word_segment)
+                        word_segment = word
+                if word_segment:
+                    current = word_segment
+                else:
+                    current = ""
+            else:
+                current = part
+
+    if current:
+        segments.append(current)
+
+    # 빈 세그먼트 제거 및 정리
+    segments = [s.strip() for s in segments if s.strip()]
+
+    return segments if segments else [text]
+
+
 class GPTSoVITSAPIClient:
     """GPT-SoVITS API 클라이언트
 
@@ -426,7 +493,7 @@ class GPTSoVITSAPIClient:
     ) -> Optional[bytes]:
         """텍스트를 음성으로 합성
 
-        텍스트 길이에 따라 적절한 참조 오디오를 자동 선택합니다.
+        긴 텍스트는 자동으로 분할하여 개별 합성 후 연결합니다.
 
         Args:
             text: 합성할 텍스트
@@ -442,43 +509,113 @@ class GPTSoVITSAPIClient:
         if text != original_text:
             logger.info(f"[합성] 텍스트 전처리: '{original_text[:30]}...' -> '{text[:30]}...'")
 
+        # 긴 텍스트 분할 (GPT-SoVITS는 긴 텍스트에서 앞부분이 잘림)
+        segments = split_text_for_tts(text, max_length=50)
+
+        if len(segments) == 1:
+            # 짧은 텍스트: 직접 합성
+            return await self._synthesize_segment(segments[0], char_id, language)
+
+        # 긴 텍스트: 분할 합성 후 연결
+        logger.info(f"[합성] 긴 텍스트 분할: {len(text)}자 -> {len(segments)}개 세그먼트")
+        for i, seg in enumerate(segments):
+            logger.info(f"  [{i+1}] {seg[:30]}{'...' if len(seg) > 30 else ''}")
+
+        audio_chunks = []
+        for i, segment in enumerate(segments):
+            logger.info(f"[합성] 세그먼트 {i+1}/{len(segments)}: {segment[:20]}...")
+            chunk = await self._synthesize_segment(segment, char_id, language)
+            if chunk is None:
+                logger.error(f"[합성] 세그먼트 {i+1} 실패")
+                return None
+            audio_chunks.append(chunk)
+
+        # WAV 파일 연결
+        return self._concatenate_wav(audio_chunks)
+
+    def _concatenate_wav(self, audio_chunks: list[bytes]) -> Optional[bytes]:
+        """여러 WAV 오디오를 하나로 연결
+
+        Args:
+            audio_chunks: WAV 오디오 데이터 목록
+
+        Returns:
+            연결된 WAV 오디오 데이터
+        """
+        import io
+        import wave
+
+        if not audio_chunks:
+            return None
+
+        if len(audio_chunks) == 1:
+            return audio_chunks[0]
+
+        try:
+            # 첫 번째 청크에서 오디오 파라미터 추출
+            with io.BytesIO(audio_chunks[0]) as first_buf:
+                with wave.open(first_buf, 'rb') as first_wav:
+                    params = first_wav.getparams()
+
+            # 모든 청크의 프레임 데이터 추출
+            all_frames = []
+            for chunk in audio_chunks:
+                with io.BytesIO(chunk) as buf:
+                    with wave.open(buf, 'rb') as wav_file:
+                        all_frames.append(wav_file.readframes(wav_file.getnframes()))
+
+            # 하나의 WAV로 합치기
+            output = io.BytesIO()
+            with wave.open(output, 'wb') as out_wav:
+                out_wav.setparams(params)
+                for frames in all_frames:
+                    out_wav.writeframes(frames)
+
+            logger.info(f"[합성] {len(audio_chunks)}개 세그먼트 연결 완료")
+            return output.getvalue()
+
+        except Exception as e:
+            logger.error(f"[합성] WAV 연결 실패: {e}")
+            return None
+
+    async def _synthesize_segment(
+        self,
+        text: str,
+        char_id: str,
+        language: str = "ko",
+    ) -> Optional[bytes]:
+        """단일 텍스트 세그먼트를 음성으로 합성
+
+        Args:
+            text: 합성할 텍스트 (짧은 세그먼트)
+            char_id: 캐릭터 ID
+            language: 텍스트 언어
+
+        Returns:
+            WAV 오디오 데이터 또는 None
+        """
         # 텍스트에 적합한 참조 오디오 선택
-        logger.info(f"[합성] 참조 오디오 선택 중...")
         ref_audio_path, ref_text = self._select_reference_audio(char_id, text)
 
         if not ref_audio_path.exists():
             logger.error(f"참조 오디오가 없습니다: {char_id}")
             return None
 
-        logger.info(f"[합성] 기본 참조: {ref_audio_path.name} (대사: {ref_text[:20]}...)" if ref_text else f"[합성] 기본 참조: {ref_audio_path.name}")
-
-        # 추가 참조 오디오 (대사 있고 길이 적절한 모든 음성)
+        # 추가 참조 오디오
         aux_refs = self._get_aux_reference_audios(char_id, ref_audio_path)
-        if aux_refs:
-            logger.info(f"[합성] 추가 참조: {len(aux_refs)}개")
 
         # prompt_text 처리: 너무 길면 모델이 이어서 말하는 문제 발생
-        # 마지막 문장만 사용하여 음성 특성 참조에 충분하면서 bleeding 방지
         prompt_text = ref_text
         if ref_text and len(ref_text) > 40:
-            # 마지막 문장 추출 (문장 부호 기준)
             import re
             sentences = re.split(r'[.!?。！？]', ref_text)
             sentences = [s.strip() for s in sentences if s.strip()]
             if sentences:
                 prompt_text = sentences[-1]
-                # 너무 짧으면 마지막 2문장 사용
                 if len(prompt_text) < 10 and len(sentences) >= 2:
                     prompt_text = sentences[-2] + ". " + sentences[-1]
-            logger.info(f"[합성] prompt_text 축약: {len(ref_text)}자 -> {len(prompt_text)}자")
-
-        # GPT-SoVITS 분할 기능이 한국어에서 문제가 있어 항상 cut0 사용
-        # 긴 텍스트는 우리 코드에서 직접 분할 후 개별 합성
-        split_method = "cut0"
-        text_len = len(text)
 
         # GPT-SoVITS v2 언어 코드 변환
-        # v2는 "all_ko", "all_ja", "all_zh", "all_en" 등의 형식 사용
         lang_map = {
             "ko": "all_ko",
             "ja": "all_ja",
@@ -486,31 +623,26 @@ class GPTSoVITSAPIClient:
             "en": "all_en",
         }
         api_lang = lang_map.get(language, language)
-        logger.info(f"[합성] 언어: {language} -> {api_lang}")
 
         params = {
             "text": text,
             "text_lang": api_lang,
             "ref_audio_path": str(ref_audio_path.absolute()),
-            "aux_ref_audio_paths": aux_refs,  # 추가 참조 오디오 (품질 향상)
-            "prompt_text": prompt_text,  # 참조 오디오의 마지막 문장 (bleeding 방지)
+            "aux_ref_audio_paths": aux_refs,
+            "prompt_text": prompt_text,
             "prompt_lang": api_lang,
             "top_k": self.config.top_k,
             "top_p": self.config.top_p,
             "temperature": self.config.temperature,
-            "text_split_method": split_method,
+            "text_split_method": "cut0",
             "speed_factor": 1.0,
         }
-
-        logger.info(f"[합성] GPT-SoVITS API 요청 전송 중... (텍스트: {text_len}자, 분할: {split_method})")
 
         import time
         start_time = time.time()
 
-        # 매 요청마다 새 세션 사용 (GPT-SoVITS 서버 호환성)
-        # GPT-SoVITS는 단일 스레드로 동작하여 연결 재사용 시 문제 발생 가능
         connector = aiohttp.TCPConnector(force_close=True)
-        timeout = aiohttp.ClientTimeout(total=90)  # 첫 합성 시 모델 로드 포함
+        timeout = aiohttp.ClientTimeout(total=90)
 
         try:
             async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
@@ -526,12 +658,9 @@ class GPTSoVITSAPIClient:
                         return None
 
                     audio_data = await resp.read()
-                    logger.info(f"[합성] 완료 ({elapsed:.1f}초, {len(audio_data):,} bytes)")
+                    logger.debug(f"[합성] 세그먼트 완료 ({elapsed:.1f}초, {len(audio_data):,} bytes)")
 
-                    # GPT-SoVITS 서버 안정화를 위한 짧은 대기
-                    # 단일 스레드 서버라 연속 요청 시 문제 발생 가능
-                    await asyncio.sleep(0.5)
-
+                    await asyncio.sleep(0.3)
                     return audio_data
 
         except asyncio.TimeoutError:
