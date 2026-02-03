@@ -15,6 +15,7 @@ import aiohttp
 from .config import GPTSoVITSConfig
 from .reference_selector import (
     select_reference_by_score,
+    select_reference_hybrid,
     get_all_references_by_score,
     get_audio_duration,
 )
@@ -449,30 +450,35 @@ class GPTSoVITSAPIClient:
             logger.error(f"모델 로드 중 오류: {e}")
             return False
 
-    def _select_reference_audio(self, char_id: str, text: str) -> tuple[Path, str]:
-        """점수 기반으로 최적의 참조 오디오 선택
+    def _select_reference_audio(
+        self, char_id: str, input_text_len: int
+    ) -> tuple[Path, str]:
+        """하이브리드 방식으로 최적의 참조 오디오 선택
 
-        info.json의 score 정보를 활용하여 우선순위가 높은 참조 오디오를 선택합니다.
-        (training_worker와 동일한 우선순위 로직 사용)
+        1. 점수 상위 후보 필터링 (품질 보장)
+        2. 입력 텍스트 길이 유사도 가중치 적용
+        3. 가중 랜덤 선택 (다양성 확보)
 
         Args:
             char_id: 캐릭터 ID
-            text: 합성할 텍스트 (현재 미사용, 향후 확장용)
+            input_text_len: 텍스트 길이 기준 (분할 시 평균 세그먼트 길이)
 
         Returns:
             (참조 오디오 경로, 참조 텍스트) 튜플
         """
         model_dir = self.config.get_model_path(char_id)
 
-        # 공통 함수로 점수 기반 선택
-        ref_audio, ref_text, score = select_reference_by_score(
+        # 하이브리드 선택 (점수 + 텍스트 길이 + 랜덤)
+        ref_audio, ref_text, score = select_reference_hybrid(
             model_dir,
+            input_text_len=input_text_len,
             min_duration=self.config.min_ref_audio_length,
             max_duration=self.config.max_ref_audio_length,
+            top_n=4,
         )
 
         if ref_audio:
-            logger.debug(f"참조 오디오 선택: {ref_audio.name} (score: {score})")
+            logger.debug(f"참조 오디오 선택: {ref_audio.name} (score: {score}, text_len: {len(ref_text)})")
             return ref_audio, ref_text
 
         # 폴백: 기본 경로 반환
@@ -548,6 +554,11 @@ class GPTSoVITSAPIClient:
         # 쉼표 기준으로 공격적으로 분할하여 개별 합성 후 연결
         segments = split_text_for_tts(text, max_length=35)
 
+        # 참조 오디오 선택 (분할 후 평균 세그먼트 길이 기준)
+        # 실제 합성되는 세그먼트와 참조 텍스트 길이가 비슷해야 품질 좋음
+        avg_segment_len = sum(len(s) for s in segments) // len(segments)
+        ref_audio_path, ref_text = self._select_reference_audio(char_id, avg_segment_len)
+
         if len(segments) == 1:
             # 단일 세그먼트: 직접 합성
             return await self._synthesize_segment(
@@ -558,12 +569,15 @@ class GPTSoVITSAPIClient:
                 top_k=top_k,
                 top_p=top_p,
                 temperature=temperature,
+                ref_audio_path=ref_audio_path,
+                ref_text=ref_text,
             )
 
         # 긴 텍스트: 분할 합성 후 연결
         logger.info(
-            f"[합성] 긴 텍스트 분할: {len(text)}자 -> {len(segments)}개 세그먼트"
+            f"[합성] 긴 텍스트 분할: {len(text)}자 -> {len(segments)}개 세그먼트 (평균 {avg_segment_len}자)"
         )
+        logger.info(f"[합성] 참조: {ref_audio_path.name} (ref_text_len: {len(ref_text)})")
         for i, seg in enumerate(segments):
             logger.info(f"  [{i + 1}] {seg[:30]}{'...' if len(seg) > 30 else ''}")
 
@@ -578,6 +592,8 @@ class GPTSoVITSAPIClient:
                 top_k=top_k,
                 top_p=top_p,
                 temperature=temperature,
+                ref_audio_path=ref_audio_path,
+                ref_text=ref_text,
             )
             if chunk is None:
                 logger.error(f"[합성] 세그먼트 {i + 1} 실패")
@@ -641,6 +657,8 @@ class GPTSoVITSAPIClient:
         top_k: int = 5,
         top_p: float = 1.0,
         temperature: float = 1.0,
+        ref_audio_path: Path | None = None,
+        ref_text: str | None = None,
     ) -> Optional[bytes]:
         """단일 텍스트 세그먼트를 음성으로 합성
 
@@ -652,12 +670,15 @@ class GPTSoVITSAPIClient:
             top_k: 샘플링 다양성 (1~20)
             top_p: Nucleus sampling (0.1~1.0)
             temperature: 음성 랜덤성 (0.1~2.0)
+            ref_audio_path: 참조 오디오 경로 (None이면 자동 선택)
+            ref_text: 참조 텍스트 (None이면 자동 선택)
 
         Returns:
             WAV 오디오 데이터 또는 None
         """
-        # 텍스트에 적합한 참조 오디오 선택
-        ref_audio_path, ref_text = self._select_reference_audio(char_id, text)
+        # 참조 오디오가 전달되지 않으면 자동 선택
+        if ref_audio_path is None or ref_text is None:
+            ref_audio_path, ref_text = self._select_reference_audio(char_id, len(text))
 
         if not ref_audio_path.exists():
             logger.error(f"참조 오디오가 없습니다: {char_id}")
