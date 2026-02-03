@@ -9,6 +9,7 @@ from ..models.story import Dialogue
 @dataclass
 class MatchResult:
     """매칭 결과"""
+
     dialogue: Dialogue
     similarity: float
     index: int  # 에피소드 내 대사 인덱스
@@ -69,32 +70,21 @@ class DialogueMatcher:
             search_indices = list(range(start, end))
             # 나머지 인덱스 추가 (낮은 우선순위)
             search_indices.extend(
-                i for i in range(len(self._dialogues))
-                if i not in search_indices
+                i for i in range(len(self._dialogues)) if i not in search_indices
             )
         else:
             search_indices = list(range(len(self._dialogues)))
-
-        # 짧은 텍스트 여부 (짧을수록 위치 가중치 강화)
-        is_short_text = len(ocr_text.strip()) < 10
-        max_bonus = 0.35 if is_short_text else 0.25
 
         for idx in search_indices:
             dialogue = self._dialogues[idx]
             similarity = self._calculate_similarity(ocr_text, dialogue.text)
 
-            # 위치 기반 가중치 - 거리 비례 감소
+            # 현재 위치 근처면 약간의 보너스
             if self._last_matched_index >= 0:
-                # 앞으로 진행하는 방향(+) 우선, 뒤로 가는 건 페널티
-                offset = idx - self._last_matched_index
-                if offset > 0 and offset <= 5:
-                    # 다음 대사일수록 높은 보너스: +1 → max, +5 → 0
-                    similarity += max_bonus * (1 - (offset - 1) / 5)
-                elif offset < 0 and offset >= -2:
-                    # 이전 대사는 약한 보너스 (되돌아가기)
-                    similarity += 0.05
-
-                similarity = min(similarity, 1.0)
+                distance = abs(idx - self._last_matched_index)
+                if distance <= 3:
+                    similarity += 0.05 * (3 - distance)  # 가까울수록 보너스
+                    similarity = min(similarity, 1.0)
 
             if similarity > best_similarity:
                 best_similarity = similarity
@@ -133,11 +123,13 @@ class DialogueMatcher:
         for idx, dialogue in enumerate(self._dialogues):
             similarity = self._calculate_similarity(ocr_text, dialogue.text)
             if similarity >= min_similarity:
-                results.append(MatchResult(
-                    dialogue=dialogue,
-                    similarity=similarity,
-                    index=idx,
-                ))
+                results.append(
+                    MatchResult(
+                        dialogue=dialogue,
+                        similarity=similarity,
+                        index=idx,
+                    )
+                )
 
         # 유사도 내림차순 정렬
         results.sort(key=lambda r: r.similarity, reverse=True)

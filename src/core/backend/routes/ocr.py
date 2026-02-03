@@ -163,12 +163,14 @@ async def capture_window_image(
         # 상단 UI 영역 제외
         if ignore_top_ratio > 0:
             top_margin = int(image.height * ignore_top_ratio)
-            image = image.crop((
-                0,
-                top_margin,
-                image.width,
-                image.height,
-            ))
+            image = image.crop(
+                (
+                    0,
+                    top_margin,
+                    image.width,
+                    image.height,
+                )
+            )
 
         buffer = io.BytesIO()
         image.save(buffer, format="JPEG", quality=85)
@@ -193,7 +195,9 @@ async def detect_window_dialogue(
     hwnd: Annotated[int, Query(description="윈도우 핸들")],
     lang: Annotated[str, Query(description="OCR 언어")] = "ko",
     min_confidence: Annotated[float, Query(description="최소 신뢰도")] = 0.2,
-    ignore_top_ratio: Annotated[float, Query(description="상단 무시 비율 (UI 제외)")] = 0.15,
+    ignore_top_ratio: Annotated[
+        float, Query(description="상단 무시 비율 (UI 제외)")
+    ] = 0.15,
 ):
     """윈도우에서 대사 감지 (캡처 + OCR)"""
     import traceback
@@ -211,12 +215,14 @@ async def detect_window_dialogue(
         # 상단 UI 영역 제외 (LOG, AUTO, SKIP 등)
         if ignore_top_ratio > 0:
             top_margin = int(image.height * ignore_top_ratio)
-            image = image.crop((
-                0,
-                top_margin,
-                image.width,
-                image.height,
-            ))
+            image = image.crop(
+                (
+                    0,
+                    top_margin,
+                    image.width,
+                    image.height,
+                )
+            )
 
         ocr = EasyOCRProvider(language=lang)
         results = await ocr.recognize(image)
@@ -232,17 +238,21 @@ async def detect_window_dialogue(
             # 모든 결과를 y좌표 순으로 정렬하여 합치기
             sorted_results = sorted(
                 [r for r in results if r.confidence >= min_confidence],
-                key=lambda r: r.bounding_box.y if r.bounding_box else 0
+                key=lambda r: r.bounding_box.y if r.bounding_box else 0,
             )
 
             # 디버깅: 필터링 후 결과
             filtered_count = len(results) - len(sorted_results)
             if filtered_count > 0:
-                print(f"[OCR] Filtered out {filtered_count} results (confidence < {min_confidence})")
+                print(
+                    f"[OCR] Filtered out {filtered_count} results (confidence < {min_confidence})"
+                )
 
             if sorted_results:
                 combined_text = "\n".join(r.text for r in sorted_results)
-                avg_confidence = sum(r.confidence for r in sorted_results) / len(sorted_results)
+                avg_confidence = sum(r.confidence for r in sorted_results) / len(
+                    sorted_results
+                )
                 print(f"[OCR] Final text: '{combined_text}'")
                 return DetectDialogueResponse(
                     text=combined_text,
@@ -272,9 +282,11 @@ import hashlib
 import numpy as np
 from dataclasses import dataclass, field
 
+
 @dataclass
 class WindowStabilityState:
     """윈도우별 안정화 상태"""
+
     last_image_hash: str = ""
     stability_count: int = 0
     last_stable_hash: str = ""
@@ -288,6 +300,7 @@ _window_stability: dict[int, WindowStabilityState] = {}
 def _compute_image_hash(image) -> str:
     """이미지 해시 계산 (빠른 비교용)"""
     from PIL import Image
+
     small = image.resize((64, 64), Image.Resampling.BILINEAR)
     pixels = np.array(small).tobytes()
     return hashlib.md5(pixels).hexdigest()
@@ -298,7 +311,7 @@ class StableDetectResponse(BaseModel):
     confidence: float
     timestamp: float
     is_stable: bool  # 화면이 안정화되었는지
-    is_new: bool     # 새로운 대사인지
+    is_new: bool  # 새로운 대사인지
 
 
 @router.get("/detect/window/stable", response_model=StableDetectResponse)
@@ -337,12 +350,14 @@ async def detect_window_dialogue_stable(
         # 상단 UI 영역 제외
         if ignore_top_ratio > 0:
             top_margin = int(image.height * ignore_top_ratio)
-            image = image.crop((
-                0,
-                top_margin,
-                image.width,
-                image.height,
-            ))
+            image = image.crop(
+                (
+                    0,
+                    top_margin,
+                    image.width,
+                    image.height,
+                )
+            )
 
         # 안정화 체크
         current_hash = _compute_image_hash(image)
@@ -384,11 +399,13 @@ async def detect_window_dialogue_stable(
         if results:
             sorted_results = sorted(
                 [r for r in results if r.confidence >= min_confidence],
-                key=lambda r: r.bounding_box.y if r.bounding_box else 0
+                key=lambda r: r.bounding_box.y if r.bounding_box else 0,
             )
             if sorted_results:
                 combined_text = "\n".join(r.text for r in sorted_results)
-                avg_confidence = sum(r.confidence for r in sorted_results) / len(sorted_results)
+                avg_confidence = sum(r.confidence for r in sorted_results) / len(
+                    sorted_results
+                )
 
                 # 새로운 대사인지 확인
                 is_new = combined_text != state.last_text
@@ -486,14 +503,19 @@ async def recognize_image(
                         y=r.bounding_box.y,
                         width=r.bounding_box.width,
                         height=r.bounding_box.height,
-                    ) if r.bounding_box else None,
+                    )
+                    if r.bounding_box
+                    else None,
                 )
                 for r in results
             ],
             language=lang,
         )
     except ImportError:
-        raise HTTPException(status_code=501, detail="OCR module not available. Install with: uv pip install paddlepaddle paddleocr")
+        raise HTTPException(
+            status_code=501,
+            detail="OCR module not available. Install with: uv pip install paddlepaddle paddleocr",
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -539,13 +561,16 @@ async def capture_dialogue_region(
         monitors = capture.get_monitors()
 
         if monitor >= len(monitors):
-            raise HTTPException(status_code=400, detail=f"Invalid monitor ID: {monitor}")
+            raise HTTPException(
+                status_code=400, detail=f"Invalid monitor ID: {monitor}"
+            )
 
         mon = monitors[monitor]
         region = get_dialogue_region(mon.width, mon.height)
 
         # 모니터 오프셋 적용
         from ...interfaces.ocr import BoundingBox
+
         abs_region = BoundingBox(
             x=mon.left + region.x,
             y=mon.top + region.y,
@@ -679,7 +704,9 @@ async def capture_dialogue_image(
         monitors = capture.get_monitors()
 
         if monitor >= len(monitors):
-            raise HTTPException(status_code=400, detail=f"Invalid monitor ID: {monitor}")
+            raise HTTPException(
+                status_code=400, detail=f"Invalid monitor ID: {monitor}"
+            )
 
         mon = monitors[monitor]
         region = get_dialogue_region(mon.width, mon.height)
@@ -797,7 +824,10 @@ async def detect_custom_region(
 ):
     """사용자 지정 영역에서 텍스트 감지"""
     if _custom_region is None:
-        raise HTTPException(status_code=400, detail="Custom region not set. Call POST /region/custom first.")
+        raise HTTPException(
+            status_code=400,
+            detail="Custom region not set. Call POST /region/custom first.",
+        )
 
     try:
         from ...ocr import ScreenCapture, PaddleOCRProvider
@@ -880,8 +910,7 @@ async def match_dialogue(request: MatchDialogueRequest):
 
         if episode is None:
             raise HTTPException(
-                status_code=404,
-                detail=f"Episode not found: {request.episode_id}"
+                status_code=404, detail=f"Episode not found: {request.episode_id}"
             )
 
         # DialogueMatcher 가져오기 (캐시 또는 새로 생성)
@@ -984,7 +1013,7 @@ async def stream_window_dialogue(
             # 연결 성공 알림
             yield {
                 "event": "status",
-                "data": json.dumps({"type": "connected", "hwnd": hwnd})
+                "data": json.dumps({"type": "connected", "hwnd": hwnd}),
             }
 
             # Heartbeat 카운터 (연결 유지 확인용)
@@ -997,7 +1026,7 @@ async def stream_window_dialogue(
                     heartbeat_counter = 0
                     yield {
                         "event": "heartbeat",
-                        "data": json.dumps({"timestamp": time.time()})
+                        "data": json.dumps({"timestamp": time.time()}),
                     }
                 try:
                     # 캡처
@@ -1005,7 +1034,12 @@ async def stream_window_dialogue(
                     if image is None:
                         yield {
                             "event": "error",
-                            "data": json.dumps({"type": "capture_failed", "message": "Window capture failed"})
+                            "data": json.dumps(
+                                {
+                                    "type": "capture_failed",
+                                    "message": "Window capture failed",
+                                }
+                            ),
                         }
                         await asyncio.sleep(poll_interval * 2)
                         continue
@@ -1040,10 +1074,10 @@ async def stream_window_dialogue(
                     try:
                         results = await asyncio.wait_for(
                             ocr.recognize(image),
-                            timeout=3.0  # 3초 타임아웃
+                            timeout=10.0,  # 10초 타임아웃
                         )
                     except asyncio.TimeoutError:
-                        print("[SSE-OCR] OCR 타임아웃 (3초)")
+                        print("[SSE-OCR] OCR 타임아웃 (10초)")
                         await asyncio.sleep(poll_interval)
                         continue
 
@@ -1053,21 +1087,27 @@ async def stream_window_dialogue(
                         for i, r in enumerate(results):
                             bbox = r.bounding_box
                             pos = f"({bbox.x}, {bbox.y})" if bbox else "?"
-                            print(f"  [{i}] conf={r.confidence:.2f} pos={pos} text='{r.text}'")
+                            print(
+                                f"  [{i}] conf={r.confidence:.2f} pos={pos} text='{r.text}'"
+                            )
 
                         sorted_results = sorted(
                             [r for r in results if r.confidence >= min_confidence],
-                            key=lambda r: r.bounding_box.y if r.bounding_box else 0
+                            key=lambda r: r.bounding_box.y if r.bounding_box else 0,
                         )
 
                         # 디버깅: 필터링 후 결과
                         filtered_count = len(results) - len(sorted_results)
                         if filtered_count > 0:
-                            print(f"[SSE-OCR] Filtered out {filtered_count} results (confidence < {min_confidence})")
+                            print(
+                                f"[SSE-OCR] Filtered out {filtered_count} results (confidence < {min_confidence})"
+                            )
 
                         if sorted_results:
                             combined_text = "\n".join(r.text for r in sorted_results)
-                            avg_confidence = sum(r.confidence for r in sorted_results) / len(sorted_results)
+                            avg_confidence = sum(
+                                r.confidence for r in sorted_results
+                            ) / len(sorted_results)
 
                             # 새로운 대사인지 확인
                             is_new = combined_text != state.last_text
@@ -1076,13 +1116,15 @@ async def stream_window_dialogue(
                                 print(f"[SSE-OCR] New dialogue: '{combined_text}'")
                                 yield {
                                     "event": "dialogue",
-                                    "data": json.dumps({
-                                        "type": "dialogue",
-                                        "text": combined_text,
-                                        "confidence": avg_confidence,
-                                        "timestamp": time.time(),
-                                        "is_new": True
-                                    })
+                                    "data": json.dumps(
+                                        {
+                                            "type": "dialogue",
+                                            "text": combined_text,
+                                            "confidence": avg_confidence,
+                                            "timestamp": time.time(),
+                                            "is_new": True,
+                                        }
+                                    ),
                                 }
 
                 except asyncio.CancelledError:
@@ -1092,7 +1134,7 @@ async def stream_window_dialogue(
                     traceback.print_exc()
                     yield {
                         "event": "error",
-                        "data": json.dumps({"type": "error", "message": str(e)})
+                        "data": json.dumps({"type": "error", "message": str(e)}),
                     }
 
                 await asyncio.sleep(poll_interval)
@@ -1102,7 +1144,7 @@ async def stream_window_dialogue(
             traceback.print_exc()
             yield {
                 "event": "error",
-                "data": json.dumps({"type": "setup_error", "message": str(e)})
+                "data": json.dumps({"type": "setup_error", "message": str(e)}),
             }
         finally:
             # 정리

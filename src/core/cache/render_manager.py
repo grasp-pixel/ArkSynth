@@ -261,11 +261,14 @@ class RenderManager:
                 if not char_id_to_use:
                     # 나레이션 - narrator_char_id 또는 default_char_id 사용
                     char_id_to_use = job.narrator_char_id or job.default_char_id
+                elif await synthesizer.is_available(char_id_to_use):
+                    # 캐릭터 자신의 모델이 있으면 그대로 사용
+                    pass
                 elif char_id_to_use in job.speaker_voice_map:
-                    # 수동 매핑이 있으면 사용
+                    # 모델 없고 수동 매핑이 있으면 사용
                     char_id_to_use = job.speaker_voice_map[char_id_to_use]
-                elif not await synthesizer.is_available(char_id_to_use):
-                    # 모델 없음 - default_char_id 사용
+                else:
+                    # 모델도 없고 매핑도 없으면 - default_char_id 사용
                     char_id_to_use = job.default_char_id
 
                 # 음성 합성
