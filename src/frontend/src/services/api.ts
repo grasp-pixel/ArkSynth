@@ -156,10 +156,14 @@ export const storiesApi = {
 // TTS 관련 API
 export const ttsApi = {
   // 음성 합성 (GPT-SoVITS)
+  // 첫 합성은 API 서버 시작 + 참조 오디오 준비로 오래 걸릴 수 있음 (최대 120초)
   synthesize: async (text: string, charId: string): Promise<Blob> => {
     const res = await api.post('/api/tts/synthesize',
       { text, char_id: charId },
-      { responseType: 'blob' }
+      {
+        responseType: 'blob',
+        timeout: 120000,  // 120초 (첫 합성 시 API 서버 시작 + 참조 준비 포함)
+      }
     )
     return res.data
   },
@@ -177,6 +181,67 @@ export const ttsApi = {
     )
     return res.data
   },
+
+  // GPT-SoVITS 상태 확인
+  getGptSovitsStatus: async () => {
+    const res = await api.get<{
+      installed: boolean
+      api_running: boolean
+      synthesizing?: boolean  // 합성 진행 중 여부
+      ready_characters: string[]
+      ready_count: number
+      error?: string
+    }>('/api/tts/gpt-sovits/status')
+    return res.data
+  },
+
+  // GPT-SoVITS API 서버 시작
+  startGptSovits: async () => {
+    const res = await api.post<{
+      status: string
+      message: string
+    }>('/api/tts/gpt-sovits/start', {}, { timeout: 70000 })  // 60초 대기 + 여유
+    return res.data
+  },
+
+  // GPT-SoVITS 진단 정보
+  diagnoseGptSovits: async () => {
+    const res = await api.get<GptSovitsDiagnosis>('/api/tts/gpt-sovits/diagnose')
+    return res.data
+  },
+}
+
+// GPT-SoVITS 진단 타입
+export interface GptSovitsDiagnosis {
+  config: {
+    gpt_sovits_path: string
+    gpt_sovits_path_exists: boolean
+    python_path: string | null
+    python_exists: boolean
+    api_url: string
+  }
+  installation: {
+    is_installed: boolean
+    api_v2_exists: boolean
+    api_v1_exists: boolean
+    runtime_dir_exists: boolean
+    runtime_python_exists?: boolean
+    critical_dirs: Record<string, boolean>
+  }
+  api_status: {
+    gpt_sovits_installed: boolean
+    gpt_sovits_path: string
+    python_path: string | null
+    api_url: string
+    process_running: boolean
+    process_pid: number | null
+    api_script_exists: boolean
+    api_script_path: string
+    process_exit_code?: number
+  }
+  api_reachable: boolean
+  error?: string
+  error_type?: string
 }
 
 // 음성 자산 관련 API
@@ -770,6 +835,199 @@ export function createDialogueStream(
 
   return {
     close: () => {
+      eventSource.close()
+    }
+  }
+}
+
+// === 설정 API ===
+
+export interface DependencyStatus {
+  name: string
+  installed: boolean
+  version?: string
+  path?: string
+}
+
+export interface SettingsResponse {
+  gpt_sovits_path: string
+  models_path: string
+  extracted_path: string
+  gamedata_path: string
+  game_language: string
+  voice_language: string
+  gpt_sovits_language: string
+  dependencies: DependencyStatus[]
+}
+
+export interface FFmpegInstallGuide {
+  windows: {
+    method: string
+    command: string
+    alternative: string
+  }
+  manual_steps: string[]
+}
+
+export interface SevenZipInstallGuide {
+  windows: {
+    method: string
+    command: string
+    alternative: string
+  }
+  manual_steps: string[]
+  note: string
+}
+
+// GPT-SoVITS 설치 관련 타입
+export interface GptSovitsInstallInfo {
+  is_installed: boolean
+  install_path: string | null
+  python_path: string | null
+  gpt_sovits_path: string | null
+  torch_version?: string
+  cuda_available?: boolean
+}
+
+export interface InstallProgress {
+  stage: 'downloading' | 'extracting' | 'verifying' | 'complete' | 'error'
+  progress: number
+  message: string
+  error?: string
+}
+
+export interface InstallVerifyResult {
+  valid: boolean
+  details: {
+    python_exists: boolean
+    gpt_sovits_exists: boolean
+    api_script_exists: boolean
+    torch_works?: boolean
+    cuda_available?: boolean
+  }
+}
+
+export const settingsApi = {
+  // 설정 조회
+  getSettings: async () => {
+    const res = await api.get<SettingsResponse>('/api/settings')
+    return res.data
+  },
+
+  // 의존성 상태만 확인
+  checkDependencies: async () => {
+    const res = await api.get<{ dependencies: DependencyStatus[] }>('/api/settings/dependencies')
+    return res.data
+  },
+
+  // 폴더 열기
+  openFolder: async (path: string) => {
+    const res = await api.post<{ status: string }>('/api/settings/open-folder', null, {
+      params: { path }
+    })
+    return res.data
+  },
+
+  // FFmpeg 설치 가이드
+  getFFmpegGuide: async () => {
+    const res = await api.get<FFmpegInstallGuide>('/api/settings/ffmpeg/install-guide')
+    return res.data
+  },
+
+  // 7-Zip 설치 가이드
+  get7ZipGuide: async () => {
+    const res = await api.get<SevenZipInstallGuide>('/api/settings/7zip/install-guide')
+    return res.data
+  },
+
+  // GPT-SoVITS 설치 정보 조회
+  getGptSovitsInstallInfo: async () => {
+    const res = await api.get<GptSovitsInstallInfo>('/api/settings/gpt-sovits/install-info')
+    return res.data
+  },
+
+  // GPT-SoVITS 설치 시작
+  startGptSovitsInstall: async (cudaVersion: string = 'cu121') => {
+    const res = await api.post<{ status: string; message: string }>(
+      '/api/settings/gpt-sovits/install',
+      { cuda_version: cudaVersion }
+    )
+    return res.data
+  },
+
+  // GPT-SoVITS 설치 취소
+  cancelGptSovitsInstall: async () => {
+    const res = await api.post<{ status: string; message: string }>(
+      '/api/settings/gpt-sovits/install/cancel'
+    )
+    return res.data
+  },
+
+  // GPT-SoVITS 설치 검증
+  verifyGptSovitsInstall: async () => {
+    const res = await api.get<InstallVerifyResult>('/api/settings/gpt-sovits/verify')
+    return res.data
+  },
+
+  // GPT-SoVITS 설치 폴더 정리
+  cleanupGptSovitsInstall: async () => {
+    const res = await api.post<{ status: string; message: string }>(
+      '/api/settings/gpt-sovits/cleanup'
+    )
+    return res.data
+  },
+}
+
+// GPT-SoVITS 설치 진행률 SSE 스트림
+export function createInstallStream(
+  options: {
+    onProgress?: (progress: InstallProgress) => void
+    onComplete?: () => void
+    onError?: (error: string) => void
+  } = {}
+): { close: () => void } {
+  const { onProgress, onComplete, onError } = options
+
+  console.log('[SSE] createInstallStream: 연결 시작')
+  const eventSource = new EventSource(`${API_BASE}/api/settings/gpt-sovits/install/stream`)
+
+  eventSource.onopen = () => {
+    console.log('[SSE] 설치 스트림 연결 성공')
+  }
+
+  eventSource.addEventListener('progress', (event) => {
+    console.log('[SSE] 설치 progress:', event.data)
+    const progress = JSON.parse(event.data) as InstallProgress
+    onProgress?.(progress)
+  })
+
+  eventSource.addEventListener('complete', () => {
+    console.log('[SSE] 설치 완료')
+    onComplete?.()
+    eventSource.close()
+  })
+
+  eventSource.addEventListener('error', (event) => {
+    if (event instanceof MessageEvent) {
+      const data = JSON.parse(event.data)
+      console.error('[SSE] 설치 에러:', data)
+      onError?.(data.error || '설치 실패')
+    }
+    eventSource.close()
+  })
+
+  eventSource.addEventListener('ping', () => {
+    console.log('[SSE] 설치 ping')
+  })
+
+  eventSource.onerror = (e) => {
+    console.error('[SSE] 설치 스트림 연결 오류:', e)
+    // 연결 오류는 무시 (ping 타임아웃일 수 있음)
+  }
+
+  return {
+    close: () => {
+      console.log('[SSE] 설치 스트림 종료')
       eventSource.close()
     }
   }

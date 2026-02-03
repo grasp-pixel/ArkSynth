@@ -1,9 +1,11 @@
 """게임 대사 감지 모듈"""
 
 import asyncio
+import hashlib
 from dataclasses import dataclass, field
 from typing import Callable
 
+import numpy as np
 from PIL import Image
 
 from ..interfaces.ocr import BoundingBox, OCRResult
@@ -35,8 +37,12 @@ class DetectorConfig:
     min_confidence: float = 0.5
 
     # 감지 설정
-    poll_interval: float = 0.5  # 초 단위
+    poll_interval: float = 0.1  # 캡처 간격 (초) - 변화 감지용으로 짧게
     text_change_threshold: float = 0.8  # 텍스트 변경 감지 임계값
+
+    # 타이핑 안정화 설정 (화면 변화 감지)
+    stability_threshold: int = 3  # 연속 N번 같은 화면이면 안정화로 판단
+    pixel_diff_threshold: float = 0.01  # 픽셀 변화율 임계값 (1% 미만이면 같은 화면)
 
 
 class DialogueDetector:
@@ -44,6 +50,10 @@ class DialogueDetector:
 
     화면을 주기적으로 캡처하고 OCR을 수행하여
     새로운 대사가 나타나면 콜백을 호출합니다.
+
+    타이핑 효과 감지:
+    - 화면이 계속 변하면 타이핑 중으로 판단하여 OCR 스킵
+    - 화면이 안정화되면 (N번 연속 같은 화면) OCR 실행
     """
 
     def __init__(self, config: DetectorConfig | None = None):
@@ -53,6 +63,69 @@ class DialogueDetector:
         self._running = False
         self._last_text: str = ""
         self._callbacks: list[Callable[[DialogueDetection], None]] = []
+
+        # 타이핑 안정화 감지용
+        self._last_image_hash: str = ""
+        self._stability_count: int = 0
+        self._last_stable_hash: str = ""  # 마지막으로 OCR 실행한 화면
+
+    def _compute_image_hash(self, image: Image.Image) -> str:
+        """이미지 해시 계산 (빠른 비교용)
+
+        이미지를 축소하여 해시 계산 - 속도와 정확도 균형.
+        """
+        # 작은 크기로 축소 (빠른 비교)
+        small = image.resize((64, 64), Image.Resampling.BILINEAR)
+        pixels = np.array(small).tobytes()
+        return hashlib.md5(pixels).hexdigest()
+
+    def _compute_pixel_diff(self, img1: Image.Image, img2: Image.Image) -> float:
+        """두 이미지의 픽셀 변화율 계산
+
+        Returns:
+            변화율 (0.0 ~ 1.0)
+        """
+        # 같은 크기로 축소
+        size = (64, 64)
+        arr1 = np.array(img1.resize(size, Image.Resampling.BILINEAR), dtype=np.float32)
+        arr2 = np.array(img2.resize(size, Image.Resampling.BILINEAR), dtype=np.float32)
+
+        # 픽셀 차이 계산
+        diff = np.abs(arr1 - arr2)
+        # 255 기준으로 정규화하여 변화율 계산
+        change_rate = np.mean(diff) / 255.0
+        return float(change_rate)
+
+    def _check_stability(self, image: Image.Image) -> bool:
+        """화면 안정화 여부 확인
+
+        타이핑 효과 중에는 False 반환 (OCR 스킵).
+        화면이 안정화되면 True 반환 (OCR 실행).
+
+        Returns:
+            True면 OCR 실행, False면 스킵
+        """
+        current_hash = self._compute_image_hash(image)
+
+        # 이전 화면과 같은지 확인
+        if current_hash == self._last_image_hash:
+            self._stability_count += 1
+        else:
+            self._stability_count = 1  # 리셋 (현재 프레임이 첫 번째)
+            self._last_image_hash = current_hash
+
+        # 안정화 임계값 도달 여부
+        is_stable = self._stability_count >= self.config.stability_threshold
+
+        if is_stable:
+            # 이미 OCR 실행한 화면이면 스킵
+            if current_hash == self._last_stable_hash:
+                return False
+            self._last_stable_hash = current_hash
+            print(f"[DialogueDetector] 화면 안정화됨 (count={self._stability_count})")
+            return True
+
+        return False
 
     def _get_dialogue_region(self) -> BoundingBox:
         """대사 영역 가져오기"""
@@ -67,6 +140,29 @@ class DialogueDetector:
 
         # 기본값 (1920x1080)
         return get_dialogue_region(1920, 1080)
+
+    async def _capture_dialogue_region(self) -> Image.Image | None:
+        """대사 영역 캡처 (헬퍼)"""
+        try:
+            monitors = self._capture.get_monitors()
+            if self.config.monitor_id >= len(monitors):
+                return None
+
+            monitor = monitors[self.config.monitor_id]
+            rel_region = self._get_dialogue_region()
+
+            # 절대 좌표로 변환
+            abs_region = BoundingBox(
+                x=monitor.left + rel_region.x,
+                y=monitor.top + rel_region.y,
+                width=rel_region.width,
+                height=rel_region.height,
+            )
+
+            return await self._capture.capture_region_async(abs_region)
+        except Exception as e:
+            print(f"[DialogueDetector] Capture error: {e}")
+            return None
 
     def on_dialogue(self, callback: Callable[[DialogueDetection], None]) -> None:
         """대사 감지 콜백 등록
@@ -210,13 +306,31 @@ class DialogueDetector:
         )
 
     async def start_monitoring(self) -> None:
-        """실시간 모니터링 시작"""
+        """실시간 모니터링 시작
+
+        타이핑 효과 감지:
+        1. 빠른 간격으로 캡처 (0.1초)
+        2. 화면 변화 감지 (해시 비교)
+        3. 안정화되면 OCR 실행
+        """
         self._running = True
-        print(f"[DialogueDetector] Monitoring started (interval: {self.config.poll_interval}s)")
+        print(f"[DialogueDetector] Monitoring started (interval: {self.config.poll_interval}s, stability: {self.config.stability_threshold})")
 
         while self._running:
             try:
-                detection = await self.detect_once()
+                # 캡처
+                image = await self._capture_dialogue_region()
+                if image is None:
+                    await asyncio.sleep(self.config.poll_interval)
+                    continue
+
+                # 안정화 체크 (타이핑 중이면 스킵)
+                if not self._check_stability(image):
+                    await asyncio.sleep(self.config.poll_interval)
+                    continue
+
+                # OCR 실행 (안정화된 화면만)
+                detection = await self.detect_from_image(image)
 
                 if detection and self._is_text_changed(detection.text):
                     self._last_text = detection.text

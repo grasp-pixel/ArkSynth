@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routes import episodes, stories, tts, voice, health, ocr
+from .routes import episodes, stories, tts, voice, health, ocr, training, render, settings
 
 
 def create_app() -> FastAPI:
@@ -30,5 +30,8 @@ def create_app() -> FastAPI:
     app.include_router(tts.router, prefix="/api/tts", tags=["tts"])
     app.include_router(voice.router, prefix="/api/voice", tags=["voice"])
     app.include_router(ocr.router, prefix="/api/ocr", tags=["ocr"])
+    app.include_router(training.router, prefix="/api/training", tags=["training"])
+    app.include_router(render.router, prefix="/api/render", tags=["render"])
+    app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 
     return app

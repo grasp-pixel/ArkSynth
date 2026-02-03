@@ -43,9 +43,13 @@ class GPTSoVITSSynthesizer:
         self._loaded_model_id: str | None = None
         self._model_loaded = False
         self._api_started = False
+        self._synthesizing = False  # 합성 진행 중 플래그
 
     async def ensure_api_running(self) -> bool:
-        """API 서버가 실행 중인지 확인하고 필요 시 시작
+        """API 서버가 실행 중인지 확인
+
+        GPT-SoVITS API 서버는 사용자가 미리 실행해야 합니다.
+        자동 시작하지 않습니다.
 
         Returns:
             bool: API 서버 준비 완료 여부
@@ -55,27 +59,23 @@ class GPTSoVITSSynthesizer:
             self._api_started = True
             return True
 
-        # GPT-SoVITS 설치 확인
-        if not self.config.is_gpt_sovits_installed:
-            logger.error(f"GPT-SoVITS가 설치되어 있지 않습니다: {self.config.gpt_sovits_path}")
-            return False
-
-        # API 서버 시작
-        if not self.api_client.start_api_server():
-            logger.error("GPT-SoVITS API 서버 시작 실패")
-            return False
-
-        # 준비될 때까지 대기
-        if await self.api_client.wait_for_api_ready(timeout=60.0):
-            self._api_started = True
-            return True
-
-        logger.error("GPT-SoVITS API 서버 준비 시간 초과")
+        # 실행 중이 아니면 에러
+        logger.error(
+            "GPT-SoVITS API 서버가 실행 중이 아닙니다. "
+            "GPT-SoVITS를 먼저 실행하세요: "
+            f"cd {self.config.gpt_sovits_path} && "
+            f"runtime\\python.exe api_v2.py -a {self.config.api_host} -p {self.config.api_port}"
+        )
         return False
 
     async def is_available(self, char_id: str) -> bool:
         """해당 캐릭터 모델 사용 가능 여부"""
         return self.model_manager.is_trained(char_id)
+
+    @property
+    def is_synthesizing(self) -> bool:
+        """현재 음성 합성 진행 중 여부"""
+        return self._synthesizing
 
     async def load_model(self, char_id: str) -> bool:
         """모델 로드
@@ -172,12 +172,16 @@ class GPTSoVITSSynthesizer:
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            logger.info(f"음성 합성 중: {char_id} - {text[:20]}...")
+            logger.info(f"[Synthesizer] 합성 시작: {char_id}")
+            logger.info(f"[Synthesizer] 텍스트: {text[:50]}{'...' if len(text) > 50 else ''}")
 
-            # API 서버 확인
-            if not self._api_started or not await self.api_client.is_api_running():
-                logger.error("GPT-SoVITS API 서버가 실행 중이 아닙니다")
+            # API 서버 확인 (시작 전에만 체크, 합성 중에는 블로킹되므로 스킵)
+            if not self._api_started:
+                logger.error("GPT-SoVITS API 서버가 시작되지 않았습니다")
                 return None
+
+            # 합성 상태 플래그 설정
+            self._synthesizing = True
 
             # 음성 합성
             success = await self.api_client.synthesize_to_file(
@@ -186,6 +190,8 @@ class GPTSoVITSSynthesizer:
                 output_path=output_path,
                 language=language,
             )
+
+            self._synthesizing = False
 
             if success:
                 # 오디오 파일에서 실제 길이 계산
@@ -197,13 +203,14 @@ class GPTSoVITSSynthesizer:
                     duration=duration,
                     sample_rate=self.config.sample_rate,
                 )
-                logger.info(f"음성 합성 완료: {output_path}")
+                logger.info(f"[Synthesizer] 합성 완료: {duration:.2f}초")
                 return result
             else:
-                logger.error("API 음성 합성 실패")
+                logger.error("[Synthesizer] API 음성 합성 실패")
                 return None
 
         except Exception as e:
+            self._synthesizing = False
             logger.error(f"음성 합성 실패: {e}")
             return None
 

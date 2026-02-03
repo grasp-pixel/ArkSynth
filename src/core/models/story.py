@@ -21,6 +21,7 @@ class CommandType(Enum):
     BACKGROUND = "Background"
     CHARACTER = "Character"
     DIALOGUE = "name"
+    NARRATION = "Narration"  # 화자 없는 순수 텍스트 나레이션
     DELAY = "Delay"
     BLOCKER = "Blocker"
     IMAGE = "Image"
@@ -91,8 +92,8 @@ class Dialogue:
 
     @property
     def is_narration(self) -> bool:
-        """나레이션 여부"""
-        return self.speaker_id is None or self.speaker_name == ""
+        """나레이션 여부 (화자 이름이 없는 경우)"""
+        return self.speaker_name == ""
 
 
 @dataclass

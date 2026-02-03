@@ -17,6 +17,30 @@ from PIL import Image
 from ..interfaces.ocr import BoundingBox, OCRProvider, OCRResult
 
 
+def _detect_gpu() -> bool:
+    """CUDA GPU 사용 가능 여부 감지"""
+    try:
+        import torch
+        available = torch.cuda.is_available()
+        if available:
+            print(f"[EasyOCR] CUDA GPU 감지: {torch.cuda.get_device_name(0)}")
+        return available
+    except ImportError:
+        return False
+
+
+# GPU 사용 여부 캐싱 (앱 시작 시 한 번만 체크)
+_GPU_AVAILABLE: bool | None = None
+
+
+def is_gpu_available() -> bool:
+    """GPU 사용 가능 여부 반환 (캐싱됨)"""
+    global _GPU_AVAILABLE
+    if _GPU_AVAILABLE is None:
+        _GPU_AVAILABLE = _detect_gpu()
+    return _GPU_AVAILABLE
+
+
 class EasyOCRProvider(OCRProvider):
     """EasyOCR 기반 OCR 엔진
 
@@ -37,16 +61,28 @@ class EasyOCRProvider(OCRProvider):
         "en_US": ["en"],
     }
 
-    def __init__(self, language: str = "ko", use_gpu: bool = False):
+    def __init__(
+        self,
+        language: str = "ko",
+        use_gpu: bool | None = None,
+        max_width: int = 1920,
+    ):
         """초기화
 
         Args:
             language: 인식 언어 (ko, zh, ja, en)
-            use_gpu: GPU 사용 여부
+            use_gpu: GPU 사용 여부 (None이면 자동 감지)
+            max_width: OCR 전 이미지 최대 너비 (리사이즈, 0이면 비활성화)
         """
         self._language = language
-        self._use_gpu = use_gpu
+        self._use_gpu = use_gpu if use_gpu is not None else is_gpu_available()
+        self._max_width = max_width
         self._reader: Any = None  # lazy loading
+
+        if self._use_gpu:
+            print(f"[EasyOCR] GPU 모드 활성화")
+        else:
+            print(f"[EasyOCR] CPU 모드 (이미지 리사이즈: max_width={max_width})")
 
     def _get_lang_list(self, lang: str) -> list[str]:
         """언어 코드를 EasyOCR 언어 리스트로 변환"""
@@ -86,6 +122,55 @@ class EasyOCRProvider(OCRProvider):
         if image.mode != "RGB":
             image = image.convert("RGB")
         return np.array(image)
+
+    def _preprocess_for_ocr(self, image: Image.Image) -> Image.Image:
+        """OCR 전처리: 대비 향상 및 선명화
+
+        게임 화면의 흰색/밝은 텍스트 인식 개선.
+        """
+        import cv2
+        from PIL import ImageEnhance
+
+        # 1. 대비 향상
+        enhancer = ImageEnhance.Contrast(image)
+        image = enhancer.enhance(1.5)  # 대비 1.5배
+
+        # 2. 선명도 향상
+        enhancer = ImageEnhance.Sharpness(image)
+        image = enhancer.enhance(2.0)  # 선명도 2배
+
+        # 3. OpenCV로 추가 전처리
+        img_array = np.array(image)
+
+        # 그레이스케일 변환
+        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+
+        # CLAHE (적응형 히스토그램 평활화) - 국소적 대비 향상
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(gray)
+
+        # 다시 RGB로 변환 (EasyOCR은 컬러 이미지도 받음)
+        enhanced_rgb = cv2.cvtColor(enhanced, cv2.COLOR_GRAY2RGB)
+
+        return Image.fromarray(enhanced_rgb)
+
+    def _resize_image(self, image: Image.Image) -> Image.Image:
+        """이미지 리사이즈 (OCR 성능 최적화)
+
+        max_width보다 큰 이미지는 비율 유지하며 축소.
+        GPU 모드에서는 리사이즈 하지 않음 (GPU가 충분히 빠름).
+        """
+        if self._max_width <= 0 or self._use_gpu:
+            return image
+
+        if image.width <= self._max_width:
+            return image
+
+        ratio = self._max_width / image.width
+        new_height = int(image.height * ratio)
+        resized = image.resize((self._max_width, new_height), Image.Resampling.LANCZOS)
+        print(f"[EasyOCR] 이미지 리사이즈: {image.width}x{image.height} → {resized.width}x{resized.height}")
+        return resized
 
     def _run_ocr(self, img_array: np.ndarray) -> list:
         """OCR 실행 (동기)"""
@@ -140,16 +225,24 @@ class EasyOCRProvider(OCRProvider):
 
         return ocr_results
 
-    async def recognize(self, image: Image.Image) -> list[OCRResult]:
+    async def recognize(self, image: Image.Image, preprocess: bool = True) -> list[OCRResult]:
         """이미지에서 텍스트 인식
 
         Args:
             image: PIL Image 객체
+            preprocess: OCR 전처리 적용 여부 (기본 True)
 
         Returns:
             인식된 텍스트 목록
         """
-        img_array = self._image_to_array(image)
+        # 이미지 리사이즈 (CPU 모드에서 성능 최적화)
+        resized = self._resize_image(image)
+
+        # 전처리 적용 (대비/선명도 향상)
+        if preprocess:
+            resized = self._preprocess_for_ocr(resized)
+
+        img_array = self._image_to_array(resized)
 
         # EasyOCR은 동기 함수이므로 executor에서 실행
         loop = asyncio.get_event_loop()

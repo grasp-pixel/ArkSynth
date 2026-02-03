@@ -1,6 +1,6 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { useAppStore } from '../stores/appStore'
-import { ocrApi } from '../services/api'
+import { ocrApi, ttsApi } from '../services/api'
 
 export default function VoiceSetupPanel() {
   const {
@@ -32,9 +32,19 @@ export default function VoiceSetupPanel() {
     startBatchTraining,
     cancelTraining,
     clearAllTrainedModels,
-    subscribeToTrainingProgress,
     unsubscribeFromTrainingProgress,
+    // 에피소드 관련
+    selectedEpisode,
+    // GPT-SoVITS (앱 레벨 상태)
+    gptSovitsStatus,
   } = useAppStore()
+
+  // 테스트 관련 상태
+  const [testCharId, setTestCharId] = useState<string | null>(null)
+  const [testText, setTestText] = useState('')
+  const [isTesting, setIsTesting] = useState(false)
+  const [testError, setTestError] = useState<string | null>(null)
+  const testAudioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
     loadWindows()
@@ -42,11 +52,27 @@ export default function VoiceSetupPanel() {
     loadTrainedModels()
     loadVoiceCharacters()
 
-    // 학습 진행 중이면 구독 시작
     return () => {
       unsubscribeFromTrainingProgress()
+      // 테스트 오디오 정리
+      if (testAudioRef.current) {
+        testAudioRef.current.pause()
+        testAudioRef.current = null
+      }
     }
   }, [])
+
+  // 에피소드 첫 대사로 테스트 텍스트 기본값 설정
+  useEffect(() => {
+    if (selectedEpisode?.dialogues?.length && !testText) {
+      const firstDialogue = selectedEpisode.dialogues[0]
+      setTestText(firstDialogue.text)
+      // 첫 대사 화자가 학습되어 있으면 자동 선택
+      if (firstDialogue.speaker_id && trainedCharIds.has(firstDialogue.speaker_id)) {
+        setTestCharId(firstDialogue.speaker_id)
+      }
+    }
+  }, [selectedEpisode, trainedCharIds])
 
   // 게임 관련 윈도우 우선 정렬
   const sortedWindows = useMemo(() => {
@@ -92,6 +118,59 @@ export default function VoiceSetupPanel() {
       c => c.has_voice && c.char_id && !trainedCharIds.has(c.char_id)
     )
   }, [groupCharacters, trainedCharIds])
+
+  // 테스트 가능한 캐릭터 (학습 완료된 캐릭터만)
+  const testableCharacters = useMemo(() => {
+    return voiceCharacters.filter(c => trainedCharIds.has(c.char_id))
+  }, [voiceCharacters, trainedCharIds])
+
+  // 음성 테스트 실행
+  const handleTestVoice = async () => {
+    if (!testCharId || !testText.trim()) return
+
+    setIsTesting(true)
+    setTestError(null)
+
+    // 기존 테스트 오디오 중지
+    if (testAudioRef.current) {
+      testAudioRef.current.pause()
+      URL.revokeObjectURL(testAudioRef.current.src)
+      testAudioRef.current = null
+    }
+
+    try {
+      const audioBlob = await ttsApi.synthesize(testText.trim(), testCharId)
+      const audioUrl = URL.createObjectURL(audioBlob)
+
+      const audio = new Audio(audioUrl)
+      testAudioRef.current = audio
+
+      audio.onended = () => {
+        setIsTesting(false)
+        URL.revokeObjectURL(audioUrl)
+      }
+      audio.onerror = () => {
+        setIsTesting(false)
+        setTestError('오디오 재생 실패')
+        URL.revokeObjectURL(audioUrl)
+      }
+
+      await audio.play()
+    } catch (error: any) {
+      console.error('[Test] 음성 합성 실패:', error)
+      setTestError(error?.response?.data?.detail || error?.message || '음성 합성 실패')
+      setIsTesting(false)
+    }
+  }
+
+  // 테스트 중지
+  const handleStopTest = () => {
+    if (testAudioRef.current) {
+      testAudioRef.current.pause()
+      testAudioRef.current = null
+    }
+    setIsTesting(false)
+  }
 
   // 일괄 학습 시작
   const handleStartBatchTraining = async () => {
@@ -178,9 +257,9 @@ export default function VoiceSetupPanel() {
                       {char.dialogue_count}대사
                     </span>
                     {char.char_id && trainedCharIds.has(char.char_id) ? (
-                      <span className="text-xs text-green-400 font-medium">학습됨</span>
+                      <span className="text-xs text-green-400 font-medium">준비됨</span>
                     ) : char.has_voice ? (
-                      <span className="text-xs text-ark-yellow">대기</span>
+                      <span className="text-xs text-ark-yellow">준비 필요</span>
                     ) : null}
                   </div>
                 </div>
@@ -192,12 +271,46 @@ export default function VoiceSetupPanel() {
           </p>
         </div>
 
-        {/* 음성 모델 학습 섹션 */}
+        {/* GPT-SoVITS 연결 상태 */}
+        <div className="p-4 border-b border-ark-border">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-medium text-ark-gray">GPT-SoVITS</h4>
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${
+                gptSovitsStatus?.synthesizing
+                  ? 'bg-cyan-500 ark-pulse'
+                  : gptSovitsStatus?.api_running
+                    ? 'bg-green-500'
+                    : 'bg-yellow-500'
+              }`} />
+              <span className={`text-xs ${
+                gptSovitsStatus?.synthesizing
+                  ? 'text-cyan-400'
+                  : gptSovitsStatus?.api_running
+                    ? 'text-green-400'
+                    : 'text-yellow-400'
+              }`}>
+                {gptSovitsStatus?.synthesizing
+                  ? '합성 중...'
+                  : gptSovitsStatus?.api_running
+                    ? '연결됨'
+                    : '대기 중'}
+              </span>
+            </div>
+          </div>
+          {!gptSovitsStatus?.api_running && (
+            <p className="mt-2 text-xs text-ark-gray/70">
+              * 상단 헤더에서 GPT-SoVITS를 시작하세요
+            </p>
+          )}
+        </div>
+
+        {/* 음성 준비 섹션 */}
         <div className="p-4 border-b border-ark-border">
           <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-medium text-ark-gray">음성 모델 학습</h4>
+            <h4 className="text-sm font-medium text-ark-gray">음성 준비</h4>
             <span className="text-xs text-ark-gray">
-              학습 완료 {characterStats.trained}/{characterStats.withVoice}
+              준비 완료 {characterStats.trained}/{characterStats.withVoice}
             </span>
           </div>
 
@@ -213,8 +326,8 @@ export default function VoiceSetupPanel() {
                   </span>
                 </div>
                 <span className="text-xs px-2 py-0.5 rounded bg-ark-orange/20 text-ark-orange">
-                  {currentTrainingJob.status === 'preprocessing' && '전처리'}
-                  {currentTrainingJob.status === 'training' && '학습 중'}
+                  {currentTrainingJob.status === 'preprocessing' && '오디오 분석 중'}
+                  {currentTrainingJob.status === 'training' && '준비 중'}
                   {currentTrainingJob.status === 'pending' && '대기'}
                 </span>
               </div>
@@ -231,11 +344,6 @@ export default function VoiceSetupPanel() {
                   <span className="text-ark-white font-mono">
                     {(currentTrainingJob.progress * 100).toFixed(1)}%
                   </span>
-                  {currentTrainingJob.current_epoch > 0 && (
-                    <span className="text-ark-gray">
-                      Epoch {currentTrainingJob.current_epoch}/{currentTrainingJob.total_epochs}
-                    </span>
-                  )}
                 </div>
               </div>
 
@@ -265,7 +373,7 @@ export default function VoiceSetupPanel() {
                 onClick={handleCancelTraining}
                 className="w-full ark-btn text-sm text-red-400 hover:text-red-300 border-red-400/30"
               >
-                학습 취소
+                준비 취소
               </button>
             </div>
           ) : trainableCharacters.length > 0 || (defaultCharId && !trainedCharIds.has(defaultCharId)) || (narratorCharId && !trainedCharIds.has(narratorCharId)) ? (
@@ -276,36 +384,33 @@ export default function VoiceSetupPanel() {
                   {trainableCharacters.length
                     + (defaultCharId && !trainedCharIds.has(defaultCharId) && !trainableCharacters.some(c => c.char_id === defaultCharId) ? 1 : 0)
                     + (narratorCharId && !trainedCharIds.has(narratorCharId) && !trainableCharacters.some(c => c.char_id === narratorCharId) && narratorCharId !== defaultCharId ? 1 : 0)
-                  }개 캐릭터 학습 가능
-                </span>
-                <span className="text-ark-gray/70">
-                  (시뮬레이션 모드)
+                  }개 캐릭터 준비 가능
                 </span>
               </div>
               <button
                 onClick={handleStartBatchTraining}
                 className="w-full ark-btn ark-btn-secondary text-sm"
               >
-                음성 모델 일괄 학습
+                음성 일괄 준비
               </button>
               <p className="text-xs text-ark-gray/50 text-center">
-                * 현재 시뮬레이션으로 실행됩니다
+                * 참조 오디오 자동 선택 (Zero-shot)
               </p>
             </div>
           ) : characterStats.withVoice > 0 || defaultCharId || narratorCharId ? (
-            // 모든 캐릭터 학습 완료
+            // 모든 캐릭터 준비 완료
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-green-400">
                 <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
                   <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
                 </svg>
-                <span className="text-sm">모든 캐릭터 학습 완료</span>
+                <span className="text-sm">모든 캐릭터 준비 완료</span>
               </div>
               <button
                 onClick={clearAllTrainedModels}
                 className="w-full ark-btn text-sm text-ark-gray hover:text-ark-white border-ark-border"
               >
-                모델 초기화
+                준비 초기화
               </button>
             </div>
           ) : (
@@ -340,7 +445,7 @@ export default function VoiceSetupPanel() {
             </select>
             {defaultCharId && !trainedCharIds.has(defaultCharId) && (
               <p className="mt-1 text-xs text-ark-yellow">
-                * 학습 필요
+                * 준비 필요
               </p>
             )}
           </div>
@@ -365,7 +470,7 @@ export default function VoiceSetupPanel() {
             </select>
             {narratorCharId && !trainedCharIds.has(narratorCharId) && (
               <p className="mt-1 text-xs text-ark-yellow">
-                * 학습 필요
+                * 준비 필요
               </p>
             )}
           </div>
@@ -380,6 +485,98 @@ export default function VoiceSetupPanel() {
             />
             <span className="text-ark-white text-sm">매칭 시 자동 재생</span>
           </label>
+        </div>
+
+        {/* 음성 테스트 */}
+        <div className="p-4 border-b border-ark-border space-y-3">
+          <h4 className="text-sm font-medium text-ark-gray">음성 테스트</h4>
+
+          {testableCharacters.length === 0 ? (
+            <p className="text-xs text-ark-gray/70">
+              준비된 캐릭터가 없습니다. 먼저 음성을 준비하세요.
+            </p>
+          ) : (
+            <>
+              {/* 캐릭터 선택 */}
+              <div>
+                <label className="block text-xs text-ark-gray mb-1">
+                  테스트 캐릭터
+                </label>
+                <select
+                  value={testCharId ?? ''}
+                  onChange={(e) => setTestCharId(e.target.value || null)}
+                  className="ark-input text-sm"
+                >
+                  <option value="">캐릭터 선택...</option>
+                  {testableCharacters.map((char) => (
+                    <option key={char.char_id} value={char.char_id}>
+                      {char.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 테스트 대사 */}
+              <div>
+                <label className="block text-xs text-ark-gray mb-1">
+                  테스트 대사
+                </label>
+                <textarea
+                  value={testText}
+                  onChange={(e) => setTestText(e.target.value)}
+                  placeholder="테스트할 대사를 입력하세요"
+                  rows={2}
+                  className="ark-input text-sm resize-none"
+                />
+                {selectedEpisode?.dialogues?.length && (
+                  <button
+                    onClick={() => {
+                      const first = selectedEpisode.dialogues[0]
+                      setTestText(first.text)
+                      if (first.speaker_id && trainedCharIds.has(first.speaker_id)) {
+                        setTestCharId(first.speaker_id)
+                      }
+                    }}
+                    className="mt-1 text-xs text-ark-orange hover:underline"
+                  >
+                    에피소드 첫 대사 사용
+                  </button>
+                )}
+              </div>
+
+              {/* 에러 메시지 */}
+              {testError && (
+                <p className="text-xs text-red-400">{testError}</p>
+              )}
+
+              {/* 테스트 버튼 */}
+              <button
+                onClick={isTesting ? handleStopTest : handleTestVoice}
+                disabled={!testCharId || !testText.trim()}
+                className={`w-full ark-btn text-sm ${
+                  isTesting
+                    ? 'bg-red-500/20 text-red-400 border-red-400/30'
+                    : 'ark-btn-secondary'
+                } ${!testCharId || !testText.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {isTesting ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="ark-pulse">●</span> 합성 중... (클릭하여 중지)
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+                      <path d="M8 5v14l11-7z"/>
+                    </svg>
+                    음성 테스트
+                  </span>
+                )}
+              </button>
+              <p className="text-xs text-ark-gray/50 text-center">
+                * 첫 합성은 GPT-SoVITS 서버 시작으로 시간이 걸릴 수 있습니다
+              </p>
+            </>
+          )}
         </div>
 
         {/* 윈도우 선택 */}

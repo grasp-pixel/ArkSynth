@@ -24,6 +24,17 @@ sys.path.insert(0, str(project_root / "src"))
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
+# 신뢰할 수 있는 음성 타이틀 (자연스러운 대화, 충분한 길이)
+# voiceTitle 기반 필터링 (캐릭터별로 voiceId 매핑이 다를 수 있음)
+RELIABLE_VOICE_TITLES = {
+    "어시스턴트 임명",
+    "대화 1", "대화 2", "대화 3",
+    "1차 정예화 후 대화", "2차 정예화 후 대화",
+    "신뢰도 상승 후 대화 1", "신뢰도 상승 후 대화 2", "신뢰도 상승 후 대화 3",
+    "오퍼레이터 입사",
+}
+# 제외: 방치(짧음), 작전기록 학습(짧음), 정예화 승진(짧음), 전투 관련(짧고 특수한 톤)
+
 
 def emit_progress(stage: str, progress: float, message: str, **kwargs):
     """진행 상황을 JSON으로 출력"""
@@ -62,7 +73,7 @@ def load_charword_transcripts(
     char_id: str,
     gamedata_path: Path,
     lang: str = "ko_KR",
-) -> dict[str, str]:
+) -> dict[str, dict]:
     """charword_table.json에서 대사 텍스트 로드
 
     Args:
@@ -71,7 +82,8 @@ def load_charword_transcripts(
         lang: 언어 코드
 
     Returns:
-        {voice_id: text} 딕셔너리 (예: {"CN_001": "박사님, 수고하셨어요."})
+        {voice_id: {"text": str, "title": str}} 딕셔너리
+        예: {"CN_001": {"text": "박사님, 수고하셨어요.", "title": "어시스턴트 임명"}}
     """
     charword_path = gamedata_path / lang / "gamedata" / "excel" / "charword_table.json"
 
@@ -88,8 +100,9 @@ def load_charword_transcripts(
             if item.get("charId") == char_id:
                 voice_id = item.get("voiceId", "")  # CN_001
                 voice_text = item.get("voiceText", "")
+                voice_title = item.get("voiceTitle", "")  # 어시스턴트 임명, 대화 1 등
                 if voice_id and voice_text:
-                    result[voice_id] = voice_text
+                    result[voice_id] = {"text": voice_text, "title": voice_title}
 
         logger.info(f"Loaded {len(result)} transcripts for {char_id}")
         return result
@@ -101,20 +114,51 @@ def load_charword_transcripts(
 
 def get_audio_duration(audio_path: Path) -> float:
     """오디오 파일 길이 계산 (초)"""
-    try:
-        import wave
-        with wave.open(str(audio_path), "rb") as wav_file:
-            frames = wav_file.getnframes()
-            rate = wav_file.getframerate()
-            return frames / float(rate)
-    except Exception:
-        # WAV가 아니면 대략적인 추정 (ffprobe 없이)
-        # MP3는 대략 파일크기/16000 정도
+    # WAV 파일
+    if audio_path.suffix.lower() == ".wav":
         try:
-            size = audio_path.stat().st_size
-            return size / 16000  # 대략적인 추정
+            import wave
+            with wave.open(str(audio_path), "rb") as wav_file:
+                frames = wav_file.getnframes()
+                rate = wav_file.getframerate()
+                return frames / float(rate)
         except Exception:
-            return 0.0
+            pass
+
+    # ffprobe로 정확한 길이 측정 (MP3, WAV 등 모든 포맷)
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(audio_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return float(result.stdout.strip())
+    except (subprocess.CalledProcessError, FileNotFoundError, ValueError, subprocess.TimeoutExpired):
+        pass
+
+    # mutagen 라이브러리 시도 (설치된 경우)
+    try:
+        from mutagen import File as MutagenFile
+        audio = MutagenFile(str(audio_path))
+        if audio is not None and audio.info is not None:
+            return audio.info.length
+    except Exception:
+        pass
+
+    # 최후의 폴백: MP3 비트레이트 추정 (128kbps 가정)
+    try:
+        size = audio_path.stat().st_size
+        # 128kbps = 16000 bytes/sec
+        return size / 16000
+    except Exception:
+        return 0.0
 
 
 def convert_to_wav(input_path: Path, output_path: Path) -> bool:
@@ -147,12 +191,14 @@ def prepare_reference_audio(
     language: str = "ko",
     min_duration: float = 3.0,
     max_duration: float = 10.0,
+    ref_count: int | None = None,  # None이면 모든 유효한 오디오 사용
 ) -> bool:
-    """참조 오디오 준비
+    """참조 오디오 준비 (다중 참조 지원)
 
-    가장 적절한 참조 오디오를 선택하고 준비합니다.
+    다양한 톤을 위해 여러 참조 오디오를 선택하고 준비합니다.
     - 텍스트가 있는 오디오만 선택
-    - 3~10초 사이의 오디오 선호
+    - 3~10초 사이의 오디오 선호 (GPT-SoVITS 서버 제한)
+    - 다양한 텍스트 길이의 오디오 선택
     - WAV 형식으로 변환
 
     Args:
@@ -163,6 +209,7 @@ def prepare_reference_audio(
         language: 언어
         min_duration: 최소 오디오 길이
         max_duration: 최대 오디오 길이
+        ref_count: 준비할 참조 오디오 개수 (None이면 모든 유효한 오디오 사용)
 
     Returns:
         bool: 성공 여부
@@ -191,80 +238,174 @@ def prepare_reference_audio(
     # 출력 디렉토리 생성
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 적절한 참조 오디오 찾기
+    # 모든 후보 오디오 점수 계산
     emit_progress("preprocessing", 0.5, "참조 오디오 선택 중...")
 
-    best_audio = None
-    best_text = None
-    best_score = 0
+    candidates = []
+    valid_duration_candidates = []  # 3-45초 범위 내 후보
 
     for audio_file in audio_files:
         voice_id = audio_file.stem  # CN_001
-        text = transcripts.get(voice_id, "")
+        transcript_info = transcripts.get(voice_id, {})
+        text = transcript_info.get("text", "")
+        title = transcript_info.get("title", "")
 
         if not text:
             continue
 
-        # 텍스트 길이로 점수 계산 (중간 길이 선호)
+        # 신뢰할 수 있는 대사만 선택 (voiceTitle 기반)
+        if title not in RELIABLE_VOICE_TITLES:
+            continue
+
         text_len = len(text)
         if text_len < 5:  # 너무 짧은 텍스트 제외
             continue
 
-        # 오디오 길이 추정
         duration = get_audio_duration(audio_file)
 
-        # 점수 계산: 적절한 길이 + 텍스트 길이
+        # 점수 계산
         score = 0
-        if min_duration <= duration <= max_duration:
-            score += 100  # 적절한 길이 보너스
+        is_valid_duration = min_duration <= duration <= max_duration
+
+        if is_valid_duration:
+            score += 100
         elif duration > 0:
-            score += 50  # 길이 측정 가능
+            score += 50
 
-        score += min(text_len, 50)  # 텍스트 길이 (최대 50점)
+        score += min(text_len, 50)
 
-        if score > best_score:
-            best_score = score
-            best_audio = audio_file
-            best_text = text
+        candidate = {
+            "audio": audio_file,
+            "text": text,
+            "title": title,
+            "text_len": text_len,
+            "duration": duration,
+            "score": score,
+            "valid_duration": is_valid_duration,
+        }
 
-    if not best_audio:
-        # 텍스트 있는 첫 번째 파일 사용
+        candidates.append(candidate)
+        if is_valid_duration:
+            valid_duration_candidates.append(candidate)
+
+    # 3-10초 범위 후보가 있으면 그것만 사용
+    if valid_duration_candidates:
+        emit_progress("preprocessing", 0.55, f"{len(valid_duration_candidates)}개 유효 길이 오디오 발견 (3-10초)")
+        candidates = valid_duration_candidates
+    else:
+        emit_progress("preprocessing", 0.55, "경고: 3-45초 범위 오디오 없음, 가장 근접한 길이 사용")
+
+    if not candidates:
+        # 신뢰할 수 있는 대사가 없으면, 텍스트 있는 모든 파일로 fallback
+        emit_progress("preprocessing", 0.55, "경고: 신뢰할 수 있는 대사 없음, 모든 대사로 fallback")
         for audio_file in audio_files:
             voice_id = audio_file.stem
-            text = transcripts.get(voice_id, "")
+            transcript_info = transcripts.get(voice_id, {})
+            text = transcript_info.get("text", "")
+            title = transcript_info.get("title", "")
             if text:
-                best_audio = audio_file
-                best_text = text
-                break
+                duration = get_audio_duration(audio_file)
+                is_valid = min_duration <= duration <= max_duration
+                candidates.append({
+                    "audio": audio_file,
+                    "text": text,
+                    "title": title,
+                    "text_len": len(text),
+                    "duration": duration,
+                    "score": 100 if is_valid else 1,
+                    "valid_duration": is_valid,
+                })
 
-    if not best_audio or not best_text:
+    if not candidates:
         emit_error("적절한 참조 오디오를 찾을 수 없습니다")
         return False
 
-    emit_progress("preprocessing", 0.7, f"참조 오디오 선택: {best_audio.name}")
+    # ref_count가 None이면 모든 유효한 오디오 사용
+    if ref_count is None:
+        # 점수 높은 순으로 정렬하여 모든 후보 사용
+        selected = sorted(candidates, key=lambda x: x["score"], reverse=True)
+    else:
+        # 다양한 톤을 위해 텍스트 길이 기준으로 분류
+        # 짧은(5-15자), 중간(16-30자), 긴(31+자) 텍스트
+        short_texts = [c for c in candidates if c["text_len"] <= 15]
+        medium_texts = [c for c in candidates if 16 <= c["text_len"] <= 30]
+        long_texts = [c for c in candidates if c["text_len"] > 30]
 
-    # WAV로 변환
-    ref_wav_path = output_dir / "ref.wav"
-    emit_progress("preprocessing", 0.8, "오디오 변환 중...")
+        # 각 그룹에서 점수 높은 순으로 정렬
+        short_texts.sort(key=lambda x: x["score"], reverse=True)
+        medium_texts.sort(key=lambda x: x["score"], reverse=True)
+        long_texts.sort(key=lambda x: x["score"], reverse=True)
 
-    if not convert_to_wav(best_audio, ref_wav_path):
-        # 변환 실패 시 원본 복사 시도
-        shutil.copy(best_audio, output_dir / f"ref{best_audio.suffix}")
-        ref_wav_path = output_dir / f"ref{best_audio.suffix}"
+        # 균형 있게 선택 (짧은:중간:긴 = 1:2:2 비율 유지)
+        selected = []
 
-    # 참조 텍스트 저장
-    ref_text_path = output_dir / "ref.txt"
-    ref_text_path.write_text(best_text, encoding="utf-8")
+        # 각 그룹별 할당량 계산 (총 ref_count의 비율)
+        medium_quota = max(2, ref_count * 2 // 5)  # 40%
+        long_quota = max(2, ref_count * 2 // 5)    # 40%
+        short_quota = max(1, ref_count // 5)       # 20%
 
-    emit_progress("preprocessing", 0.9, f"참조 텍스트: {best_text[:30]}...")
+        # 중간 길이 우선 (가장 자연스러움)
+        for c in medium_texts[:medium_quota]:
+            if len(selected) < ref_count:
+                selected.append(c)
+
+        # 긴 텍스트 (감정 표현이 풍부)
+        for c in long_texts[:long_quota]:
+            if len(selected) < ref_count and c not in selected:
+                selected.append(c)
+
+        # 짧은 텍스트 (간결한 표현)
+        for c in short_texts[:short_quota]:
+            if len(selected) < ref_count and c not in selected:
+                selected.append(c)
+
+        # 부족하면 점수 높은 순으로 채우기
+        all_sorted = sorted(candidates, key=lambda x: x["score"], reverse=True)
+        for c in all_sorted:
+            if len(selected) >= ref_count:
+                break
+            if c not in selected:
+                selected.append(c)
+
+    # 선택된 대사 타이틀 목록 로그
+    titles = [c.get("title", c["audio"].stem) for c in selected]
+    emit_progress("preprocessing", 0.6, f"{len(selected)}개 참조 오디오 선택: {', '.join(titles[:5])}{'...' if len(titles) > 5 else ''}")
+
+    # 첫 번째를 기본 참조로 설정 (가장 점수 높은 것)
+    selected.sort(key=lambda x: x["score"], reverse=True)
+    best = selected[0]
+
+    # WAV로 변환 (다중 참조)
+    emit_progress("preprocessing", 0.7, "오디오 변환 중...")
+
+    ref_audios = []
+    for i, c in enumerate(selected):
+        if i == 0:
+            ref_wav_path = output_dir / "ref.wav"
+            ref_text_path = output_dir / "ref.txt"
+        else:
+            ref_wav_path = output_dir / f"ref_{i}.wav"
+            ref_text_path = output_dir / f"ref_{i}.txt"
+
+        if convert_to_wav(c["audio"], ref_wav_path):
+            ref_text_path.write_text(c["text"], encoding="utf-8")
+            ref_audios.append({
+                "audio": ref_wav_path.name,
+                "text": c["text"],
+                "text_len": c["text_len"],
+            })
+
+    emit_progress("preprocessing", 0.9, f"참조 오디오 {len(ref_audios)}개 준비 완료")
 
     # 모델 정보 저장
     info = {
         "char_id": char_id,
-        "ref_audio": best_audio.name,
-        "ref_text": best_text,
+        "ref_audio": best["audio"].name,
+        "ref_text": best["text"],
+        "ref_audios": ref_audios,
+        "ref_count": len(ref_audios),
         "language": language,
-        "mode": "zero_shot",  # 학습 없이 zero-shot 사용
+        "mode": "zero_shot",
     }
     info_path = output_dir / "info.json"
     with open(info_path, "w", encoding="utf-8") as f:

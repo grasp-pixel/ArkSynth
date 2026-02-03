@@ -48,37 +48,45 @@ def extract_audio_from_bundle(
     char_dir = output_dir / base_char
     char_dir.mkdir(parents=True, exist_ok=True)
 
-    audio_index = 1
     for obj in env.objects:
         if obj.type.name != "AudioClip":
             continue
 
         try:
             audio = obj.read()
+
+            # 실제 오디오 이름 가져오기 (m_Name 속성 사용)
+            audio_name = getattr(audio, 'm_Name', None) or getattr(audio, 'name', None)
+
             samples = getattr(audio, 'samples', None)
 
             if samples:
-                for name, data in samples.items():
+                for sample_name, data in samples.items():
                     if data:
-                        out_name = f"CN_{audio_index:03d}.{output_format}"
+                        # 실제 이름 사용 (sample_name 또는 audio.m_Name)
+                        actual_name = sample_name or audio_name or "unknown"
+                        # 확장자 제거 후 새 확장자 추가
+                        base_name = Path(actual_name).stem
+                        out_name = f"{base_name}.{output_format}"
                         out_path = char_dir / out_name
 
                         with open(out_path, 'wb') as f:
                             f.write(data)
 
                         extracted.append(out_path)
-                        audio_index += 1
             else:
                 m_AudioData = getattr(audio, 'm_AudioData', None)
                 if m_AudioData:
-                    out_name = f"CN_{audio_index:03d}.{output_format}"
+                    # 실제 이름 사용
+                    actual_name = audio_name or "unknown"
+                    base_name = Path(actual_name).stem
+                    out_name = f"{base_name}.{output_format}"
                     out_path = char_dir / out_name
 
                     with open(out_path, 'wb') as f:
                         f.write(m_AudioData)
 
                     extracted.append(out_path)
-                    audio_index += 1
 
         except Exception as e:
             print(f"Failed to extract audio from {ab_path}: {e}")

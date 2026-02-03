@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useAppStore } from '../stores/appStore'
 
 export default function EpisodeSelector() {
@@ -10,36 +10,26 @@ export default function EpisodeSelector() {
     selectedGroupId,
     groupEpisodes,
     selectedEpisodeId,
-    isLoadingCategories,
     isLoadingGroups,
     isLoadingGroupEpisodes,
-    loadCategories,
-    selectCategory,
     selectStoryGroup,
     selectEpisode,
   } = useAppStore()
 
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const [searchTerm, setSearchTerm] = useState('')
 
-  useEffect(() => {
-    if (backendStatus === 'connected') {
-      loadCategories()
-    }
-  }, [backendStatus, loadCategories])
-
+  // 그룹 토글 (한 번에 하나만 펼쳐짐)
   const toggleGroup = (groupId: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev)
-      if (next.has(groupId)) {
-        next.delete(groupId)
-      } else {
-        next.add(groupId)
-        selectStoryGroup(groupId)
-      }
-      return next
-    })
+    if (selectedGroupId === groupId) {
+      // 이미 선택된 그룹 클릭 시 접기 (선택 해제하지 않음, 에피소드는 유지)
+      return
+    }
+    // 새 그룹 펼치기 + 에피소드 로드 (이전 그룹은 자동으로 접힘)
+    selectStoryGroup(groupId)
   }
+
+  // 현재 선택된 그룹만 펼쳐진 상태
+  const isGroupExpanded = (groupId: string) => selectedGroupId === groupId
 
   const filteredGroups = storyGroups.filter((group) => {
     if (!searchTerm) return true
@@ -61,28 +51,6 @@ export default function EpisodeSelector() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* 카테고리 탭 */}
-      <div className="flex border-b border-ark-border overflow-x-auto bg-ark-black/50">
-        {isLoadingCategories ? (
-          <div className="p-3 text-ark-gray text-sm ark-pulse">로딩 중...</div>
-        ) : (
-          categories.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => selectCategory(cat.id)}
-              className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-all border-b-2 ${
-                selectedCategoryId === cat.id
-                  ? 'bg-ark-orange/10 text-ark-orange border-ark-orange'
-                  : 'text-ark-gray hover:text-ark-white hover:bg-ark-panel/50 border-transparent'
-              }`}
-            >
-              {cat.name}
-              <span className="ml-1.5 text-xs opacity-70">({cat.group_count})</span>
-            </button>
-          ))
-        )}
-      </div>
-
       {/* 검색 */}
       <div className="p-4 border-b border-ark-border">
         <div className="relative">
@@ -126,13 +94,13 @@ export default function EpisodeSelector() {
                   <span className="flex items-center gap-2 text-ark-gray text-sm flex-shrink-0 ml-2">
                     <span className="ark-badge">{group.episode_count}</span>
                     <span className="transition-transform duration-200" style={{
-                      transform: expandedGroups.has(group.id) ? 'rotate(90deg)' : 'rotate(0deg)'
+                      transform: isGroupExpanded(group.id) ? 'rotate(90deg)' : 'rotate(0deg)'
                     }}>▶</span>
                   </span>
                 </button>
 
                 {/* 에피소드 목록 */}
-                {expandedGroups.has(group.id) && (
+                {isGroupExpanded(group.id) && (
                   <div className="bg-ark-black/30">
                     {isLoadingGroupEpisodes && selectedGroupId === group.id ? (
                       <div className="p-4 text-center text-ark-gray text-sm ark-pulse">

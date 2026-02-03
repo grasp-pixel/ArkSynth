@@ -5,15 +5,59 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+# 기본 설치 경로 (앱 내 자동 설치 위치)
+DEFAULT_INSTALL_BASE = Path("tools/gpt_sovits")
+# 통합 패키지 경로 (Hugging Face에서 다운로드) - v2pro 최신
+INTEGRATED_PACKAGE_PATH = DEFAULT_INSTALL_BASE / "GPT-SoVITS-v2pro-20250604"
+# 레거시 통합 패키지 경로
+LEGACY_INTEGRATED_PATH = DEFAULT_INSTALL_BASE / "GPT-SoVITS-v2-240821"
+# 소스 설치 경로 (레거시)
+SOURCE_INSTALL_PATH = DEFAULT_INSTALL_BASE / "GPT-SoVITS-main"
+
+
+def _get_default_gpt_sovits_path() -> Path:
+    """GPT-SoVITS 기본 경로 결정
+
+    우선순위:
+    1. 환경변수 GPT_SOVITS_PATH
+    2. 최신 통합 패키지 경로 (tools/gpt_sovits/GPT-SoVITS-v2pro-20250604)
+    3. 레거시 통합 패키지 경로 (tools/gpt_sovits/GPT-SoVITS-v2-240821)
+    4. 소스 설치 경로 (tools/gpt_sovits/GPT-SoVITS-main)
+    5. 레거시 경로 (C:/GPT-SoVITS)
+    """
+    # 환경변수 우선
+    env_path = os.environ.get("GPT_SOVITS_PATH")
+    if env_path:
+        return Path(env_path)
+
+    # 최신 통합 패키지 경로 확인 (권장)
+    if INTEGRATED_PACKAGE_PATH.exists():
+        return INTEGRATED_PACKAGE_PATH
+
+    # 레거시 통합 패키지 경로 확인
+    if LEGACY_INTEGRATED_PATH.exists():
+        return LEGACY_INTEGRATED_PATH
+
+    # 소스 설치 경로 확인
+    if SOURCE_INSTALL_PATH.exists():
+        return SOURCE_INSTALL_PATH
+
+    # 레거시 경로 확인
+    legacy_path = Path("C:/GPT-SoVITS")
+    if legacy_path.exists():
+        return legacy_path
+
+    # 기본값 (최신 통합 패키지가 설치될 경로)
+    return INTEGRATED_PACKAGE_PATH
+
+
 @dataclass
 class GPTSoVITSConfig:
     """GPT-SoVITS 학습 및 추론 설정"""
 
-    # GPT-SoVITS 설치 경로 (환경변수 또는 기본값)
+    # GPT-SoVITS 설치 경로
     gpt_sovits_path: Path = field(
-        default_factory=lambda: Path(
-            os.environ.get("GPT_SOVITS_PATH", "C:/GPT-SoVITS")
-        )
+        default_factory=_get_default_gpt_sovits_path
     )
 
     # API 서버 설정
@@ -22,7 +66,7 @@ class GPTSoVITSConfig:
 
     # 경로 설정
     models_path: Path = field(default_factory=lambda: Path("models/gpt_sovits"))
-    extracted_path: Path = field(default_factory=lambda: Path("extracted/voice"))
+    extracted_path: Path = field(default_factory=lambda: Path("extracted"))
     pretrained_path: Path = field(
         default_factory=lambda: Path("models/gpt_sovits/pretrained")
     )
@@ -48,7 +92,7 @@ class GPTSoVITSConfig:
 
     # 참조 오디오 설정
     min_ref_audio_length: float = 3.0  # 최소 참조 오디오 길이 (초)
-    max_ref_audio_length: float = 10.0  # 최대 참조 오디오 길이 (초)
+    max_ref_audio_length: float = 45.0  # 최대 참조 오디오 길이 (초) - GPT-SoVITS 서버 제한 (수정됨)
     ref_audio_count: int = 5  # 학습에 사용할 참조 오디오 개수
 
     @property
@@ -59,7 +103,36 @@ class GPTSoVITSConfig:
     @property
     def is_gpt_sovits_installed(self) -> bool:
         """GPT-SoVITS 설치 여부 확인"""
-        return (self.gpt_sovits_path / "api.py").exists()
+        # api_v2.py 또는 api.py 존재 확인
+        return (
+            (self.gpt_sovits_path / "api_v2.py").exists() or
+            (self.gpt_sovits_path / "api.py").exists()
+        )
+
+    @property
+    def python_path(self) -> Path | None:
+        """GPT-SoVITS용 Python 실행 파일 경로
+
+        우선순위:
+        1. 통합 패키지 runtime (gpt_sovits_path/runtime/python.exe) - 권장
+        2. 소스 설치 venv (gpt_sovits_path/.venv/Scripts/python.exe)
+        """
+        # 통합 패키지 runtime (권장)
+        runtime_python = self.gpt_sovits_path / "runtime" / "python.exe"
+        if runtime_python.exists():
+            return runtime_python
+
+        # 소스 설치 venv (레거시)
+        venv_python = self.gpt_sovits_path / ".venv" / "Scripts" / "python.exe"
+        if venv_python.exists():
+            return venv_python
+
+        return None
+
+    @property
+    def install_base_path(self) -> Path:
+        """자동 설치 기본 경로"""
+        return DEFAULT_INSTALL_BASE
 
     def ensure_directories(self):
         """필요한 디렉토리 생성"""

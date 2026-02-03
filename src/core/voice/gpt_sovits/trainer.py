@@ -128,6 +128,8 @@ class GPTSoVITSTrainer:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                encoding="utf-8",
+                errors="replace",  # 디코딩 실패 시 대체 문자 사용
                 bufsize=1,  # 라인 버퍼링
             )
 

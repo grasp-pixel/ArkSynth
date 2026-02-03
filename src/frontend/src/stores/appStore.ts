@@ -108,6 +108,11 @@ interface AppState {
   cachedEpisodes: string[]  // 캐시된 에피소드 목록
   renderError: string | null  // 렌더링 오류
 
+  // GPT-SoVITS 관련
+  gptSovitsStatus: { installed: boolean; api_running: boolean; synthesizing?: boolean } | null
+  isStartingGptSovits: boolean
+  gptSovitsError: string | null
+
   // 액션
   checkBackendStatus: () => Promise<void>
   loadCategories: () => Promise<void>
@@ -176,6 +181,10 @@ interface AppState {
   unsubscribeFromRenderProgress: () => void
   getRenderedAudioUrl: (index: number) => string | null
   isDialogueRendered: (index: number) => boolean
+
+  // GPT-SoVITS
+  checkGptSovitsStatus: () => Promise<void>
+  startGptSovits: () => Promise<void>
 }
 
 // localStorage 키
@@ -316,6 +325,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   renderProgress: null,
   cachedEpisodes: [],
   renderError: null,
+
+  // GPT-SoVITS 초기 상태
+  gptSovitsStatus: null,
+  isStartingGptSovits: false,
+  gptSovitsError: null,
 
   // 백엔드 상태 확인
   checkBackendStatus: async () => {
@@ -480,12 +494,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return
     }
 
-    // 학습된 모델 없으면 재생 불가
-    if (!trainedCharIds.has(charIdToUse)) {
-      console.warn('[playDialogue] 학습된 모델 없음:', charIdToUse)
-      return
-    }
-
+    // 백엔드에서 자동으로 참조 오디오 준비하므로 trainedCharIds 체크 제거
     set({ isPlaying: true, currentDialogue: dialogue })
 
     try {
@@ -1081,7 +1090,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       })
     } catch (error) {
       console.error('Failed to load training status:', error)
-      set({ trainingError: '학습 상태 로드 실패' })
+      set({ trainingError: '준비 상태 로드 실패' })
     }
   },
 
@@ -1129,8 +1138,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         get().unsubscribeFromTrainingProgress()
       }
     } catch (error) {
-      console.error('[Training] 학습 시작 실패:', error)
-      set({ trainingError: '학습 시작 실패' })
+      console.error('[Training] 준비 시작 실패:', error)
+      set({ trainingError: '준비 시작 실패' })
       // 오류 시 SSE 연결 해제
       get().unsubscribeFromTrainingProgress()
     }
@@ -1147,7 +1156,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     } catch (error) {
       console.error('Failed to cancel training:', error)
-      set({ trainingError: '학습 취소 실패' })
+      set({ trainingError: '준비 취소 실패' })
     }
   },
 
@@ -1164,7 +1173,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       })
     } catch (error) {
       console.error('Failed to clear trained models:', error)
-      set({ trainingError: '모델 삭제 실패' })
+      set({ trainingError: '준비 데이터 삭제 실패' })
     }
   },
 
@@ -1334,6 +1343,41 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { renderProgress } = get()
     if (!renderProgress) return false
     return index < renderProgress.completed
+  },
+
+  // === GPT-SoVITS ===
+
+  // GPT-SoVITS 상태 확인
+  checkGptSovitsStatus: async () => {
+    try {
+      const status = await ttsApi.getGptSovitsStatus()
+      set({
+        gptSovitsStatus: status,
+        gptSovitsError: null,
+      })
+    } catch (error) {
+      console.error('Failed to check GPT-SoVITS status:', error)
+      set({
+        gptSovitsStatus: null,
+        gptSovitsError: 'GPT-SoVITS 상태 확인 실패',
+      })
+    }
+  },
+
+  // GPT-SoVITS 시작
+  startGptSovits: async () => {
+    set({ isStartingGptSovits: true, gptSovitsError: null })
+    try {
+      await ttsApi.startGptSovits()
+      // 시작 후 상태 갱신
+      await get().checkGptSovitsStatus()
+    } catch (error: any) {
+      console.error('Failed to start GPT-SoVITS:', error)
+      const errorMsg = error?.response?.data?.detail || 'GPT-SoVITS 시작 실패'
+      set({ gptSovitsError: errorMsg })
+    } finally {
+      set({ isStartingGptSovits: false })
+    }
   },
 }))
 

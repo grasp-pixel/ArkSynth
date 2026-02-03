@@ -6,7 +6,6 @@ requires-python = ">=3.10,<3.13"
 dependencies = [
     # 기존 (음성 추출용)
     "unitypy>=1.24.2",
-
     # 백엔드 서버
     "fastapi>=0.100.0",
     "uvicorn[standard]>=0.23.0",
@@ -14,37 +13,31 @@ dependencies = [
     "pydantic>=2.0",
     "python-multipart>=0.0.20",
     "sse-starlette>=1.6.0",
-
     # TTS
     "edge-tts>=6.1.0",
-
     # 오디오 처리
     "librosa>=0.10.0",
     "soundfile>=0.12.0",
     "sounddevice>=0.4.6",
     "numpy>=1.24.0",
-
     # 화면 캡처
     "mss>=9.0.0",
     "pillow>=10.0.0",
-
     # HTTP 클라이언트 (GPT-SoVITS API)
     "aiohttp>=3.9.0",
-
     # 유틸리티
     "aiofiles>=23.0.0",
-
     # Windows 윈도우 캡처 (Windows 전용)
     "pywin32>=306; sys_platform == 'win32'",
-]
-
-[project.optional-dependencies]
-ocr = [
+    # OCR (핵심 기능)
     "easyocr>=1.7.0",
     "opencv-python>=4.8.0",
     "torch>=2.0.0",
     "torchvision>=0.15.0",
+    "py7zr>=1.1.0",
 ]
+
+[project.optional-dependencies]
 windows = [
     "pywin32>=306",
 ]
@@ -54,10 +47,6 @@ dev = [
 ]
 # 모든 선택적 종속성 (Windows 개발 환경 기준)
 all = [
-    "easyocr>=1.7.0",
-    "opencv-python>=4.8.0",
-    "torch>=2.0.0",
-    "torchvision>=0.15.0",
     "pywin32>=306",
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",

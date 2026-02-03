@@ -103,12 +103,28 @@ class GPTSoVITSModelManager:
             json.dump(info.to_dict(), f, ensure_ascii=False, indent=2)
 
     def list_all_models(self) -> list[ModelInfo]:
-        """모든 모델 정보 목록"""
+        """모든 모델 정보 목록 (config.json 없어도 준비된 캐릭터 포함)"""
         models = []
         for char_id in self.get_trained_characters():
             info = self.get_model_info(char_id)
             if info:
                 models.append(info)
+            else:
+                # config.json이 없어도 is_trained()가 True면 기본 정보 생성
+                # (이전에 TTS 자동 준비로 ref.wav만 생성된 경우)
+                model_dir = self.config.get_model_path(char_id)
+                ref_count = len(list(model_dir.glob("ref*.wav"))) if model_dir.exists() else 0
+                models.append(ModelInfo(
+                    char_id=char_id,
+                    char_name=char_id,  # 기본값으로 char_id 사용
+                    trained_at=datetime.now().isoformat(),
+                    epochs_sovits=0,
+                    epochs_gpt=0,
+                    ref_audio_count=ref_count,
+                    language="ko",
+                    has_sovits=self.config.get_sovits_model_path(char_id).exists(),
+                    has_gpt=self.config.get_gpt_model_path(char_id).exists(),
+                ))
         return models
 
     def delete_model(self, char_id: str) -> bool:

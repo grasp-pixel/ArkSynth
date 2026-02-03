@@ -6,11 +6,13 @@ from pydantic import BaseModel
 from ..config import config
 from ...models.story import StoryCategory
 from ...story.loader import StoryLoader
+from ...voice.character_mapping import CharacterVoiceMapper
 
 router = APIRouter()
 
 # 전역 로더 (lazy init)
 _loader: StoryLoader | None = None
+_voice_mapper: CharacterVoiceMapper | None = None
 
 
 def get_loader() -> StoryLoader:
@@ -18,6 +20,15 @@ def get_loader() -> StoryLoader:
     if _loader is None:
         _loader = StoryLoader(config.data_path)
     return _loader
+
+
+def get_voice_mapper() -> CharacterVoiceMapper:
+    global _voice_mapper
+    if _voice_mapper is None:
+        _voice_mapper = CharacterVoiceMapper(
+            extracted_path=config.extracted_path,
+        )
+    return _voice_mapper
 
 
 # ========== 응답 모델 ==========
@@ -53,6 +64,15 @@ class EpisodeInfo(BaseModel):
     display_name: str
 
 
+class GroupCharacterInfo(BaseModel):
+    """그룹 내 캐릭터 정보"""
+
+    char_id: str | None  # None이면 나레이터
+    name: str
+    dialogue_count: int
+    has_voice: bool
+
+
 # ========== 엔드포인트 ==========
 
 
@@ -63,7 +83,7 @@ async def list_categories(lang: str | None = None):
     각 카테고리별 그룹 수와 에피소드 수를 반환
     """
     loader = get_loader()
-    lang = lang or config.default_language
+    lang = lang or config.game_language
 
     stats = loader.get_category_stats(lang)
 
@@ -102,7 +122,7 @@ async def list_categories(lang: str | None = None):
 async def list_category_groups(category_id: str, lang: str | None = None):
     """카테고리별 스토리 그룹 목록"""
     loader = get_loader()
-    lang = lang or config.default_language
+    lang = lang or config.game_language
 
     # 카테고리 ID -> StoryCategory enum
     try:
@@ -132,7 +152,7 @@ async def list_category_groups(category_id: str, lang: str | None = None):
 async def list_group_episodes(group_id: str, lang: str | None = None):
     """스토리 그룹의 에피소드 목록"""
     loader = get_loader()
-    lang = lang or config.default_language
+    lang = lang or config.game_language
 
     # 그룹 존재 확인
     all_groups = loader.load_all_story_groups(lang)
@@ -158,4 +178,47 @@ async def list_group_episodes(group_id: str, lang: str | None = None):
             )
             for ep in episodes
         ],
+    }
+
+
+@router.get("/groups/{group_id}/characters")
+async def list_group_characters(group_id: str, lang: str | None = None):
+    """스토리 그룹의 모든 캐릭터 목록 (음성 보유 여부 포함)
+
+    그룹 내 모든 에피소드를 파싱하여 등장 캐릭터와 대사 수를 집계합니다.
+    """
+    loader = get_loader()
+    voice_mapper = get_voice_mapper()
+    lang = lang or config.game_language
+
+    # 그룹 존재 확인
+    all_groups = loader.load_all_story_groups(lang)
+    if group_id not in all_groups:
+        raise HTTPException(status_code=404, detail=f"Group not found: {group_id}")
+
+    group = all_groups[group_id]
+
+    # 캐릭터 목록 수집
+    characters = loader.get_group_characters(group_id, lang)
+
+    # 음성 보유 여부 확인
+    result = []
+    for char_info in characters:
+        char_id = char_info["char_id"]
+        has_voice = voice_mapper.has_voice(char_id) if char_id else False
+
+        result.append(
+            GroupCharacterInfo(
+                char_id=char_id,
+                name=char_info["name"],
+                dialogue_count=char_info["dialogue_count"],
+                has_voice=has_voice,
+            )
+        )
+
+    return {
+        "group_id": group_id,
+        "group_name": group.name,
+        "total": len(result),
+        "characters": result,
     }

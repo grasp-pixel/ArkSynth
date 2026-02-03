@@ -1,10 +1,11 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useAppStore } from './stores/appStore'
 import EpisodeSelector from './components/EpisodeSelector'
 import DialogueViewer from './components/DialogueViewer'
 import VoiceSetupPanel from './components/VoiceSetupPanel'
 import DubbingDashboard from './components/DubbingDashboard'
 import StatusBar from './components/StatusBar'
+import SettingsModal from './components/SettingsModal'
 
 function App() {
   const {
@@ -21,6 +22,12 @@ function App() {
     isPrepared,
     prepareForDubbing,
     isLoadingCharacters,
+    // GPT-SoVITS
+    gptSovitsStatus,
+    isStartingGptSovits,
+    gptSovitsError,
+    checkGptSovitsStatus,
+    startGptSovits,
   } = useAppStore()
 
   useEffect(() => {
@@ -32,8 +39,19 @@ function App() {
   useEffect(() => {
     if (backendStatus === 'connected') {
       loadCategories()
+      checkGptSovitsStatus()
     }
-  }, [backendStatus, loadCategories])
+  }, [backendStatus, loadCategories, checkGptSovitsStatus])
+
+  // GPT-SoVITS 상태 주기적 확인 (30초)
+  useEffect(() => {
+    if (backendStatus !== 'connected') return
+    const interval = setInterval(checkGptSovitsStatus, 30000)
+    return () => clearInterval(interval)
+  }, [backendStatus, checkGptSovitsStatus])
+
+  // 설정 모달 상태
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   // 준비 버튼 핸들러
   const handlePrepare = () => {
@@ -74,6 +92,48 @@ function App() {
             </div>
           )}
 
+          {/* GPT-SoVITS 상태 */}
+          <div className="flex items-center gap-2">
+            {gptSovitsStatus?.api_running ? (
+              gptSovitsStatus?.synthesizing ? (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-cyan-500 ark-pulse" />
+                  <span className="text-sm text-cyan-400">합성 중...</span>
+                </>
+              ) : (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-green-500" />
+                  <span className="text-sm text-ark-gray">GPT-SoVITS</span>
+                </>
+              )
+            ) : gptSovitsStatus?.installed ? (
+              <button
+                onClick={startGptSovits}
+                disabled={isStartingGptSovits}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded bg-ark-panel border border-ark-border text-ark-gray hover:text-ark-white hover:border-ark-orange transition-colors disabled:opacity-50"
+              >
+                {isStartingGptSovits ? (
+                  <span className="ark-pulse">시작 중...</span>
+                ) : (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-yellow-500" />
+                    <span>GPT-SoVITS 시작</span>
+                  </>
+                )}
+              </button>
+            ) : gptSovitsStatus !== null ? (
+              <div className="flex items-center gap-1.5 text-sm text-red-400">
+                <span className="w-2 h-2 rounded-full bg-red-500" />
+                <span>GPT-SoVITS 미설치</span>
+              </div>
+            ) : null}
+            {gptSovitsError && (
+              <span className="text-xs text-red-400" title={gptSovitsError}>
+                오류
+              </span>
+            )}
+          </div>
+
           {/* 백엔드 상태 */}
           <div className="flex items-center gap-2">
             <span className={`w-2 h-2 rounded-full ${
@@ -85,6 +145,17 @@ function App() {
               {backendStatus === 'connected' ? 'ONLINE' : 'OFFLINE'}
             </span>
           </div>
+
+          {/* 설정 버튼 */}
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="p-2 text-ark-gray hover:text-ark-white transition-colors"
+            title="설정"
+          >
+            <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
+              <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -197,7 +268,7 @@ function App() {
                     </p>
                     <p className="flex items-start gap-2">
                       <span className="text-ark-orange font-bold">4.</span>
-                      캐릭터 음성 모델을 학습하고 더빙을 시작하세요
+                      캐릭터 음성을 준비하고 더빙을 시작하세요
                     </p>
                   </div>
                 </div>
@@ -212,6 +283,12 @@ function App() {
 
       {/* 상태 바 */}
       <StatusBar />
+
+      {/* 설정 모달 */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+      />
     </div>
   )
 }

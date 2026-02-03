@@ -5,7 +5,7 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
-    "start": "concurrently -k \"cd ../.. && uv run uvicorn core.backend.server:create_app --factory --host 127.0.0.1 --port 8000\" \"vite\"",
+    "start": "concurrently -k \"cd ../.. && set PYTHONIOENCODING=utf-8 && uv run uvicorn core.backend.server:create_app --factory --host 127.0.0.1 --port 8000\" \"vite\"",
     "build": "tsc && vite build && electron-builder --dir",
     "build:dist": "tsc && vite build && electron-builder",
     "preview": "vite preview",

@@ -1,8 +1,11 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, session } from 'electron'
 import path from 'path'
 
 // 개발 모드 확인
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
+
+// 백엔드 서버 URL
+const BACKEND_URL = 'http://127.0.0.1:8000'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -20,6 +23,23 @@ function createWindow() {
     // 타이틀바 스타일
     titleBarStyle: 'default',
     backgroundColor: '#1a1a2e',
+  })
+
+  // CSP 설정: 백엔드 서버의 이미지 허용
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          `default-src 'self' 'unsafe-inline' 'unsafe-eval'; ` +
+          `img-src 'self' data: blob: ${BACKEND_URL}; ` +
+          `media-src 'self' blob: ${BACKEND_URL}; ` +
+          `connect-src 'self' ${BACKEND_URL} ws://localhost:*; ` +
+          `font-src 'self' data:; ` +
+          `style-src 'self' 'unsafe-inline';`
+        ],
+      },
+    })
   })
 
   // 개발 모드: Vite 개발 서버

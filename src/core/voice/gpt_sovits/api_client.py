@@ -357,8 +357,23 @@ class GPTSoVITSAPIClient:
 
         return best_ref[0], best_ref[1]
 
+    def _get_audio_duration(self, audio_path: Path) -> float:
+        """오디오 파일 길이 반환 (초)"""
+        try:
+            import wave
+            with wave.open(str(audio_path), "rb") as wav:
+                frames = wav.getnframes()
+                rate = wav.getframerate()
+                return frames / float(rate)
+        except Exception:
+            return 0.0
+
     def _get_aux_reference_audios(self, char_id: str, primary_ref: Path) -> list[str]:
         """추가 참조 오디오 경로 목록 (GPT-SoVITS v2 aux_ref_audio_paths용)
+
+        필터링 조건:
+        - 대사(txt 파일)가 있는 음성만 사용
+        - 길이가 min~max 범위 내인 음성만 사용
 
         Args:
             char_id: 캐릭터 ID
@@ -369,16 +384,36 @@ class GPTSoVITSAPIClient:
         """
         model_dir = self.config.get_model_path(char_id)
         aux_refs = []
+        min_len = self.config.min_ref_audio_length
+        max_len = self.config.max_ref_audio_length
 
-        # 기본 참조
+        def is_valid_ref(audio_path: Path, text_path: Path) -> bool:
+            """참조 오디오 유효성 검사"""
+            if not audio_path.exists() or audio_path == primary_ref:
+                return False
+            # 대사 파일이 있고 내용이 있어야 함
+            if not text_path.exists():
+                return False
+            text = text_path.read_text(encoding="utf-8").strip()
+            if not text:
+                return False
+            # 길이 필터링
+            duration = self._get_audio_duration(audio_path)
+            if duration < min_len or duration > max_len:
+                return False
+            return True
+
+        # 기본 참조 (ref.wav)
         ref_audio = model_dir / "ref.wav"
-        if ref_audio.exists() and ref_audio != primary_ref:
+        ref_text = model_dir / "ref.txt"
+        if is_valid_ref(ref_audio, ref_text):
             aux_refs.append(str(ref_audio.absolute()))
 
-        # 추가 참조 (최대 30개까지 지원)
-        for i in range(1, 30):
+        # 추가 참조 (ref_1.wav ~ ref_99.wav)
+        for i in range(1, 100):
             ref_audio = model_dir / f"ref_{i}.wav"
-            if ref_audio.exists() and ref_audio != primary_ref:
+            ref_text = model_dir / f"ref_{i}.txt"
+            if is_valid_ref(ref_audio, ref_text):
                 aux_refs.append(str(ref_audio.absolute()))
 
         return aux_refs
@@ -417,8 +452,8 @@ class GPTSoVITSAPIClient:
 
         logger.info(f"[합성] 기본 참조: {ref_audio_path.name}")
 
-        # 추가 참조 오디오 (최대 4개, 기본 포함 총 5개)
-        aux_refs = self._get_aux_reference_audios(char_id, ref_audio_path)[:4]
+        # 추가 참조 오디오 (대사 있고 길이 적절한 모든 음성)
+        aux_refs = self._get_aux_reference_audios(char_id, ref_audio_path)
         if aux_refs:
             logger.info(f"[합성] 추가 참조: {len(aux_refs)}개")
 

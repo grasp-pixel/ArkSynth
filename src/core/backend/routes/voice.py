@@ -44,10 +44,11 @@ class CharacterVoiceInfo(BaseModel):
 
 
 @router.get("/characters")
-async def list_voice_characters(lang: str = "voice"):
+async def list_voice_characters(lang: str | None = None):
     """음성이 있는 캐릭터 목록 (대사 수 포함)"""
     mapper = get_mapper()
     stats_manager = get_stats_manager()
+    lang = lang or config.voice_language
     characters = mapper.get_available_characters(lang)
 
     # 대사 통계 로드
@@ -76,9 +77,10 @@ async def list_voice_characters(lang: str = "voice"):
 
 
 @router.get("/characters/{char_id}")
-async def get_character_voice_info(char_id: str, lang: str = "voice"):
+async def get_character_voice_info(char_id: str, lang: str | None = None):
     """특정 캐릭터의 음성 정보"""
     mapper = get_mapper()
+    lang = lang or config.voice_language
 
     if not mapper.has_voice(char_id, lang):
         raise HTTPException(
@@ -97,16 +99,18 @@ async def get_character_voice_info(char_id: str, lang: str = "voice"):
 
 
 @router.get("/summary")
-async def get_voice_summary(lang: str = "voice"):
+async def get_voice_summary(lang: str | None = None):
     """음성 데이터 요약 정보"""
     mapper = get_mapper()
+    lang = lang or config.voice_language
     return mapper.get_voice_summary(lang)
 
 
 @router.get("/check/{char_id}")
-async def check_voice_availability(char_id: str, lang: str = "voice"):
+async def check_voice_availability(char_id: str, lang: str | None = None):
     """캐릭터 음성 존재 여부 확인"""
     mapper = get_mapper()
+    lang = lang or config.voice_language
     has_voice = mapper.has_voice(char_id, lang)
 
     return {
