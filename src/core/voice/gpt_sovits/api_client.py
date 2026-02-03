@@ -457,6 +457,21 @@ class GPTSoVITSAPIClient:
         if aux_refs:
             logger.info(f"[합성] 추가 참조: {len(aux_refs)}개")
 
+        # prompt_text 처리: 너무 길면 모델이 이어서 말하는 문제 발생
+        # 마지막 문장만 사용하여 음성 특성 참조에 충분하면서 bleeding 방지
+        prompt_text = ref_text
+        if ref_text and len(ref_text) > 40:
+            # 마지막 문장 추출 (문장 부호 기준)
+            import re
+            sentences = re.split(r'[.!?。！？]', ref_text)
+            sentences = [s.strip() for s in sentences if s.strip()]
+            if sentences:
+                prompt_text = sentences[-1]
+                # 너무 짧으면 마지막 2문장 사용
+                if len(prompt_text) < 10 and len(sentences) >= 2:
+                    prompt_text = sentences[-2] + ". " + sentences[-1]
+            logger.info(f"[합성] prompt_text 축약: {len(ref_text)}자 -> {len(prompt_text)}자")
+
         # GPT-SoVITS 분할 기능이 한국어에서 문제가 있어 항상 cut0 사용
         # 긴 텍스트는 우리 코드에서 직접 분할 후 개별 합성
         split_method = "cut0"
@@ -478,7 +493,7 @@ class GPTSoVITSAPIClient:
             "text_lang": api_lang,
             "ref_audio_path": str(ref_audio_path.absolute()),
             "aux_ref_audio_paths": aux_refs,  # 추가 참조 오디오 (품질 향상)
-            "prompt_text": ref_text,  # 참조 오디오의 대사 텍스트 (정확한 합성에 필요)
+            "prompt_text": prompt_text,  # 참조 오디오의 마지막 문장 (bleeding 방지)
             "prompt_lang": api_lang,
             "top_k": self.config.top_k,
             "top_p": self.config.top_p,
