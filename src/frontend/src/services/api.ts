@@ -851,6 +851,11 @@ export function createDialogueStream(
     onStatus?.(data)
   })
 
+  // Heartbeat 이벤트 (연결 유지 확인용)
+  eventSource.addEventListener('heartbeat', () => {
+    // 연결 상태 확인용 - 로그 출력 없이 조용히 처리
+  })
+
   eventSource.onerror = () => {
     onError?.({ type: 'error', message: 'EventSource connection failed' })
   }

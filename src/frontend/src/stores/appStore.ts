@@ -197,6 +197,7 @@ interface AppState {
   loadRenderStatus: () => Promise<void>
   startRender: (episodeId: string, force?: boolean) => Promise<void>
   cancelRender: () => Promise<void>
+  deleteRenderCache: (episodeId: string) => Promise<void>
   subscribeToRenderProgress: (episodeId: string) => void
   unsubscribeFromRenderProgress: () => void
   getRenderedAudioUrl: (index: number) => string | null
@@ -1617,6 +1618,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (error) {
       console.error('Failed to cancel render:', error)
       set({ renderError: '렌더링 취소 실패' })
+    }
+  },
+
+  // 렌더 캐시 삭제
+  deleteRenderCache: async (episodeId: string) => {
+    try {
+      await renderApi.deleteCache(episodeId)
+      // 상태 초기화
+      set({
+        renderProgress: null,
+        cachedEpisodes: get().cachedEpisodes.filter(id => id !== episodeId),
+      })
+      // 캐시 목록 갱신
+      await get().loadRenderStatus()
+    } catch (error) {
+      console.error('Failed to delete render cache:', error)
+      set({ renderError: '캐시 삭제 실패' })
     }
   },
 

@@ -75,16 +75,26 @@ class DialogueMatcher:
         else:
             search_indices = list(range(len(self._dialogues)))
 
+        # 짧은 텍스트 여부 (짧을수록 위치 가중치 강화)
+        is_short_text = len(ocr_text.strip()) < 10
+        max_bonus = 0.35 if is_short_text else 0.25
+
         for idx in search_indices:
             dialogue = self._dialogues[idx]
             similarity = self._calculate_similarity(ocr_text, dialogue.text)
 
-            # 현재 위치 근처면 약간의 보너스
+            # 위치 기반 가중치 - 거리 비례 감소
             if self._last_matched_index >= 0:
-                distance = abs(idx - self._last_matched_index)
-                if distance <= 3:
-                    similarity += 0.05 * (3 - distance)  # 가까울수록 보너스
-                    similarity = min(similarity, 1.0)
+                # 앞으로 진행하는 방향(+) 우선, 뒤로 가는 건 페널티
+                offset = idx - self._last_matched_index
+                if offset > 0 and offset <= 5:
+                    # 다음 대사일수록 높은 보너스: +1 → max, +5 → 0
+                    similarity += max_bonus * (1 - (offset - 1) / 5)
+                elif offset < 0 and offset >= -2:
+                    # 이전 대사는 약한 보너스 (되돌아가기)
+                    similarity += 0.05
+
+                similarity = min(similarity, 1.0)
 
             if similarity > best_similarity:
                 best_similarity = similarity

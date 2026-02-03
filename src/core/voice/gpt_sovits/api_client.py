@@ -17,12 +17,22 @@ from .config import GPTSoVITSConfig
 logger = logging.getLogger(__name__)
 
 
-def preprocess_text_for_tts(text: str) -> str:
+def preprocess_text_for_tts(text: str) -> str | None:
     """TTS 합성을 위한 텍스트 전처리
 
     GPT-SoVITS가 제대로 처리하지 못하는 패턴을 변환합니다.
+
+    Returns:
+        전처리된 텍스트, 또는 None (합성 불가능한 텍스트)
     """
     import re
+
+    # 원본 텍스트가 의미있는 내용을 포함하는지 확인
+    # 말줄임표/마침표만 있는 경우 비언어적 발성으로 대체
+    meaningful_chars = re.sub(r'[.\s…,?!]+', '', text)
+    if not meaningful_chars:
+        # 말줄임표나 문장부호만 있는 텍스트 → 비언어적 발성
+        return "음..."
 
     # 괄호 안의 감탄사/의성어 제거 (예: "(한숨)" -> "")
     # TTS로 읽을 필요 없는 연출 지시문
@@ -50,6 +60,10 @@ def preprocess_text_for_tts(text: str) -> str:
     # 연속된 쉼표 정리
     text = re.sub(r',\s*,+', ',', text)
 
+    # 전처리 후에도 빈 문자열이면 None 반환
+    if not text.strip():
+        return None
+
     return text
 
 
@@ -73,8 +87,24 @@ def split_text_for_tts(text: str, max_length: int = 50) -> list[str]:
 
     segments = []
 
-    # 1차: 쉼표로 분할
-    parts = re.split(r',\s*', text)
+    # 1차: 문장 구분자로 분할 (쉼표, 느낌표, 물음표)
+    # 느낌표/물음표 뒤에 분할하되 구분자는 앞 세그먼트에 포함
+    parts = re.split(r'([!?])\s*|,\s*', text)
+    # re.split with groups: ['텍스트', '!', '텍스트', '?', ...]
+    # 구분자를 앞 텍스트에 붙여서 재조합
+    merged_parts = []
+    i = 0
+    while i < len(parts):
+        part = parts[i] if parts[i] else ""
+        # 다음이 구분자(!, ?)이면 붙이기
+        if i + 1 < len(parts) and parts[i + 1] in ('!', '?'):
+            part += parts[i + 1]
+            i += 2
+        else:
+            i += 1
+        if part.strip():
+            merged_parts.append(part.strip())
+    parts = merged_parts
 
     current = ""
     for part in parts:
@@ -506,8 +536,14 @@ class GPTSoVITSAPIClient:
         # 텍스트 전처리 (GPT-SoVITS 호환성)
         original_text = text
         text = preprocess_text_for_tts(text)
+
+        # 전처리 후 합성 불가능한 텍스트 (말줄임표만 있는 경우 등)
+        if text is None:
+            logger.info(f"[합성] 스킵 - 합성 불가 텍스트: '{original_text}'")
+            return None
+
         if text != original_text:
-            logger.info(f"[합성] 텍스트 전처리: '{original_text[:30]}...' -> '{text[:30]}...'")
+            logger.info(f"[합성] 텍스트 전처리: '{original_text[:30]}' -> '{text[:30]}'")
 
         # 긴 텍스트 분할 (GPT-SoVITS는 긴 텍스트에서 앞부분이 잘림)
         segments = split_text_for_tts(text, max_length=50)

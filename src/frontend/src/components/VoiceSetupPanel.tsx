@@ -32,6 +32,7 @@ export default function VoiceSetupPanel() {
     cachedEpisodes,
     startRender,
     cancelRender,
+    deleteRenderCache,
     loadRenderStatus,
     // 음성 매핑
     speakerVoiceMap,
@@ -531,15 +532,30 @@ export default function VoiceSetupPanel() {
               <p className="text-xs text-ark-gray/70">
                 더빙 모드에서 캐시된 음성을 사용합니다
               </p>
-              <button
-                onClick={() => handleStartRender(true)}
-                disabled={!gptSovitsStatus?.api_running}
-                className={`w-full ark-btn ark-btn-secondary text-sm ${
-                  !gptSovitsStatus?.api_running ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-              >
-                다시 렌더링
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleStartRender(true)}
+                  disabled={!gptSovitsStatus?.api_running}
+                  className={`flex-1 ark-btn ark-btn-secondary text-sm ${
+                    !gptSovitsStatus?.api_running ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                >
+                  다시 렌더링
+                </button>
+                <button
+                  onClick={() => {
+                    if (selectedEpisodeId && confirm('렌더 캐시를 삭제하시겠습니까?')) {
+                      deleteRenderCache(selectedEpisodeId)
+                    }
+                  }}
+                  className="ark-btn text-sm bg-red-900/50 hover:bg-red-800/50 text-red-300"
+                  title="캐시 삭제"
+                >
+                  <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+                    <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+                  </svg>
+                </button>
+              </div>
             </div>
           ) : episodeCacheStatus === 'partial' && renderProgress ? (
             // 부분 완료 (일부 대사만 렌더링됨)
@@ -564,15 +580,30 @@ export default function VoiceSetupPanel() {
               <p className="text-xs text-ark-gray/70">
                 일부 대사만 캐시됨. 나머지는 실시간 합성됩니다.
               </p>
-              <button
-                onClick={() => handleStartRender(false)}
-                disabled={!gptSovitsStatus?.api_running}
-                className={`w-full ark-btn ark-btn-secondary text-sm ${
-                  !gptSovitsStatus?.api_running ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-              >
-                이어서 렌더링
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleStartRender(false)}
+                  disabled={!gptSovitsStatus?.api_running}
+                  className={`flex-1 ark-btn ark-btn-secondary text-sm ${
+                    !gptSovitsStatus?.api_running ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                >
+                  이어서 렌더링
+                </button>
+                <button
+                  onClick={() => {
+                    if (selectedEpisodeId && confirm('렌더 캐시를 삭제하시겠습니까?')) {
+                      deleteRenderCache(selectedEpisodeId)
+                    }
+                  }}
+                  className="ark-btn text-sm bg-red-900/50 hover:bg-red-800/50 text-red-300"
+                  title="캐시 삭제"
+                >
+                  <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+                    <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+                  </svg>
+                </button>
+              </div>
             </div>
           ) : (
             // 사전 더빙 시작 가능

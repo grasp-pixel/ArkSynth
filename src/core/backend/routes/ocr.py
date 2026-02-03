@@ -987,7 +987,18 @@ async def stream_window_dialogue(
                 "data": json.dumps({"type": "connected", "hwnd": hwnd})
             }
 
+            # Heartbeat 카운터 (연결 유지 확인용)
+            heartbeat_counter = 0
+
             while True:
+                # 주기적 heartbeat (10번마다 = 3초마다)
+                heartbeat_counter += 1
+                if heartbeat_counter >= 10:
+                    heartbeat_counter = 0
+                    yield {
+                        "event": "heartbeat",
+                        "data": json.dumps({"timestamp": time.time()})
+                    }
                 try:
                     # 캡처
                     image = await capture.capture_window_async(hwnd)
@@ -1025,8 +1036,16 @@ async def stream_window_dialogue(
 
                     state.last_stable_hash = current_hash
 
-                    # OCR 실행
-                    results = await ocr.recognize(image)
+                    # OCR 실행 (타임아웃 적용 - 느린 OCR이 전체 루프를 블로킹하지 않도록)
+                    try:
+                        results = await asyncio.wait_for(
+                            ocr.recognize(image),
+                            timeout=3.0  # 3초 타임아웃
+                        )
+                    except asyncio.TimeoutError:
+                        print("[SSE-OCR] OCR 타임아웃 (3초)")
+                        await asyncio.sleep(poll_interval)
+                        continue
 
                     if results:
                         # 디버깅: 모든 OCR 결과 출력
