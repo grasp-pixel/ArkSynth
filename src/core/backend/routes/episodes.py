@@ -269,13 +269,8 @@ async def get_episode_characters(episode_id: str, lang: str | None = None):
                 # 다른 캐릭터가 말함 (예: 스카디 화면에 켈시가 말함) → speaker_name 기준
                 key = f"name:{speaker_name}"
         elif speaker_id:
-            # speaker_id는 있지만 캐릭터 테이블에 없음 (이벤트 NPC 등)
-            # 미스터리 이름이면 speaker_name 기반으로 처리 (나중에 밝혀질 이름과 연결)
-            if _is_mystery_name(speaker_name):
-                key = f"name:{speaker_name}"
-            else:
-                # 이벤트 NPC지만 이름이 있으면 이름 기반
-                key = f"name:{speaker_name}" if speaker_name else speaker_id
+            # speaker_id는 있지만 캐릭터 테이블에 없음 (NPC 등)
+            key = speaker_id
         else:
             # speaker_id 없음 → speaker_name 기준
             key = f"name:{speaker_name}"
