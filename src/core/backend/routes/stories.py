@@ -181,6 +181,26 @@ async def list_group_episodes(group_id: str, lang: str | None = None):
     }
 
 
+def _find_operator_id_by_name(
+    loader: StoryLoader, speaker_name: str, lang: str
+) -> str | None:
+    """speaker_name으로 오퍼레이터 ID 찾기
+
+    NPC ID(char_npc_XXX)로는 음성이 없지만, 같은 이름의 오퍼레이터가
+    나중에 출시된 경우를 처리. 예: "하이디" → char_4045_heidi
+    """
+    if not speaker_name:
+        return None
+
+    characters = loader.load_characters(lang)
+    for char_id, char in characters.items():
+        # char_로 시작하는 오퍼레이터만 (npc 제외)
+        if char_id.startswith("char_") and not char_id.startswith("char_npc_"):
+            if char.name_ko == speaker_name:
+                return char_id
+    return None
+
+
 @router.get("/groups/{group_id}/characters")
 async def list_group_characters(group_id: str, lang: str | None = None):
     """스토리 그룹의 모든 캐릭터 목록 (음성 보유 여부 포함)
@@ -201,16 +221,25 @@ async def list_group_characters(group_id: str, lang: str | None = None):
     # 캐릭터 목록 수집
     characters = loader.get_group_characters(group_id, lang)
 
-    # 음성 보유 여부 확인
+    # 음성 보유 여부 확인 (이름 기반 fallback 포함)
     result = []
     for char_info in characters:
         char_id = char_info["char_id"]
+        char_name = char_info["name"]
+
+        # 1. char_id로 음성 확인
         has_voice = voice_mapper.has_voice(char_id) if char_id else False
+
+        # 2. 없으면 이름으로 오퍼레이터 ID 찾아서 음성 확인
+        if not has_voice and char_name:
+            operator_id = _find_operator_id_by_name(loader, char_name, lang)
+            if operator_id:
+                has_voice = voice_mapper.has_voice(operator_id)
 
         result.append(
             GroupCharacterInfo(
                 char_id=char_id,
-                name=char_info["name"],
+                name=char_name,
                 dialogue_count=char_info["dialogue_count"],
                 has_voice=has_voice,
             )

@@ -87,8 +87,10 @@ interface AppState {
 
   // 더빙 준비 관련
   isPrepared: boolean  // 더빙 준비 완료 여부
-  groupCharacters: GroupCharacterInfo[]  // 현재 그룹 캐릭터 목록
+  groupCharacters: GroupCharacterInfo[]  // 현재 그룹 캐릭터 목록 (전체 통계용)
+  episodeCharacters: GroupCharacterInfo[]  // 현재 에피소드 캐릭터 목록 (음성 매핑용)
   isLoadingCharacters: boolean  // 캐릭터 로딩 중
+  isLoadingEpisodeCharacters: boolean  // 에피소드 캐릭터 로딩 중
   speakerVoiceMap: Record<string, string>  // speaker_id → voice_id 매핑
   narratorCharId: string | null  // 나레이터 캐릭터 ID
   autoPlayOnMatch: boolean  // 매칭 시 자동 재생
@@ -172,6 +174,7 @@ interface AppState {
   prepareForDubbing: () => Promise<void>
   cancelPrepare: () => void
   loadGroupCharacters: (groupId: string) => Promise<void>
+  loadEpisodeCharacters: (episodeId: string) => Promise<void>
   setSpeakerVoice: (speakerId: string, voiceId: string | null) => void
   clearSpeakerVoice: (speakerId: string) => void
   setNarratorCharId: (charId: string | null) => void
@@ -370,7 +373,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   // 더빙 준비 초기 상태
   isPrepared: false,
   groupCharacters: [],
+  episodeCharacters: [],
   isLoadingCharacters: false,
+  isLoadingEpisodeCharacters: false,
   speakerVoiceMap: {},
   narratorCharId: persistedState.narratorCharId ?? null,
   autoPlayOnMatch: persistedState.autoPlayOnMatch ?? true,
@@ -515,11 +520,15 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // 에피소드 선택
   selectEpisode: async (episodeId: string) => {
+    const { loadEpisodeCharacters } = get()
     set({ isLoadingEpisode: true, selectedEpisodeId: episodeId })
     persistCurrentState(get)
     try {
       const data = await episodesApi.getEpisode(episodeId)
       set({ selectedEpisode: data })
+
+      // 에피소드 캐릭터 목록 로드 (병렬 실행)
+      loadEpisodeCharacters(episodeId)
 
       // 렌더링 캐시 상태 확인
       try {
@@ -1220,6 +1229,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       isPrepared: false,
       groupCharacters: [],
+      episodeCharacters: [],
       speakerVoiceMap: {},
     })
   },
@@ -1239,6 +1249,24 @@ export const useAppStore = create<AppState>((set, get) => ({
         groupCharacters: [],
         isLoadingCharacters: false,
         ocrError: 'Failed to load group characters',
+      })
+    }
+  },
+
+  // 에피소드 캐릭터 로드 (speaker_name 기준)
+  loadEpisodeCharacters: async (episodeId: string) => {
+    set({ isLoadingEpisodeCharacters: true })
+    try {
+      const data = await episodesApi.getEpisodeCharacters(episodeId)
+      set({
+        episodeCharacters: data.characters,
+        isLoadingEpisodeCharacters: false,
+      })
+    } catch (error) {
+      console.error('Failed to load episode characters:', error)
+      set({
+        episodeCharacters: [],
+        isLoadingEpisodeCharacters: false,
       })
     }
   },

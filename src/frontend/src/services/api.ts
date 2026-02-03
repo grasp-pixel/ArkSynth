@@ -96,11 +96,13 @@ export const episodesApi = {
     return res.data
   },
 
-  // 에피소드 캐릭터 목록
+  // 에피소드 캐릭터(화자) 목록 - speaker_name 기준
   getEpisodeCharacters: async (episodeId: string) => {
-    const res = await api.get<{ episode_id: string; characters: CharacterInfo[] }>(
-      `/api/episodes/${episodeId}/characters`
-    )
+    const res = await api.get<{
+      episode_id: string
+      total: number
+      characters: GroupCharacterInfo[]  // GroupCharacterInfo와 동일 구조
+    }>(`/api/episodes/${episodeId}/characters`)
     return res.data
   },
 }

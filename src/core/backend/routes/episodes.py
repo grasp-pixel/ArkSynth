@@ -5,11 +5,13 @@ from pydantic import BaseModel
 
 from ..config import config
 from ...story.loader import StoryLoader
+from ...voice.character_mapping import CharacterVoiceMapper
 
 router = APIRouter()
 
 # 전역 로더 (lazy init)
 _loader: StoryLoader | None = None
+_voice_mapper: CharacterVoiceMapper | None = None
 
 
 def get_loader() -> StoryLoader:
@@ -17,6 +19,15 @@ def get_loader() -> StoryLoader:
     if _loader is None:
         _loader = StoryLoader(config.data_path)
     return _loader
+
+
+def get_voice_mapper() -> CharacterVoiceMapper:
+    global _voice_mapper
+    if _voice_mapper is None:
+        _voice_mapper = CharacterVoiceMapper(
+            extracted_path=config.extracted_path,
+        )
+    return _voice_mapper
 
 
 class EpisodeSummary(BaseModel):
@@ -159,10 +170,44 @@ async def get_episode_dialogues(
     }
 
 
+class EpisodeCharacterInfo(BaseModel):
+    """에피소드 내 캐릭터(화자) 정보"""
+
+    char_id: str | None  # None이면 나레이터
+    name: str  # speaker_name (화자 표시 이름)
+    dialogue_count: int
+    has_voice: bool
+
+
+def _find_operator_id_by_name(
+    loader: StoryLoader, speaker_name: str, lang: str
+) -> str | None:
+    """speaker_name으로 오퍼레이터 ID 찾기
+
+    NPC ID(char_npc_XXX)로는 음성이 없지만, 같은 이름의 오퍼레이터가
+    나중에 출시된 경우를 처리. 예: "하이디" → char_4045_heidi
+    """
+    if not speaker_name:
+        return None
+
+    characters = loader.load_characters(lang)
+    for char_id, char in characters.items():
+        # char_로 시작하는 오퍼레이터만 (npc 제외)
+        if char_id.startswith("char_") and not char_id.startswith("char_npc_"):
+            if char.name_ko == speaker_name:
+                return char_id
+    return None
+
+
 @router.get("/{episode_id}/characters")
 async def get_episode_characters(episode_id: str, lang: str | None = None):
-    """에피소드에 등장하는 캐릭터 목록"""
+    """에피소드에 등장하는 캐릭터(화자) 목록
+
+    speaker_name 기반으로 집계하여 실제 에피소드에서 표시되는 이름 사용.
+    같은 char_id라도 다른 speaker_name이면 별도 항목으로 표시.
+    """
     loader = get_loader()
+    voice_mapper = get_voice_mapper()
     lang = lang or config.game_language
 
     episode = loader.load_episode(episode_id, lang=lang)
@@ -170,18 +215,50 @@ async def get_episode_characters(episode_id: str, lang: str | None = None):
     if episode is None:
         raise HTTPException(status_code=404, detail=f"Episode not found: {episode_id}")
 
-    characters_with_names = []
-    for char_id in episode.characters:
-        char = loader.get_character(char_id, lang=lang)
-        name = char.name_ko if char and char.name_ko else char_id
-        characters_with_names.append(
-            {
-                "id": char_id,
-                "name": name,
+    # speaker_name 기준으로 캐릭터 집계
+    # key: speaker_name, value: {char_id, count}
+    speaker_stats: dict[str, dict] = {}
+
+    for dialogue in episode.dialogues:
+        speaker_name = dialogue.speaker_name or ""
+        speaker_id = dialogue.speaker_id
+
+        if speaker_name not in speaker_stats:
+            speaker_stats[speaker_name] = {
+                "char_id": speaker_id,
+                "count": 0,
             }
+        speaker_stats[speaker_name]["count"] += 1
+
+    # 결과 정리 (대사 수 내림차순)
+    characters = []
+    for speaker_name, stats in speaker_stats.items():
+        char_id = stats["char_id"]
+
+        # 1. char_id로 음성 확인
+        has_voice = voice_mapper.has_voice(char_id) if char_id else False
+
+        # 2. 없으면 speaker_name으로 오퍼레이터 ID 찾아서 음성 확인
+        #    (NPC로 등장하지만 나중에 오퍼레이터로 출시된 캐릭터)
+        if not has_voice and speaker_name:
+            operator_id = _find_operator_id_by_name(loader, speaker_name, lang)
+            if operator_id:
+                has_voice = voice_mapper.has_voice(operator_id)
+
+        characters.append(
+            EpisodeCharacterInfo(
+                char_id=char_id,
+                name=speaker_name or "나레이터",
+                dialogue_count=stats["count"],
+                has_voice=has_voice,
+            )
         )
+
+    # 대사 수 내림차순 정렬
+    characters.sort(key=lambda c: c.dialogue_count, reverse=True)
 
     return {
         "episode_id": episode_id,
-        "characters": characters_with_names,
+        "total": len(characters),
+        "characters": characters,
     }

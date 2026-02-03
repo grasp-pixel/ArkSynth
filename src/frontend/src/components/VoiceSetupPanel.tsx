@@ -4,9 +4,10 @@ import { useAppStore } from '../stores/appStore'
 export default function VoiceSetupPanel() {
   const {
     groupCharacters,
+    episodeCharacters,
     isLoadingCharacters,
+    isLoadingEpisodeCharacters,
     voiceCharacters,
-    isLoadingVoiceCharacters,
     loadVoiceCharacters,
     autoPlayOnMatch,
     toggleAutoPlay,
@@ -24,7 +25,6 @@ export default function VoiceSetupPanel() {
     unsubscribeFromTrainingProgress,
     // 에피소드 관련
     selectedEpisodeId,
-    selectedEpisode,
     // GPT-SoVITS (앱 레벨 상태)
     gptSovitsStatus,
     // 렌더링 (사전 더빙)
@@ -68,26 +68,11 @@ export default function VoiceSetupPanel() {
     )
   }, [groupCharacters, trainedCharIds])
 
-  // 현재 에피소드에 등장하는 캐릭터 ID 집합
-  const episodeSpeakerIds = useMemo(() => {
-    if (!selectedEpisode) return new Set<string>()
-    const ids = new Set<string>()
-    selectedEpisode.dialogues.forEach(d => {
-      if (d.speaker_id) ids.add(d.speaker_id)
-    })
-    return ids
-  }, [selectedEpisode])
-
-  // 음성 없는 캐릭터 (수동 매핑 대상) - 현재 에피소드 등장 캐릭터 우선
+  // 음성 없는 캐릭터 (수동 매핑 대상) - 에피소드 캐릭터 목록 기준
   const voicelessCharacters = useMemo(() => {
-    const chars = groupCharacters.filter(c => !c.has_voice && c.char_id)
-    // 현재 에피소드에 등장하는 캐릭터를 위로 정렬
-    return chars.sort((a, b) => {
-      const aInEpisode = a.char_id && episodeSpeakerIds.has(a.char_id) ? 1 : 0
-      const bInEpisode = b.char_id && episodeSpeakerIds.has(b.char_id) ? 1 : 0
-      return bInEpisode - aInEpisode
-    })
-  }, [groupCharacters, episodeSpeakerIds])
+    // 에피소드 캐릭터 목록에서 음성 없는 캐릭터만 필터링
+    return episodeCharacters.filter(c => !c.has_voice && c.char_id)
+  }, [episodeCharacters])
 
   // 매핑 가능한 음성 목록 (학습 완료된 것만)
   const availableVoices = useMemo(() => {
@@ -350,65 +335,65 @@ export default function VoiceSetupPanel() {
           )}
         </div>
 
-        {/* 음성 매핑 (음성 없는 캐릭터) */}
-        {voicelessCharacters.length > 0 && availableVoices.length > 0 && (
+        {/* 음성 매핑 (현재 에피소드 - 음성 없는 캐릭터) */}
+        {availableVoices.length > 0 && (
           <div className="p-4 border-b border-ark-border">
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-sm font-medium text-ark-gray">음성 매핑</h4>
               <span className="text-xs text-ark-gray">
-                {voicelessCharacters.filter(c => c.char_id && episodeSpeakerIds.has(c.char_id)).length > 0 && (
-                  <span className="text-ark-orange mr-2">
-                    현재 {voicelessCharacters.filter(c => c.char_id && episodeSpeakerIds.has(c.char_id)).length}명
-                  </span>
-                )}
-                전체 {voicelessCharacters.length}명
+                현재 에피소드 {voicelessCharacters.length}명
               </span>
             </div>
-            <p className="text-xs text-ark-gray/70 mb-3">
-              * 주황색 = 현재 에피소드 등장 / 자동: 기본 음성 분배
-            </p>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {voicelessCharacters.map((char) => {
-                const manualMapping = char.char_id ? speakerVoiceMap[char.char_id] : null
-                const autoVoice = char.char_id ? getSpeakerVoice(char.char_id, char.name) : null
-                const autoVoiceName = autoVoice ? voiceCharacters.find(v => v.char_id === autoVoice)?.name : null
-                const isInCurrentEpisode = char.char_id && episodeSpeakerIds.has(char.char_id)
+            {isLoadingEpisodeCharacters ? (
+              <div className="text-center text-ark-gray py-4 ark-pulse">로딩 중...</div>
+            ) : voicelessCharacters.length === 0 ? (
+              <p className="text-xs text-ark-gray/70">
+                * 음성 매핑이 필요한 캐릭터가 없습니다
+              </p>
+            ) : (
+              <>
+                <p className="text-xs text-ark-gray/70 mb-3">
+                  * 자동: 기본 음성 분배
+                </p>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {voicelessCharacters.map((char, idx) => {
+                    const manualMapping = char.char_id ? speakerVoiceMap[char.char_id] : null
+                    const autoVoice = char.char_id ? getSpeakerVoice(char.char_id, char.name) : null
+                    const autoVoiceName = autoVoice ? voiceCharacters.find(v => v.char_id === autoVoice)?.name : null
 
-                return (
-                  <div
-                    key={char.char_id}
-                    className={`flex items-center gap-2 p-2 rounded ${
-                      isInCurrentEpisode ? 'bg-ark-orange/10 border border-ark-orange/30' : 'bg-ark-black/30'
-                    }`}
-                  >
-                    <span className={`text-sm flex-shrink-0 w-24 truncate ${
-                      isInCurrentEpisode ? 'text-ark-orange font-medium' : 'text-ark-white'
-                    }`} title={char.name}>
-                      {char.name}
-                    </span>
-                    <span className="text-xs text-ark-gray flex-shrink-0">→</span>
-                    <select
-                      value={manualMapping ?? ''}
-                      onChange={(e) => {
-                        if (char.char_id) {
-                          setSpeakerVoice(char.char_id, e.target.value || null)
-                        }
-                      }}
-                      className="ark-input text-xs flex-1 min-w-0"
-                    >
-                      <option value="">
-                        자동 {autoVoiceName ? `(${autoVoiceName})` : ''}
-                      </option>
-                      {availableVoices.map(v => (
-                        <option key={v.char_id} value={v.char_id}>
-                          {v.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )
-              })}
-            </div>
+                    return (
+                      <div
+                        key={`${char.char_id ?? 'narrator'}-${char.name}-${idx}`}
+                        className="flex items-center gap-2 p-2 rounded bg-ark-black/30"
+                      >
+                        <span className="text-sm flex-shrink-0 w-28 truncate text-ark-white" title={char.name}>
+                          {char.name}
+                        </span>
+                        <span className="text-xs text-ark-gray flex-shrink-0">→</span>
+                        <select
+                          value={manualMapping ?? ''}
+                          onChange={(e) => {
+                            if (char.char_id) {
+                              setSpeakerVoice(char.char_id, e.target.value || null)
+                            }
+                          }}
+                          className="ark-input text-xs flex-1 min-w-0"
+                        >
+                          <option value="">
+                            자동 {autoVoiceName ? `(${autoVoiceName})` : ''}
+                          </option>
+                          {availableVoices.map(v => (
+                            <option key={v.char_id} value={v.char_id}>
+                              {v.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
             {defaultFemaleVoices.length === 0 && defaultMaleVoices.length === 0 && (
               <p className="mt-2 text-xs text-ark-yellow">
                 * 기본 음성이 설정되지 않았습니다. 캐릭터 관리에서 설정하세요.
