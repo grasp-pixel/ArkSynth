@@ -100,12 +100,16 @@ async def synthesize(request: SynthesizeRequest):
                 )
 
             # 참조 오디오 준비 (동기 실행)
+            # GPTSoVITSConfig의 참조 오디오 길이 설정 사용
+            gpt_config = synthesizer.config
             success = prepare_reference_audio(
                 char_id=request.char_id,
                 audio_dir=audio_dir,
                 output_dir=output_dir,
                 gamedata_path=gamedata_path,
                 language=config.gpt_sovits_language,
+                min_duration=gpt_config.min_ref_audio_length,
+                max_duration=gpt_config.max_ref_audio_length,
             )
 
             if not success or not model_manager.is_trained(request.char_id):
