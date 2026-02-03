@@ -38,6 +38,17 @@ class CharacterVoiceMapper:
         self._voice_info_cache: dict[str, VoiceInfo] | None = None
         self._character_names: dict[str, str] | None = None
 
+    def clear_cache(self):
+        """캐시 초기화 (데이터 새로고침 시 호출)"""
+        self._voice_info_cache = None
+        self._character_names = None
+
+    def set_gamedata_path(self, path: str | Path | None):
+        """게임 데이터 경로 변경"""
+        self.gamedata_path = Path(path) if path else None
+        # 캐릭터 이름 캐시만 초기화
+        self._character_names = None
+
     def scan_voice_folders(self, lang: str = "voice") -> dict[str, VoiceInfo]:
         """음성 폴더 스캔하여 캐릭터별 정보 수집
 
@@ -121,11 +132,28 @@ class CharacterVoiceMapper:
         if self.gamedata_path is None:
             return {}
 
-        char_table_path = (
-            self.gamedata_path / game_lang / "gamedata" / "excel" / "character_table.json"
-        )
+        # arkprts 경로와 기존 경로 모두 시도
+        # 언어 코드 매핑: ko_KR -> kr, en_US -> en, ja_JP -> jp, zh_CN -> cn
+        lang_to_server = {"ko_KR": "kr", "en_US": "en", "ja_JP": "jp", "zh_CN": "cn"}
+        server_code = lang_to_server.get(game_lang, game_lang)
 
-        if not char_table_path.exists():
+        # 후보 경로들 (우선순위 순)
+        candidates = [
+            # arkprts 경로 (data/gamedata/kr/gamedata/excel/)
+            self.gamedata_path.parent / "gamedata" / server_code / "gamedata" / "excel" / "character_table.json",
+            # 기존 경로 (data/gamedata_yostar/ko_KR/gamedata/excel/)
+            self.gamedata_path / game_lang / "gamedata" / "excel" / "character_table.json",
+            # 직접 gamedata 경로 (gamedata_path가 이미 gamedata/kr 인 경우)
+            self.gamedata_path / "gamedata" / "excel" / "character_table.json",
+        ]
+
+        char_table_path = None
+        for candidate in candidates:
+            if candidate.exists():
+                char_table_path = candidate
+                break
+
+        if char_table_path is None:
             return {}
 
         with open(char_table_path, "r", encoding="utf-8") as f:

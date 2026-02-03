@@ -38,13 +38,8 @@ class StoryLoader:
         self.data_root = Path(data_root)
         self.parser = StoryParser()
 
-        # 언어별 경로 매핑
-        self._lang_paths = {
-            "ko_KR": self.data_root / "gamedata_yostar" / "ko_KR" / "gamedata",
-            "en_US": self.data_root / "gamedata_yostar" / "en_US" / "gamedata",
-            "ja_JP": self.data_root / "gamedata_yostar" / "ja_JP" / "gamedata",
-            "zh_CN": self.data_root / "gamedata" / "zh_CN" / "gamedata",
-        }
+        # 언어별 경로 매핑 (arkprts 경로 우선, 기존 경로 fallback)
+        self._lang_paths = self._build_lang_paths()
 
         # 캐시
         self._character_cache: dict[str, dict[str, Character]] = {}
@@ -57,6 +52,40 @@ class StoryLoader:
         # 캐릭터 이름 매퍼 (화자 이름 -> 캐릭터 ID)
         self._name_mapper: CharacterNameMapper | None = None
         self._name_mapper_cache_path = self.data_root / "cache" / "character_name_mapping.json"
+
+    def _build_lang_paths(self) -> dict[str, Path]:
+        """언어별 경로 매핑 구축
+
+        arkprts로 다운로드한 경로를 우선 사용하고,
+        없으면 기존 gamedata_yostar 경로를 fallback으로 사용
+        """
+        paths = {}
+
+        # 언어 코드 매핑 (표준 코드 -> arkprts 서버 코드)
+        lang_to_server = {
+            "ko_KR": "kr",
+            "en_US": "en",
+            "ja_JP": "jp",
+            "zh_CN": "cn",
+        }
+
+        for lang, server in lang_to_server.items():
+            # arkprts 경로 (우선)
+            arkprts_path = self.data_root / "gamedata" / server / "gamedata"
+
+            # 기존 경로 (fallback)
+            if lang == "zh_CN":
+                legacy_path = self.data_root / "gamedata" / "zh_CN" / "gamedata"
+            else:
+                legacy_path = self.data_root / "gamedata_yostar" / lang / "gamedata"
+
+            # arkprts 경로가 있으면 우선 사용
+            if arkprts_path.exists():
+                paths[lang] = arkprts_path
+            else:
+                paths[lang] = legacy_path
+
+        return paths
 
     @property
     def available_languages(self) -> list[str]:

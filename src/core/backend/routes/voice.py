@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from ..config import config
 from ...voice.character_mapping import CharacterVoiceMapper
+from ...voice.charword_loader import reset_charword_loader
 from ...voice.dialogue_stats import DialogueStatsManager
 
 router = APIRouter()
@@ -128,6 +129,39 @@ async def rebuild_dialogue_stats():
     return {
         "total_characters": len(stats),
         "message": "대사 통계가 재계산되었습니다.",
+    }
+
+
+@router.post("/refresh")
+async def refresh_character_data():
+    """캐릭터 데이터 새로고침 (게임 데이터 업데이트 후 호출)
+
+    캐릭터 매핑 캐시, 대사 통계, charword 로더를 모두 갱신합니다.
+    """
+    global _mapper, _stats_manager
+
+    # 매퍼 캐시 초기화 및 재생성
+    if _mapper:
+        _mapper.clear_cache()
+    _mapper = CharacterVoiceMapper(
+        extracted_path=config.extracted_path,
+        gamedata_path=config.gamedata_yostar_path,
+    )
+
+    # charword 로더 캐시 리셋
+    reset_charword_loader()
+
+    # 대사 통계 재계산 (항상 rebuild 호출)
+    if _stats_manager is None:
+        _stats_manager = DialogueStatsManager(config.data_path)
+    _stats_manager.rebuild_stats(config.game_language)
+
+    # 새로운 캐릭터 목록 가져오기
+    voice_info = _mapper.scan_voice_folders(config.voice_language)
+
+    return {
+        "total_characters": len(voice_info),
+        "message": "캐릭터 데이터가 새로고침되었습니다.",
     }
 
 

@@ -273,6 +273,12 @@ export const voiceApi = {
     const res = await api.get<{ char_id: string; has_voice: boolean }>(`/api/voice/check/${charId}`)
     return res.data
   },
+
+  // 캐릭터 데이터 새로고침 (게임 데이터 업데이트 후)
+  refresh: async () => {
+    const res = await api.post<{ total_characters: number; message: string }>('/api/voice/refresh')
+    return res.data
+  },
 }
 
 // OCR 관련 타입
@@ -640,10 +646,21 @@ export const renderApi = {
   },
 
   // 에피소드 렌더링 시작
-  startRender: async (episodeId: string, language: string = 'ko') => {
+  startRender: async (
+    episodeId: string,
+    language: string = 'ko',
+    defaultCharId?: string,
+    narratorCharId?: string,
+    force: boolean = false
+  ) => {
     const res = await api.post<RenderProgress>(
       `/api/render/start/${encodeURIComponent(episodeId)}`,
-      { language }
+      {
+        language,
+        default_char_id: defaultCharId,
+        narrator_char_id: narratorCharId,
+        force
+      }
     )
     return res.data
   },
@@ -879,6 +896,18 @@ export interface SevenZipInstallGuide {
   note: string
 }
 
+export interface FlatcInstallGuide {
+  name: string
+  description: string
+  windows: {
+    method: string
+    command: string
+    alternative: string
+  }
+  manual_steps: string[]
+  required_for: string
+}
+
 // GPT-SoVITS 설치 관련 타입
 export interface GptSovitsInstallInfo {
   is_installed: boolean
@@ -937,6 +966,12 @@ export const settingsApi = {
   // 7-Zip 설치 가이드
   get7ZipGuide: async () => {
     const res = await api.get<SevenZipInstallGuide>('/api/settings/7zip/install-guide')
+    return res.data
+  },
+
+  // flatc 설치 가이드
+  getFlatcGuide: async () => {
+    const res = await api.get<FlatcInstallGuide>('/api/settings/flatc/install-guide')
     return res.data
   },
 
@@ -1137,6 +1172,103 @@ export function createInstallStream(
   return {
     close: () => {
       console.log('[SSE] 설치 스트림 종료')
+      eventSource.close()
+    }
+  }
+}
+
+// === 게임 데이터 API ===
+
+export interface GamedataStatus {
+  exists: boolean
+  path: string
+  server: string
+  last_updated: string | null
+  story_count: number
+}
+
+export interface GamedataUpdateProgress {
+  stage: 'checking' | 'downloading' | 'complete' | 'error'
+  progress: number
+  message: string
+  error?: string
+}
+
+export const gamedataApi = {
+  // 게임 데이터 상태 확인
+  getStatus: async (server: string = 'kr') => {
+    const res = await api.get<GamedataStatus>('/api/data/status', {
+      params: { server }
+    })
+    return res.data
+  },
+
+  // 업데이트 시작
+  startUpdate: async (server: string = 'kr') => {
+    const res = await api.post<{ status: string; message: string; server: string }>(
+      '/api/data/update/start',
+      { server }
+    )
+    return res.data
+  },
+
+  // 업데이트 취소
+  cancelUpdate: async () => {
+    const res = await api.post<{ status: string; message: string }>(
+      '/api/data/update/cancel'
+    )
+    return res.data
+  },
+}
+
+// 게임 데이터 업데이트 진행률 SSE 스트림
+export function createGamedataUpdateStream(
+  options: {
+    onProgress?: (progress: GamedataUpdateProgress) => void
+    onComplete?: () => void
+    onError?: (error: string) => void
+  } = {}
+): { close: () => void } {
+  const { onProgress, onComplete, onError } = options
+
+  console.log('[SSE] createGamedataUpdateStream: 연결 시작')
+  const eventSource = new EventSource(`${API_BASE}/api/data/update/stream`)
+
+  eventSource.onopen = () => {
+    console.log('[SSE] 게임 데이터 업데이트 스트림 연결 성공')
+  }
+
+  eventSource.addEventListener('progress', (event) => {
+    const progress = JSON.parse(event.data) as GamedataUpdateProgress
+    onProgress?.(progress)
+  })
+
+  eventSource.addEventListener('complete', () => {
+    console.log('[SSE] 게임 데이터 업데이트 완료')
+    onComplete?.()
+    eventSource.close()
+  })
+
+  eventSource.addEventListener('error', (event) => {
+    if (event instanceof MessageEvent) {
+      const data = JSON.parse(event.data)
+      console.error('[SSE] 게임 데이터 업데이트 에러:', data)
+      onError?.(data.error || '업데이트 실패')
+    }
+    eventSource.close()
+  })
+
+  eventSource.addEventListener('ping', () => {
+    // keep-alive
+  })
+
+  eventSource.onerror = (e) => {
+    console.error('[SSE] 게임 데이터 업데이트 스트림 연결 오류:', e)
+  }
+
+  return {
+    close: () => {
+      console.log('[SSE] 게임 데이터 업데이트 스트림 종료')
       eventSource.close()
     }
   }

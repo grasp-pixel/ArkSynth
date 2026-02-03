@@ -113,10 +113,29 @@ def load_charword_transcripts(
         {voice_id: {"text": str, "title": str}} 딕셔너리
         예: {"CN_001": {"text": "박사님, 수고하셨어요.", "title": "어시스턴트 임명"}}
     """
-    charword_path = gamedata_path / lang / "gamedata" / "excel" / "charword_table.json"
+    # 언어 코드 매핑: ko_KR -> kr, en_US -> en, ja_JP -> jp, zh_CN -> cn
+    lang_to_server = {"ko_KR": "kr", "en_US": "en", "ja_JP": "jp", "zh_CN": "cn"}
+    server_code = lang_to_server.get(lang, lang)
 
-    if not charword_path.exists():
-        logger.warning(f"charword_table.json not found: {charword_path}")
+    # 후보 경로들 (우선순위 순)
+    candidates = [
+        # arkprts 경로 (data/gamedata/kr/gamedata/excel/)
+        gamedata_path.parent / "gamedata" / server_code / "gamedata" / "excel" / "charword_table.json",
+        # 기존 경로 (data/gamedata_yostar/ko_KR/gamedata/excel/)
+        gamedata_path / lang / "gamedata" / "excel" / "charword_table.json",
+        # 직접 gamedata 경로 (gamedata_path가 이미 gamedata/kr 인 경우)
+        gamedata_path / "gamedata" / "excel" / "charword_table.json",
+    ]
+
+    charword_path = None
+    for candidate in candidates:
+        if candidate.exists():
+            charword_path = candidate
+            logger.info(f"Found charword_table.json at: {charword_path}")
+            break
+
+    if charword_path is None:
+        logger.warning(f"charword_table.json not found in any of: {[str(c) for c in candidates]}")
         return {}
 
     try:

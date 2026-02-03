@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { settingsApi, extractApi, createExtractStream, type SettingsResponse, type DependencyStatus, type FFmpegInstallGuide, type SevenZipInstallGuide, type VoiceAssetsStatus, type ExtractProgress } from '../services/api'
+import { settingsApi, extractApi, createExtractStream, gamedataApi, createGamedataUpdateStream, voiceApi, type SettingsResponse, type DependencyStatus, type FFmpegInstallGuide, type SevenZipInstallGuide, type FlatcInstallGuide, type VoiceAssetsStatus, type ExtractProgress, type GamedataStatus, type GamedataUpdateProgress } from '../services/api'
 import GPTSoVITSInstallDialog from './GPTSoVITSInstallDialog'
 
 interface SettingsModalProps {
@@ -11,11 +11,14 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [settings, setSettings] = useState<SettingsResponse | null>(null)
   const [ffmpegGuide, setFFmpegGuide] = useState<FFmpegInstallGuide | null>(null)
   const [sevenZipGuide, setSevenZipGuide] = useState<SevenZipInstallGuide | null>(null)
+  const [flatcGuide, setFlatcGuide] = useState<FlatcInstallGuide | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showFFmpegGuide, setShowFFmpegGuide] = useState(false)
   const [show7ZipGuide, setShow7ZipGuide] = useState(false)
+  const [showFlatcGuide, setShowFlatcGuide] = useState(false)
   const [showGptSovitsInstall, setShowGptSovitsInstall] = useState(false)
+  const [isRefreshingCharacters, setIsRefreshingCharacters] = useState(false)
 
   // 추출 관련 상태
   const [voiceAssetsStatus, setVoiceAssetsStatus] = useState<VoiceAssetsStatus | null>(null)
@@ -24,14 +27,23 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [extractError, setExtractError] = useState<string | null>(null)
   const extractStreamRef = useRef<{ close: () => void } | null>(null)
 
+  // 게임 데이터 업데이트 관련 상태
+  const [gamedataStatus, setGamedataStatus] = useState<GamedataStatus | null>(null)
+  const [isUpdatingGamedata, setIsUpdatingGamedata] = useState(false)
+  const [gamedataUpdateProgress, setGamedataUpdateProgress] = useState<GamedataUpdateProgress | null>(null)
+  const [gamedataUpdateError, setGamedataUpdateError] = useState<string | null>(null)
+  const gamedataStreamRef = useRef<{ close: () => void } | null>(null)
+
   useEffect(() => {
     if (isOpen) {
       loadSettings()
       checkVoiceAssets()
+      checkGamedataStatus()
     }
     return () => {
       // 모달 닫힐 때 스트림 정리
       extractStreamRef.current?.close()
+      gamedataStreamRef.current?.close()
     }
   }, [isOpen])
 
@@ -69,6 +81,27 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   }
 
+  const loadFlatcGuide = async () => {
+    try {
+      const guide = await settingsApi.getFlatcGuide()
+      setFlatcGuide(guide)
+      setShowFlatcGuide(true)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const refreshCharacterData = async () => {
+    setIsRefreshingCharacters(true)
+    try {
+      await voiceApi.refresh()
+    } catch (err) {
+      console.error('캐릭터 데이터 새로고침 실패:', err)
+    } finally {
+      setIsRefreshingCharacters(false)
+    }
+  }
+
   const handleOpenFolder = async (path: string) => {
     try {
       await settingsApi.openFolder(path)
@@ -83,6 +116,61 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setVoiceAssetsStatus(status)
     } catch (err) {
       console.error('VoiceAssets 확인 실패:', err)
+    }
+  }
+
+  const checkGamedataStatus = async () => {
+    try {
+      const status = await gamedataApi.getStatus('kr')
+      setGamedataStatus(status)
+    } catch (err) {
+      console.error('게임 데이터 상태 확인 실패:', err)
+    }
+  }
+
+  const startGamedataUpdate = async () => {
+    setIsUpdatingGamedata(true)
+    setGamedataUpdateProgress(null)
+    setGamedataUpdateError(null)
+
+    try {
+      await gamedataApi.startUpdate('kr')
+
+      // SSE 스트림 연결
+      gamedataStreamRef.current = createGamedataUpdateStream({
+        onProgress: (progress) => {
+          setGamedataUpdateProgress(progress)
+        },
+        onComplete: () => {
+          setIsUpdatingGamedata(false)
+          setGamedataUpdateProgress({
+            stage: 'complete',
+            progress: 1,
+            message: '업데이트 완료!'
+          })
+          // 상태 새로고침
+          checkGamedataStatus()
+          loadSettings()
+        },
+        onError: (error) => {
+          setIsUpdatingGamedata(false)
+          setGamedataUpdateError(error)
+        }
+      })
+    } catch (err) {
+      setIsUpdatingGamedata(false)
+      setGamedataUpdateError(err instanceof Error ? err.message : '업데이트 시작 실패')
+    }
+  }
+
+  const cancelGamedataUpdate = async () => {
+    try {
+      await gamedataApi.cancelUpdate()
+      gamedataStreamRef.current?.close()
+      setIsUpdatingGamedata(false)
+      setGamedataUpdateProgress(null)
+    } catch (err) {
+      console.error('업데이트 취소 실패:', err)
     }
   }
 
@@ -265,6 +353,14 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           설치 방법
                         </button>
                       )}
+                      {!dep.installed && dep.name === 'flatc' && (
+                        <button
+                          onClick={loadFlatcGuide}
+                          className="text-xs text-ark-orange hover:underline"
+                        >
+                          설치 방법
+                        </button>
+                      )}
                       {!dep.installed && dep.name === 'GPT-SoVITS' && (
                         <button
                           onClick={() => setShowGptSovitsInstall(true)}
@@ -373,6 +469,158 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </div>
                   </div>
                 )}
+
+                {/* flatc 설치 가이드 */}
+                {showFlatcGuide && flatcGuide && (
+                  <div className="mt-3 p-4 bg-ark-panel rounded border border-ark-border">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-medium text-ark-white">{flatcGuide.name} 설치 방법</h4>
+                      <button
+                        onClick={() => setShowFlatcGuide(false)}
+                        className="text-ark-gray hover:text-ark-white"
+                      >
+                        <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+                          <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                        </svg>
+                      </button>
+                    </div>
+
+                    {/* 안내 메시지 */}
+                    <div className="mb-4 p-2 bg-blue-500/10 border border-blue-500/30 rounded">
+                      <p className="text-xs text-blue-400">{flatcGuide.description}</p>
+                    </div>
+
+                    {/* winget 방법 */}
+                    <div className="mb-4">
+                      <p className="text-xs text-ark-gray mb-2">Windows (winget 사용):</p>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 px-3 py-2 bg-ark-black rounded text-sm text-ark-white font-mono">
+                          {flatcGuide.windows.command}
+                        </code>
+                        <button
+                          onClick={() => navigator.clipboard.writeText(flatcGuide.windows.command)}
+                          className="px-3 py-2 bg-ark-black rounded text-ark-gray hover:text-ark-white"
+                          title="복사"
+                        >
+                          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+                            <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 수동 설치 */}
+                    <div>
+                      <p className="text-xs text-ark-gray mb-2">수동 설치:</p>
+                      <ol className="text-xs text-ark-white space-y-1">
+                        {flatcGuide.manual_steps.map((step, i) => (
+                          <li key={i}>{step}</li>
+                        ))}
+                      </ol>
+                    </div>
+                  </div>
+                )}
+              </section>
+
+              {/* 게임 데이터 업데이트 */}
+              <section>
+                <h3 className="text-sm font-medium text-ark-white mb-3">게임 데이터</h3>
+                <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
+                  {gamedataStatus === null ? (
+                    <p className="text-sm text-ark-gray">확인 중...</p>
+                  ) : (
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <p className="text-sm text-ark-white">
+                            {gamedataStatus.exists ? (
+                              <>스토리 데이터 준비됨 ({gamedataStatus.story_count}개 파일)</>
+                            ) : (
+                              <>스토리 데이터 없음</>
+                            )}
+                          </p>
+                          {gamedataStatus.last_updated && (
+                            <p className="text-xs text-ark-gray mt-1">
+                              마지막 업데이트: {new Date(gamedataStatus.last_updated).toLocaleString('ko-KR')}
+                            </p>
+                          )}
+                        </div>
+                        {!isUpdatingGamedata && gamedataUpdateProgress?.stage !== 'complete' && (
+                          <button
+                            onClick={startGamedataUpdate}
+                            className="ark-btn ark-btn-primary text-sm"
+                          >
+                            {gamedataStatus.exists ? '데이터 업데이트' : '데이터 다운로드'}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* 업데이트 진행률 */}
+                      {isUpdatingGamedata && gamedataUpdateProgress && (
+                        <div className="mt-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs text-ark-gray">
+                              {gamedataUpdateProgress.message}
+                            </span>
+                            <button
+                              onClick={cancelGamedataUpdate}
+                              className="text-xs text-red-400 hover:text-red-300"
+                            >
+                              취소
+                            </button>
+                          </div>
+                          <div className="relative h-2 bg-ark-panel rounded overflow-hidden">
+                            <div
+                              className="absolute inset-y-0 left-0 bg-ark-orange transition-all duration-300"
+                              style={{ width: `${gamedataUpdateProgress.progress * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 완료 메시지 */}
+                      {gamedataUpdateProgress?.stage === 'complete' && !isUpdatingGamedata && (
+                        <div className="mt-3 p-2 bg-green-500/10 border border-green-500/30 rounded">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs text-green-400">{gamedataUpdateProgress.message}</p>
+                            <button
+                              onClick={refreshCharacterData}
+                              disabled={isRefreshingCharacters}
+                              className="text-xs text-ark-orange hover:underline disabled:opacity-50"
+                            >
+                              {isRefreshingCharacters ? '새로고침 중...' : '캐릭터 데이터 새로고침'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 에러 메시지 */}
+                      {gamedataUpdateError && (
+                        <div className="mt-3 p-2 bg-red-500/10 border border-red-500/30 rounded">
+                          <p className="text-xs text-red-400">{gamedataUpdateError}</p>
+                        </div>
+                      )}
+
+                      <p className="text-xs text-ark-gray mt-3">
+                        arkprts를 통해 한국 서버의 최신 스토리 데이터를 다운로드합니다.
+                      </p>
+
+                      {/* 수동 캐릭터 새로고침 */}
+                      {gamedataStatus?.exists && (
+                        <div className="flex items-center justify-between mt-2 pt-2 border-t border-ark-border">
+                          <span className="text-xs text-ark-gray">캐릭터 매핑 캐시</span>
+                          <button
+                            onClick={refreshCharacterData}
+                            disabled={isRefreshingCharacters}
+                            className="text-xs text-ark-orange hover:underline disabled:opacity-50"
+                          >
+                            {isRefreshingCharacters ? '새로고침 중...' : '새로고침'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </section>
 
               {/* 음성 추출 */}

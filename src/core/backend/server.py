@@ -3,14 +3,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routes import episodes, stories, tts, voice, health, ocr, training, render, settings
+from .routes import episodes, stories, tts, voice, health, ocr, training, render, settings, data
 
 
 def create_app() -> FastAPI:
     """FastAPI 앱 생성"""
     app = FastAPI(
-        title="AVT API",
-        description="Arknights Voice Tools API - 명일방주 스토리 음성 더빙",
+        title="ArkSynth API",
+        description="ArkSynth API - 명일방주 스토리 음성 더빙",
         version="0.1.0",
     )
 
@@ -33,5 +33,6 @@ def create_app() -> FastAPI:
     app.include_router(training.router, prefix="/api/training", tags=["training"])
     app.include_router(render.router, prefix="/api/render", tags=["render"])
     app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
+    app.include_router(data.router, prefix="/api/data", tags=["data"])
 
     return app

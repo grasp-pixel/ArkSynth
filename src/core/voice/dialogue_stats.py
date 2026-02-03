@@ -66,8 +66,10 @@ class DialogueStatsManager:
 
     def rebuild_stats(self, lang: str = "ko_KR") -> dict[str, CharacterStats]:
         """통계 재계산 (캐시 갱신)"""
+        self._loaded = False  # 캐시 무효화
         self._calculate_stats(lang)
         self._save_cache()
+        self._loaded = True  # 재계산 완료 표시
         return self._stats
 
     def _calculate_stats(self, lang: str = "ko_KR") -> None:
