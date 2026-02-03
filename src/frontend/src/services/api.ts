@@ -103,6 +103,7 @@ export const episodesApi = {
       episode_id: string
       total: number
       characters: GroupCharacterInfo[]  // GroupCharacterInfo와 동일 구조
+      narration_count: number  // 나레이션 대사 수 (화자 없는 대사)
     }>(`/api/episodes/${episodeId}/characters`)
     return res.data
   },
@@ -156,13 +157,32 @@ export const storiesApi = {
   },
 }
 
+// TTS 설정 타입
+export interface TTSSettings {
+  speedFactor: number    // 음성 속도 (0.5~2.0)
+  topK: number           // 샘플링 다양성 (1~20)
+  topP: number           // Nucleus sampling (0.1~1.0)
+  temperature: number    // 음성 랜덤성 (0.1~2.0)
+}
+
 // TTS 관련 API
 export const ttsApi = {
   // 음성 합성 (GPT-SoVITS)
   // 첫 합성은 API 서버 시작 + 참조 오디오 준비로 오래 걸릴 수 있음 (최대 120초)
-  synthesize: async (text: string, charId: string): Promise<Blob> => {
+  synthesize: async (
+    text: string,
+    charId: string,
+    settings?: Partial<TTSSettings>
+  ): Promise<Blob> => {
     const res = await api.post('/api/tts/synthesize',
-      { text, char_id: charId },
+      {
+        text,
+        char_id: charId,
+        speed_factor: settings?.speedFactor ?? 1.0,
+        top_k: settings?.topK ?? 5,
+        top_p: settings?.topP ?? 1.0,
+        temperature: settings?.temperature ?? 1.0,
+      },
       {
         responseType: 'blob',
         timeout: 120000,  // 120초 (첫 합성 시 API 서버 시작 + 참조 준비 포함)
@@ -256,6 +276,13 @@ export interface VoiceCharacter {
   dialogue_count?: number  // 전체 스토리 기준 대사 수
 }
 
+// 캐릭터 별칭 타입
+export interface CharacterAliases {
+  total: number
+  aliases: Record<string, string>  // alias -> char_id
+  aliases_by_char: Record<string, string[]>  // char_id -> alias[]
+}
+
 export const voiceApi = {
   // 음성이 있는 캐릭터 목록
   listCharacters: async () => {
@@ -280,6 +307,39 @@ export const voiceApi = {
   // 캐릭터 데이터 새로고침 (게임 데이터 업데이트 후)
   refresh: async () => {
     const res = await api.post<{ total_characters: number; message: string }>('/api/voice/refresh')
+    return res.data
+  },
+
+  // === 캐릭터 별칭 API ===
+
+  // 전체 별칭 목록 조회
+  listAliases: async () => {
+    const res = await api.get<CharacterAliases>('/api/voice/aliases')
+    return res.data
+  },
+
+  // 특정 캐릭터의 별칭 목록 조회
+  getCharacterAliases: async (charId: string) => {
+    const res = await api.get<{ char_id: string; aliases: string[] }>(
+      `/api/voice/aliases/${encodeURIComponent(charId)}`
+    )
+    return res.data
+  },
+
+  // 별칭 추가
+  addAlias: async (alias: string, charId: string) => {
+    const res = await api.post<{ message: string; alias: string; char_id: string }>(
+      '/api/voice/aliases',
+      { alias, char_id: charId }
+    )
+    return res.data
+  },
+
+  // 별칭 삭제
+  removeAlias: async (alias: string) => {
+    const res = await api.delete<{ message: string; alias: string; char_id: string }>(
+      `/api/voice/aliases/${encodeURIComponent(alias)}`
+    )
     return res.data
   },
 }

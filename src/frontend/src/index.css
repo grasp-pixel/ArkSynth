@@ -8,6 +8,14 @@
   font-weight: 400;
   color: #e8e8e8;
   background-color: #0d0d0d;
+
+  /* CSS 변수 (gradient 등에 사용) */
+  --ark-bg: #0d0d0d;
+  --ark-bg-dark: #1a1a1a;
+  --ark-bg-panel: #262626;
+  --ark-border: #3d3d3d;
+  --ark-text: #e8e8e8;
+  --ark-text-gray: #8a8a8a;
 }
 
 body {
@@ -20,20 +28,21 @@ body {
 
 /* Skewed 버튼 (명일방주 특유의 기울어진 버튼) */
 .ark-btn-skew {
-  @apply relative px-6 py-2 font-medium text-ark-white transition-all duration-200;
-  background: linear-gradient(135deg, #262626 0%, #1a1a1a 100%);
+  @apply relative px-6 py-2 font-medium transition-all duration-200;
+  background: linear-gradient(135deg, var(--ark-bg-panel) 0%, var(--ark-bg-dark) 100%);
+  color: var(--ark-text);
   clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
   border: none;
 }
 
 .ark-btn-skew:hover {
-  background: linear-gradient(135deg, #3d3d3d 0%, #262626 100%);
+  background: linear-gradient(135deg, var(--ark-border) 0%, var(--ark-bg-panel) 100%);
   box-shadow: 0 0 15px rgba(255, 102, 0, 0.3);
 }
 
 .ark-btn-skew.active {
   background: linear-gradient(135deg, #ff6600 0%, #cc5200 100%);
-  color: #0d0d0d;
+  color: var(--ark-bg);
   font-weight: 600;
 }
 
@@ -54,10 +63,21 @@ body {
   background: linear-gradient(135deg, #ff6600 0%, #ff8c00 100%);
 }
 
+/* 청록색 탭 변형 */
+.ark-tab-cyan:hover {
+  @apply text-ark-white;
+  background: rgba(84, 162, 216, 0.1);
+}
+
+.ark-tab-cyan.active {
+  @apply text-ark-black font-semibold;
+  background: linear-gradient(135deg, #4099C2 0%, #7AB8E2 100%);
+}
+
 /* 패널 스타일 */
 .ark-panel {
-  @apply bg-ark-panel border border-ark-border;
-  background: linear-gradient(180deg, #262626 0%, #1a1a1a 100%);
+  border: 1px solid var(--ark-border);
+  background: linear-gradient(180deg, var(--ark-bg-panel) 0%, var(--ark-bg-dark) 100%);
 }
 
 /* 주황 액센트 라인 (왼쪽 바) */
@@ -72,14 +92,26 @@ body {
 
 /* 입력 필드 */
 .ark-input {
-  @apply w-full px-3 py-2 bg-ark-dark border border-ark-border text-sm text-ark-white
-         placeholder-ark-gray transition-all duration-200;
-  background: linear-gradient(180deg, #1a1a1a 0%, #0d0d0d 100%);
+  @apply w-full px-3 py-2 text-sm transition-all duration-200;
+  background: linear-gradient(180deg, var(--ark-bg-dark) 0%, var(--ark-bg) 100%);
+  border: 1px solid var(--ark-border);
+  color: var(--ark-text);
+}
+
+.ark-input::placeholder {
+  color: var(--ark-text-gray);
 }
 
 .ark-input:focus {
   @apply outline-none border-ark-orange;
   box-shadow: 0 0 10px rgba(255, 102, 0, 0.2);
+}
+
+/* 청록색 포커스 변형 */
+.ark-input-cyan:focus {
+  @apply outline-none;
+  border-color: #4099C2;
+  box-shadow: 0 0 10px rgba(84, 162, 216, 0.2);
 }
 
 /* select 드롭다운 */
@@ -93,20 +125,21 @@ select.ark-input {
 }
 
 select.ark-input option {
-  background-color: #1a1a1a;
-  color: #e8e8e8;
+  background-color: var(--ark-bg-dark);
+  color: var(--ark-text);
   padding: 8px;
 }
 
 /* 버튼 기본 */
 .ark-btn {
-  @apply px-4 py-2 font-medium text-ark-white transition-all duration-200;
-  background: linear-gradient(180deg, #3d3d3d 0%, #262626 100%);
-  border: 1px solid #4a4a4a;
+  @apply px-4 py-2 font-medium transition-all duration-200;
+  background: linear-gradient(180deg, var(--ark-border) 0%, var(--ark-bg-panel) 100%);
+  border: 1px solid var(--ark-border);
+  color: var(--ark-text);
 }
 
 .ark-btn:hover {
-  background: linear-gradient(180deg, #4a4a4a 0%, #3d3d3d 100%);
+  background: linear-gradient(180deg, var(--ark-bg-panel) 0%, var(--ark-border) 100%);
   border-color: #ff6600;
 }
 
@@ -120,6 +153,19 @@ select.ark-input option {
 .ark-btn-primary:hover {
   background: linear-gradient(180deg, #ff8c00 0%, #ff6600 100%);
   box-shadow: 0 0 15px rgba(255, 102, 0, 0.5);
+}
+
+/* 청록색 버튼 (정보/확인용) */
+.ark-btn-cyan {
+  background: linear-gradient(180deg, #4099C2 0%, #3A8BC4 100%);
+  border: 1px solid #7AB8E2;
+  color: #0d0d0d;
+  font-weight: 600;
+}
+
+.ark-btn-cyan:hover {
+  background: linear-gradient(180deg, #7AB8E2 0%, #4099C2 100%);
+  box-shadow: 0 0 15px rgba(84, 162, 216, 0.5);
 }
 
 /* 대화 아이템 */
@@ -141,7 +187,7 @@ select.ark-input option {
 
 .ark-dialogue.narration {
   background: linear-gradient(180deg, #1a1a1a 0%, #151515 100%);
-  border-left-color: #3d3d3d;
+  border-left-color: #3A8BC4;
 }
 
 /* 스크롤바 스타일 */
@@ -174,8 +220,8 @@ select.ark-input option {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent 0%, #ff6600 50%, transparent 100%);
+  height: 1px;
+  background: #3d3d3d;
 }
 
 /* 상태 바 */
@@ -203,9 +249,31 @@ select.ark-input option {
   color: #ff6600;
 }
 
+.ark-badge-cyan {
+  @apply inline-flex items-center px-2 py-0.5 text-xs font-medium;
+  background: rgba(84, 162, 216, 0.2);
+  border: 1px solid #54A2D8;
+  color: #54A2D8;
+}
+
+.ark-badge-blue {
+  @apply inline-flex items-center px-2 py-0.5 text-xs font-medium;
+  background: rgba(30, 136, 229, 0.2);
+  border: 1px solid #1e88e5;
+  color: #1e88e5;
+}
+
 /* 글로우 효과 */
 .ark-glow {
   box-shadow: 0 0 20px rgba(255, 102, 0, 0.3);
+}
+
+.ark-glow-cyan {
+  box-shadow: 0 0 20px rgba(84, 162, 216, 0.3);
+}
+
+.ark-glow-blue {
+  box-shadow: 0 0 20px rgba(30, 136, 229, 0.3);
 }
 
 /* 애니메이션 */
@@ -236,6 +304,20 @@ select.ark-input option {
   animation: ark-pulse-subtle 2s ease-in-out infinite;
 }
 
+/* 청록색 펄스 효과 */
+@keyframes ark-pulse-cyan {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(84, 162, 216, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 8px 2px rgba(84, 162, 216, 0.3);
+  }
+}
+
+.ark-pulse-cyan {
+  animation: ark-pulse-cyan 2s ease-in-out infinite;
+}
+
 /* 대각선 패턴 배경 (선택적 장식) */
 .ark-pattern {
   background-image:
@@ -244,4 +326,276 @@ select.ark-input option {
     linear-gradient(45deg, rgba(255, 102, 0, 0.03) 25%, transparent 25%),
     linear-gradient(315deg, rgba(255, 102, 0, 0.03) 25%, transparent 25%);
   background-size: 20px 20px;
+}
+
+.ark-pattern-cyan {
+  background-image:
+    linear-gradient(135deg, rgba(84, 162, 216, 0.03) 25%, transparent 25%),
+    linear-gradient(225deg, rgba(84, 162, 216, 0.03) 25%, transparent 25%),
+    linear-gradient(45deg, rgba(84, 162, 216, 0.03) 25%, transparent 25%),
+    linear-gradient(315deg, rgba(84, 162, 216, 0.03) 25%, transparent 25%);
+  background-size: 20px 20px;
+}
+
+/* 청록색 액센트 바 */
+.ark-accent-bar-cyan::before {
+  content: '';
+  @apply absolute left-0 top-0 bottom-0 w-1;
+  background: #54A2D8;
+}
+
+/* 청록색 선택 하이라이트 */
+.ark-selected-cyan {
+  @apply relative;
+  background: linear-gradient(90deg, rgba(84, 162, 216, 0.2) 0%, transparent 100%);
+}
+
+.ark-selected-cyan::before {
+  content: '';
+  @apply absolute left-0 top-0 bottom-0 w-1;
+  background: #54A2D8;
+}
+
+/* ===== 명일방주 스타일 요소 ===== */
+
+/* 코너 컷 패널 (명일방주 특유의 잘린 모서리) */
+.ark-corner-cut {
+  clip-path: polygon(
+    0 8px, 8px 0, 100% 0, 100% calc(100% - 8px),
+    calc(100% - 8px) 100%, 0 100%
+  );
+}
+
+.ark-corner-cut-sm {
+  clip-path: polygon(
+    0 4px, 4px 0, 100% 0, 100% calc(100% - 4px),
+    calc(100% - 4px) 100%, 0 100%
+  );
+}
+
+.ark-corner-cut-lg {
+  clip-path: polygon(
+    0 12px, 12px 0, 100% 0, 100% calc(100% - 12px),
+    calc(100% - 12px) 100%, 0 100%
+  );
+}
+
+/* 듀얼 컬러 버튼 (청록 배경 + 주황 상단 띠) */
+.ark-btn-dual {
+  @apply relative px-4 py-2 font-semibold transition-all duration-200;
+  background: linear-gradient(180deg, #3A8BC4 0%, #2E6B9E 100%);
+  color: #e8e8e8;
+  border: none;
+  overflow: hidden;
+}
+
+.ark-btn-dual::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #ff6600, #ff8c00);
+}
+
+.ark-btn-dual:hover {
+  background: linear-gradient(180deg, #6BB0DE 0%, #54A2D8 100%);
+  box-shadow: 0 0 15px rgba(84, 162, 216, 0.4);
+}
+
+/* 주황 배경 + 청록 하단 띠 */
+.ark-btn-dual-orange {
+  @apply relative px-4 py-2 font-semibold transition-all duration-200;
+  background: linear-gradient(180deg, #ff6600 0%, #cc5200 100%);
+  color: #0d0d0d;
+  border: none;
+  overflow: hidden;
+}
+
+.ark-btn-dual-orange::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #54A2D8, #7AB8E2);
+}
+
+.ark-btn-dual-orange:hover {
+  background: linear-gradient(180deg, #ff8c00 0%, #ff6600 100%);
+  box-shadow: 0 0 15px rgba(255, 102, 0, 0.5);
+}
+
+/* 대각선 스트라이프 (경고/강조용) */
+.ark-stripes {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 4px,
+    rgba(255, 102, 0, 0.1) 4px,
+    rgba(255, 102, 0, 0.1) 8px
+  );
+}
+
+.ark-stripes-cyan {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 4px,
+    rgba(84, 162, 216, 0.1) 4px,
+    rgba(84, 162, 216, 0.1) 8px
+  );
+}
+
+/* 프레임 테두리 (명일방주 UI 프레임) */
+.ark-frame {
+  @apply relative border border-ark-border;
+  background: linear-gradient(180deg, rgba(26, 26, 26, 0.95) 0%, rgba(13, 13, 13, 0.95) 100%);
+}
+
+.ark-frame::before,
+.ark-frame::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #ff6600;
+}
+
+.ark-frame::before {
+  top: -1px;
+  left: -1px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.ark-frame::after {
+  bottom: -1px;
+  right: -1px;
+  border-left: none;
+  border-top: none;
+}
+
+/* 청록색 프레임 변형 */
+.ark-frame-cyan::before,
+.ark-frame-cyan::after {
+  border-color: #54A2D8;
+}
+
+/* 스캔라인 오버레이 (미래지향적 효과) */
+.ark-scanline {
+  position: relative;
+}
+
+.ark-scanline::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  pointer-events: none;
+}
+
+/* 상태 인디케이터 (점 + 라인) */
+.ark-status-line {
+  @apply flex items-center gap-2;
+}
+
+.ark-status-line::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+}
+
+/* 섹션 디바이더 */
+.ark-divider {
+  @apply flex items-center gap-3 text-xs text-ark-gray uppercase tracking-widest;
+}
+
+.ark-divider::before,
+.ark-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #3d3d3d, transparent);
+}
+
+/* 태그/라벨 (기울어진 형태) */
+.ark-tag {
+  @apply inline-flex items-center px-3 py-1 text-xs font-semibold uppercase tracking-wider;
+  background: linear-gradient(135deg, #262626 0%, #1a1a1a 100%);
+  clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+  border-left: 2px solid #ff6600;
+}
+
+.ark-tag-cyan {
+  border-left-color: #54A2D8;
+}
+
+/* 진행 표시 바 (듀얼 컬러) */
+.ark-progress {
+  @apply relative h-2 bg-ark-dark overflow-hidden;
+}
+
+.ark-progress-bar {
+  @apply h-full transition-all duration-300;
+  background: linear-gradient(90deg, #54A2D8 0%, #ff6600 100%);
+}
+
+/* 카드 호버 효과 (명일방주 스타일) */
+.ark-card-hover {
+  @apply transition-all duration-200;
+  border: 1px solid transparent;
+}
+
+.ark-card-hover:hover {
+  border-color: #ff6600;
+  box-shadow:
+    inset 0 0 30px rgba(255, 102, 0, 0.05),
+    0 0 20px rgba(255, 102, 0, 0.1);
+}
+
+/* 인포 박스 (청록 + 주황 콤보) */
+.ark-info-box {
+  @apply relative p-4;
+  background: linear-gradient(135deg, rgba(58, 139, 196, 0.1) 0%, rgba(46, 107, 158, 0.05) 100%);
+  border: 1px solid rgba(84, 162, 216, 0.3);
+  border-left: 3px solid #54A2D8;
+}
+
+.ark-info-box::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 40px;
+  height: 3px;
+  background: #ff6600;
+}
+
+/* 경고 박스 */
+.ark-warning-box {
+  @apply relative p-4;
+  background: linear-gradient(135deg, rgba(255, 102, 0, 0.1) 0%, rgba(204, 82, 0, 0.05) 100%);
+  border: 1px solid rgba(255, 102, 0, 0.3);
+  border-left: 3px solid #ff6600;
+}
+
+.ark-warning-box::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 40px;
+  height: 3px;
+  background: #54A2D8;
 }

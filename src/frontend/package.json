@@ -1,7 +1,7 @@
 {
-  "name": "avt-frontend",
+  "name": "arksynth-frontend",
   "version": "0.1.0",
-  "description": "Arknights Voice Tools - Frontend",
+  "description": "ArkSynth - Arknights Story Voice Synthesizer",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -35,8 +35,8 @@
     "wait-on": "^9.0.3"
   },
   "build": {
-    "appId": "com.avt.app",
-    "productName": "AVT",
+    "appId": "com.arksynth.app",
+    "productName": "ArkSynth",
     "directories": {
       "output": "release"
     },

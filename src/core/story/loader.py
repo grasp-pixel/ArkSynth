@@ -350,10 +350,11 @@ class StoryLoader:
         filepath = index[episode_id]
         episode = self.parser.parse_file(filepath)
 
-        # 메타데이터로 제목 보강
+        # 메타데이터로 제목 설정 (한국어 번역된 제목 우선 사용)
         metas = self.load_story_meta(lang)
         meta = metas.get(episode_id)
-        if meta and not episode.title:
+        if meta:
+            # 메타데이터가 있으면 항상 한국어 제목 사용 (txt 파일 헤더는 번역 안 된 경우가 많음)
             episode.title = f"{meta.story_code} {meta.story_name}"
 
         # 대사의 speaker_id 보정 (화자 이름으로 캐릭터 ID 찾기)

@@ -5,6 +5,7 @@ export default function VoiceSetupPanel() {
   const {
     groupCharacters,
     episodeCharacters,
+    episodeNarrationCount,
     isLoadingCharacters,
     isLoadingEpisodeCharacters,
     voiceCharacters,
@@ -24,6 +25,7 @@ export default function VoiceSetupPanel() {
     unsubscribeFromTrainingProgress,
     // 에피소드 관련
     selectedEpisodeId,
+    loadEpisodeCharacters,
     // GPT-SoVITS (앱 레벨 상태)
     gptSovitsStatus,
     // 렌더링 (사전 더빙)
@@ -53,26 +55,34 @@ export default function VoiceSetupPanel() {
     }
   }, [])
 
-  // 캐릭터 통계 (voice_char_id 기준으로 학습 완료 체크)
+  // 현재 에피소드 캐릭터 로드 (에피소드 변경 시)
+  useEffect(() => {
+    if (selectedEpisodeId) {
+      console.log('[VoiceSetupPanel] 에피소드 캐릭터 로드:', selectedEpisodeId)
+      loadEpisodeCharacters(selectedEpisodeId)
+    }
+  }, [selectedEpisodeId, loadEpisodeCharacters])
+
+  // 캐릭터 통계 (현재 에피소드 기준, voice_char_id로 학습 완료 체크)
   const characterStats = useMemo(() => {
-    const withVoice = groupCharacters.filter(c => c.has_voice).length
+    const withVoice = episodeCharacters.filter(c => c.has_voice).length
     // voice_char_id가 있으면 그걸로 체크, 없으면 char_id로 체크
-    const trained = groupCharacters.filter(c => {
+    const trained = episodeCharacters.filter(c => {
       const voiceId = c.voice_char_id || c.char_id
       return voiceId && trainedCharIds.has(voiceId)
     }).length
-    const total = groupCharacters.length
+    const total = episodeCharacters.length
     return { withVoice, trained, total }
-  }, [groupCharacters, trainedCharIds])
+  }, [episodeCharacters, trainedCharIds])
 
-  // 학습 가능한 캐릭터 (음성 있고 미학습) - voice_char_id 기준
+  // 학습 가능한 캐릭터 (음성 있고 미학습) - 현재 에피소드 기준
   const trainableCharacters = useMemo(() => {
-    return groupCharacters.filter(c => {
+    return episodeCharacters.filter(c => {
       if (!c.has_voice) return false
       const voiceId = c.voice_char_id || c.char_id
       return voiceId && !trainedCharIds.has(voiceId)
     })
-  }, [groupCharacters, trainedCharIds])
+  }, [episodeCharacters, trainedCharIds])
 
   // 미학습 기본 캐릭터 수
   const untrainedDefaultCount = useMemo(() => {
@@ -87,9 +97,9 @@ export default function VoiceSetupPanel() {
   }, [trainableCharacters, defaultFemaleVoices, defaultMaleVoices, trainedCharIds])
 
   // 음성 없는 캐릭터 (수동 매핑 대상) - 에피소드 캐릭터 목록 기준
+  // char_id가 null이어도 name이 있으면 매핑 가능
   const voicelessCharacters = useMemo(() => {
-    // 에피소드 캐릭터 목록에서 음성 없는 캐릭터만 필터링
-    return episodeCharacters.filter(c => !c.has_voice && c.char_id)
+    return episodeCharacters.filter(c => !c.has_voice && c.name)
   }, [episodeCharacters])
 
   // 매핑 가능한 음성 목록 (학습 완료된 것만)
@@ -173,7 +183,7 @@ export default function VoiceSetupPanel() {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {/* 캐릭터 목록 (등장인물) */}
+        {/* 캐릭터 목록 (현재 에피소드 기준) */}
         <div className="p-4 border-b border-ark-border">
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-sm font-medium text-ark-gray">등장 캐릭터</h4>
@@ -181,15 +191,15 @@ export default function VoiceSetupPanel() {
               음성 {characterStats.withVoice}/{characterStats.total}
             </span>
           </div>
-          {isLoadingCharacters ? (
+          {isLoadingEpisodeCharacters ? (
             <div className="text-center text-ark-gray py-4 ark-pulse">로딩 중...</div>
-          ) : groupCharacters.length === 0 ? (
+          ) : episodeCharacters.length === 0 ? (
             <div className="text-center text-ark-gray py-4">캐릭터 없음</div>
           ) : (
             <div className="space-y-1 max-h-48 overflow-y-auto">
-              {groupCharacters.map((char) => (
+              {episodeCharacters.map((char, idx) => (
                 <div
-                  key={char.char_id ?? '_narrator'}
+                  key={`${char.char_id ?? 'narrator'}-${char.name}-${idx}`}
                   className="flex items-center justify-between p-2 bg-ark-black/30 rounded text-sm"
                 >
                   <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -219,6 +229,19 @@ export default function VoiceSetupPanel() {
           <p className="mt-2 text-xs text-ark-gray/70">
             * 녹색 = 음성 데이터 보유
           </p>
+
+          {/* 나레이션 대사 수 */}
+          {episodeNarrationCount > 0 && (
+            <div className="mt-3 p-2 bg-purple-500/10 rounded border border-purple-500/20">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-purple-400">나레이션</span>
+                <span className="text-xs text-purple-300">{episodeNarrationCount}대사</span>
+              </div>
+              <p className="text-[10px] text-purple-400/70 mt-1">
+                캐릭터 관리에서 설정한 나레이션 음성 사용
+              </p>
+            </div>
+          )}
         </div>
 
         {/* GPT-SoVITS 연결 상태 */}
@@ -390,12 +413,14 @@ export default function VoiceSetupPanel() {
                 </p>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {voicelessCharacters.map((char, idx) => {
-                    const manualMapping = char.char_id ? speakerVoiceMap[char.char_id] : null
-                    const autoVoice = char.char_id ? getSpeakerVoice(char.char_id, char.name) : null
+                    // char_id가 없으면 name을 키로 사용 (name: 접두사 추가)
+                    const mappingKey = char.char_id || `name:${char.name}`
+                    const manualMapping = speakerVoiceMap[mappingKey]
+                    const autoVoice = getSpeakerVoice(mappingKey, char.name)
                     const autoVoiceName = autoVoice ? voiceCharacters.find(v => v.char_id === autoVoice)?.name : null
 
                     // 자동 여성/남성 선택 시 실제 선택될 캐릭터 계산
-                    const hash = char.char_id ? simpleHash(char.char_id) : 0
+                    const hash = simpleHash(mappingKey)
                     const autoFemaleVoice = defaultFemaleVoices.length > 0
                       ? defaultFemaleVoices[hash % defaultFemaleVoices.length]
                       : null
@@ -411,19 +436,18 @@ export default function VoiceSetupPanel() {
 
                     return (
                       <div
-                        key={`${char.char_id ?? 'narrator'}-${char.name}-${idx}`}
+                        key={`${mappingKey}-${idx}`}
                         className="flex items-center gap-2 p-2 rounded bg-ark-black/30"
                       >
                         <span className="text-sm flex-shrink-0 w-28 truncate text-ark-white" title={char.name}>
                           {char.name}
+                          {!char.char_id && <span className="text-ark-gray/50 text-xs ml-1">(이름)</span>}
                         </span>
                         <span className="text-xs text-ark-gray flex-shrink-0">→</span>
                         <select
                           value={manualMapping ?? ''}
                           onChange={(e) => {
-                            if (char.char_id) {
-                              setSpeakerVoice(char.char_id, e.target.value || null)
-                            }
+                            setSpeakerVoice(mappingKey, e.target.value || null)
                           }}
                           className="ark-input text-xs flex-1 min-w-0"
                         >

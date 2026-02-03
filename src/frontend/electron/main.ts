@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session } from 'electron'
+import { app, BrowserWindow, ipcMain, session, Menu, globalShortcut } from 'electron'
 import path from 'path'
 
 // 개발 모드 확인
@@ -46,7 +46,6 @@ function createWindow() {
   // 프로덕션: 빌드된 파일
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173')
-    mainWindow.webContents.openDevTools()
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
@@ -58,7 +57,20 @@ function createWindow() {
 
 // 앱 준비 완료
 app.whenReady().then(() => {
+  // 메뉴 바 제거
+  Menu.setApplicationMenu(null)
+
   createWindow()
+
+  // 개발 모드: DevTools 단축키 등록
+  if (isDev) {
+    globalShortcut.register('CommandOrControl+Shift+I', () => {
+      mainWindow?.webContents.openDevTools()
+    })
+    globalShortcut.register('F12', () => {
+      mainWindow?.webContents.openDevTools()
+    })
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

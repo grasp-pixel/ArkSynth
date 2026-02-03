@@ -98,7 +98,7 @@ export default function DialogueViewer() {
             {selectedEpisode.title || selectedEpisode.id}
           </h2>
           {isDubbingMode && (
-            <span className="px-2 py-1 text-xs bg-ark-orange/20 text-ark-orange border border-ark-orange/30 rounded">
+            <span className="ark-tag text-ark-orange">
               더빙 모드
             </span>
           )}
@@ -228,7 +228,7 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
           </div>
 
           {/* 대사 */}
-          <p className={`text-sm leading-relaxed ${isNarration ? 'text-ark-gray italic' : 'text-ark-white'}`}>
+          <p className={`text-sm leading-relaxed ${isNarration ? 'text-ark-cyan-dark italic' : 'text-ark-white'}`}>
             {dialogue.text}
           </p>
         </div>

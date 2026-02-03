@@ -144,6 +144,10 @@ class GPTSoVITSSynthesizer:
         text: str,
         output_path: Path | None = None,
         language: str = "ko",
+        speed_factor: float = 1.0,
+        top_k: int = 5,
+        top_p: float = 1.0,
+        temperature: float = 1.0,
     ) -> SynthesisResult | None:
         """텍스트를 음성으로 합성
 
@@ -152,6 +156,10 @@ class GPTSoVITSSynthesizer:
             text: 합성할 텍스트
             output_path: 출력 파일 경로 (없으면 자동 생성)
             language: 언어 코드 (ko, ja, zh, en)
+            speed_factor: 음성 속도 (0.5~2.0)
+            top_k: 샘플링 다양성 (1~20)
+            top_p: Nucleus sampling (0.1~1.0)
+            temperature: 음성 랜덤성 (0.1~2.0)
 
         Returns:
             SynthesisResult 또는 실패 시 None
@@ -189,6 +197,10 @@ class GPTSoVITSSynthesizer:
                 char_id=char_id,
                 output_path=output_path,
                 language=language,
+                speed_factor=speed_factor,
+                top_k=top_k,
+                top_p=top_p,
+                temperature=temperature,
             )
 
             self._synthesizing = False

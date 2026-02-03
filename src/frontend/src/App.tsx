@@ -30,6 +30,13 @@ function App() {
     gptSovitsError,
     checkGptSovitsStatus,
     startGptSovits,
+    // 음성 캐릭터
+    loadVoiceCharacters,
+    // 패널 접기
+    isLeftPanelCollapsed,
+    isRightPanelCollapsed,
+    toggleLeftPanel,
+    toggleRightPanel,
   } = useAppStore()
 
   useEffect(() => {
@@ -42,8 +49,9 @@ function App() {
     if (backendStatus === 'connected') {
       loadCategories()
       checkGptSovitsStatus()
+      loadVoiceCharacters()  // 음성 캐릭터 목록 로드 (getSpeakerVoice에서 사용)
     }
-  }, [backendStatus, loadCategories, checkGptSovitsStatus])
+  }, [backendStatus, loadCategories, checkGptSovitsStatus, loadVoiceCharacters])
 
   // GPT-SoVITS 상태 주기적 확인 (30초)
   useEffect(() => {
@@ -88,12 +96,12 @@ function App() {
         <div className="flex items-center gap-4">
           {/* 더빙 상태 표시 */}
           {isDubbingMode && (
-            <div className="flex items-center gap-2 px-4 py-2 rounded bg-ark-orange text-ark-black font-medium">
+            <div className="ark-btn-dual ark-corner-cut-sm flex items-center gap-2 px-4 py-2">
               <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
                 <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/>
               </svg>
               <span>더빙 중</span>
-              <span className="w-2 h-2 rounded-full bg-ark-black ark-pulse" />
+              <span className="w-2 h-2 bg-ark-black ark-pulse" style={{clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)'}} />
             </div>
           )}
 
@@ -102,13 +110,13 @@ function App() {
             {gptSovitsStatus?.api_running ? (
               gptSovitsStatus?.synthesizing ? (
                 <>
-                  <span className="w-2 h-2 rounded-full bg-cyan-500 ark-pulse" />
-                  <span className="text-sm text-cyan-400">합성 중...</span>
+                  <span className="w-2 h-2 rounded-full bg-ark-cyan ark-pulse-cyan" />
+                  <span className="text-sm text-ark-cyan">합성 중...</span>
                 </>
               ) : (
                 <>
-                  <span className="w-2 h-2 rounded-full bg-green-500" />
-                  <span className="text-sm text-ark-gray">GPT-SoVITS</span>
+                  <span className="w-2 h-2 rounded-full bg-ark-cyan" />
+                  <span className="text-sm text-ark-cyan">GPT-SoVITS</span>
                 </>
               )
             ) : gptSovitsStatus?.installed ? (
@@ -144,10 +152,10 @@ function App() {
           {/* 백엔드 상태 */}
           <div className="flex items-center gap-2">
             <span className={`w-2 h-2 rounded-full ${
-              backendStatus === 'connected' ? 'bg-green-500' : 'bg-red-500'
+              backendStatus === 'connected' ? 'bg-ark-cyan' : 'bg-red-500'
             }`} />
             <span className={`text-sm ${
-              backendStatus === 'connected' ? 'text-ark-gray' : 'text-red-400'
+              backendStatus === 'connected' ? 'text-ark-cyan' : 'text-red-400'
             }`}>
               {backendStatus === 'connected' ? 'ONLINE' : 'OFFLINE'}
             </span>
@@ -207,9 +215,24 @@ function App() {
       }`}>
         <div className="flex-1 flex overflow-hidden">
           {/* 왼쪽: 에피소드 목록 */}
-          <aside className="w-80 bg-ark-dark border-r border-ark-border overflow-y-auto">
-            <EpisodeSelector />
+          <aside className={`bg-ark-dark border-r border-ark-border overflow-hidden transition-all duration-300 ${
+            isLeftPanelCollapsed ? 'w-0' : 'w-80'
+          }`}>
+            <div className="w-80 h-full overflow-y-auto">
+              <EpisodeSelector />
+            </div>
           </aside>
+
+          {/* 왼쪽 패널 토글 버튼 */}
+          <button
+            onClick={toggleLeftPanel}
+            className="flex-shrink-0 w-5 bg-ark-dark hover:bg-ark-panel border-r border-ark-border flex items-center justify-center text-ark-gray hover:text-ark-white transition-colors"
+            title={isLeftPanelCollapsed ? '에피소드 목록 펼치기' : '에피소드 목록 접기'}
+          >
+            <svg viewBox="0 0 24 24" className={`w-4 h-4 transition-transform duration-300 ${isLeftPanelCollapsed ? '' : 'rotate-180'}`} fill="currentColor">
+              <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+            </svg>
+          </button>
 
           {/* 중앙: 대사 뷰어 */}
           <section className="flex-1 overflow-y-auto bg-ark-black ark-pattern">
@@ -230,20 +253,34 @@ function App() {
             )}
           </section>
 
+          {/* 오른쪽 패널 토글 버튼 */}
+          <button
+            onClick={toggleRightPanel}
+            className="flex-shrink-0 w-5 bg-ark-dark hover:bg-ark-panel border-l border-ark-border flex items-center justify-center text-ark-gray hover:text-ark-white transition-colors"
+            title={isRightPanelCollapsed ? '설정 패널 펼치기' : '설정 패널 접기'}
+          >
+            <svg viewBox="0 0 24 24" className={`w-4 h-4 transition-transform duration-300 ${isRightPanelCollapsed ? 'rotate-180' : ''}`} fill="currentColor">
+              <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+            </svg>
+          </button>
+
           {/* 오른쪽: 조건부 패널 */}
-          <aside className="w-[400px] bg-ark-dark border-l border-ark-border overflow-y-auto flex flex-col">
-            {isPrepared ? (
-              <VoiceSetupPanel />
-            ) : (
+          <aside className={`bg-ark-dark border-l border-ark-border overflow-hidden transition-all duration-300 flex flex-col ${
+            isRightPanelCollapsed ? 'w-0' : 'w-[400px]'
+          }`}>
+            <div className="w-[400px] h-full overflow-y-auto flex flex-col">
+              {isPrepared ? (
+                <VoiceSetupPanel />
+              ) : (
               <div className="flex flex-col h-full">
                 {/* 준비 버튼 */}
                 <div className="p-4 border-b border-ark-border bg-ark-panel/50">
                   <button
                     onClick={handlePrepare}
                     disabled={!selectedGroupId || isLoadingCharacters}
-                    className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded font-bold transition-all ${
+                    className={`w-full flex items-center justify-center gap-2 px-4 py-3 ark-corner-cut font-bold transition-all ${
                       selectedGroupId && !isLoadingCharacters
-                        ? 'bg-ark-orange text-ark-black hover:bg-ark-orange/90'
+                        ? 'ark-btn-dual'
                         : 'bg-ark-panel border border-ark-border text-ark-gray/50 cursor-not-allowed'
                     }`}
                   >
@@ -267,9 +304,9 @@ function App() {
 
                 {/* 안내 */}
                 <div className="flex-1 p-4 space-y-4">
-                  <div className="p-4 bg-ark-black/50 border border-ark-border rounded text-xs text-ark-gray space-y-3">
-                    <h4 className="font-medium text-ark-white flex items-center gap-2">
-                      <svg viewBox="0 0 24 24" className="w-4 h-4 text-ark-orange" fill="currentColor">
+                  <div className="ark-info-box ark-corner-cut text-xs text-ark-gray space-y-3">
+                    <h4 className="font-medium text-ark-cyan flex items-center gap-2">
+                      <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
                         <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
                       </svg>
                       사용 방법
@@ -298,6 +335,7 @@ function App() {
                 </div>
               </div>
             )}
+            </div>
           </aside>
         </div>
       </main>

@@ -40,15 +40,28 @@ export default function DubbingControlBar() {
     <div className="bg-ark-dark border-t-2 border-ark-orange/30">
       <div className="flex items-center gap-4 px-4 py-4">
         {/* 윈도우 선택 */}
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <label className="text-sm text-ark-gray whitespace-nowrap">캡처 윈도우:</label>
+        <div className={`flex items-center gap-2 flex-1 min-w-0 px-3 py-2 rounded-lg transition-all duration-300 ${
+          !selectedWindowHwnd && !isDubbingMode
+            ? 'bg-ark-orange/10 border-2 border-ark-orange/60 ark-pulse'
+            : 'border-2 border-transparent'
+        }`}>
+          <div className={`flex items-center gap-2 ${!selectedWindowHwnd && !isDubbingMode ? 'text-ark-orange' : 'text-ark-gray'}`}>
+            <svg viewBox="0 0 24 24" className="w-5 h-5 flex-shrink-0" fill="currentColor">
+              <path d="M21 2H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h7v2H8v2h8v-2h-2v-2h7c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H3V4h18v12z"/>
+            </svg>
+            <label className="text-sm font-medium whitespace-nowrap">캡처 윈도우</label>
+          </div>
           <select
             value={selectedWindowHwnd ?? ''}
             onChange={(e) => setWindow(Number(e.target.value))}
-            className="ark-input text-sm flex-1 min-w-0"
+            className={`ark-input text-sm flex-1 min-w-0 ${
+              !selectedWindowHwnd && !isDubbingMode
+                ? 'border-ark-orange focus:border-ark-yellow'
+                : ''
+            }`}
             disabled={isDubbingMode}
           >
-            <option value="">윈도우 선택...</option>
+            <option value="">⚠ 윈도우를 선택하세요</option>
             {sortedWindows.map((win) => (
               <option key={win.hwnd} value={win.hwnd}>
                 {win.title || `Window ${win.hwnd}`}
@@ -58,7 +71,7 @@ export default function DubbingControlBar() {
           <button
             onClick={loadWindows}
             disabled={isDubbingMode}
-            className="text-ark-gray hover:text-ark-white p-1 disabled:opacity-50"
+            className="text-ark-gray hover:text-ark-orange p-1.5 disabled:opacity-50 transition-colors"
             title="윈도우 목록 새로고침"
           >
             <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
@@ -95,7 +108,7 @@ export default function DubbingControlBar() {
             <button
               onClick={startDubbing}
               disabled={!selectedWindowHwnd}
-              className={`ark-btn ark-btn-primary px-6 py-2 font-bold ${
+              className={`ark-btn-dual ark-corner-cut px-6 py-2.5 ${
                 !selectedWindowHwnd ? 'opacity-50 cursor-not-allowed' : ''
               }`}
             >
@@ -112,8 +125,13 @@ export default function DubbingControlBar() {
 
       {/* 윈도우 미선택 경고 */}
       {!selectedWindowHwnd && !isDubbingMode && (
-        <div className="px-4 pb-2 text-xs text-ark-yellow">
-          * 캡처할 윈도우를 선택하세요
+        <div className="mx-4 mb-3 ark-warning-box ark-corner-cut-sm flex items-center gap-2">
+          <svg viewBox="0 0 24 24" className="w-5 h-5 text-ark-orange flex-shrink-0" fill="currentColor">
+            <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+          </svg>
+          <span className="text-sm text-ark-orange font-medium">
+            더빙을 시작하려면 캡처할 윈도우를 먼저 선택하세요
+          </span>
         </div>
       )}
     </div>

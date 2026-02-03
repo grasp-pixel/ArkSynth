@@ -520,6 +520,10 @@ class GPTSoVITSAPIClient:
         text: str,
         char_id: str,
         language: str = "ko",
+        speed_factor: float = 1.0,
+        top_k: int = 5,
+        top_p: float = 1.0,
+        temperature: float = 1.0,
     ) -> Optional[bytes]:
         """텍스트를 음성으로 합성
 
@@ -529,6 +533,10 @@ class GPTSoVITSAPIClient:
             text: 합성할 텍스트
             char_id: 캐릭터 ID
             language: 텍스트 언어
+            speed_factor: 음성 속도 (0.5~2.0)
+            top_k: 샘플링 다양성 (1~20)
+            top_p: Nucleus sampling (0.1~1.0)
+            temperature: 음성 랜덤성 (0.1~2.0)
 
         Returns:
             WAV 오디오 데이터 또는 None
@@ -550,7 +558,13 @@ class GPTSoVITSAPIClient:
 
         if len(segments) == 1:
             # 짧은 텍스트: 직접 합성
-            return await self._synthesize_segment(segments[0], char_id, language)
+            return await self._synthesize_segment(
+                segments[0], char_id, language,
+                speed_factor=speed_factor,
+                top_k=top_k,
+                top_p=top_p,
+                temperature=temperature,
+            )
 
         # 긴 텍스트: 분할 합성 후 연결
         logger.info(f"[합성] 긴 텍스트 분할: {len(text)}자 -> {len(segments)}개 세그먼트")
@@ -560,7 +574,13 @@ class GPTSoVITSAPIClient:
         audio_chunks = []
         for i, segment in enumerate(segments):
             logger.info(f"[합성] 세그먼트 {i+1}/{len(segments)}: {segment[:20]}...")
-            chunk = await self._synthesize_segment(segment, char_id, language)
+            chunk = await self._synthesize_segment(
+                segment, char_id, language,
+                speed_factor=speed_factor,
+                top_k=top_k,
+                top_p=top_p,
+                temperature=temperature,
+            )
             if chunk is None:
                 logger.error(f"[합성] 세그먼트 {i+1} 실패")
                 return None
@@ -619,6 +639,10 @@ class GPTSoVITSAPIClient:
         text: str,
         char_id: str,
         language: str = "ko",
+        speed_factor: float = 1.0,
+        top_k: int = 5,
+        top_p: float = 1.0,
+        temperature: float = 1.0,
     ) -> Optional[bytes]:
         """단일 텍스트 세그먼트를 음성으로 합성
 
@@ -626,6 +650,10 @@ class GPTSoVITSAPIClient:
             text: 합성할 텍스트 (짧은 세그먼트)
             char_id: 캐릭터 ID
             language: 텍스트 언어
+            speed_factor: 음성 속도 (0.5~2.0)
+            top_k: 샘플링 다양성 (1~20)
+            top_p: Nucleus sampling (0.1~1.0)
+            temperature: 음성 랜덤성 (0.1~2.0)
 
         Returns:
             WAV 오디오 데이터 또는 None
@@ -667,11 +695,11 @@ class GPTSoVITSAPIClient:
             "aux_ref_audio_paths": aux_refs,
             "prompt_text": prompt_text,
             "prompt_lang": api_lang,
-            "top_k": self.config.top_k,
-            "top_p": self.config.top_p,
-            "temperature": self.config.temperature,
+            "top_k": top_k,
+            "top_p": top_p,
+            "temperature": temperature,
             "text_split_method": "cut0",
-            "speed_factor": 1.0,
+            "speed_factor": speed_factor,
         }
 
         import time
@@ -715,6 +743,10 @@ class GPTSoVITSAPIClient:
         char_id: str,
         output_path: Path,
         language: str = "ko",
+        speed_factor: float = 1.0,
+        top_k: int = 5,
+        top_p: float = 1.0,
+        temperature: float = 1.0,
     ) -> bool:
         """텍스트를 음성으로 합성하여 파일로 저장
 
@@ -723,11 +755,21 @@ class GPTSoVITSAPIClient:
             char_id: 캐릭터 ID
             output_path: 출력 파일 경로
             language: 텍스트 언어
+            speed_factor: 음성 속도 (0.5~2.0)
+            top_k: 샘플링 다양성 (1~20)
+            top_p: Nucleus sampling (0.1~1.0)
+            temperature: 음성 랜덤성 (0.1~2.0)
 
         Returns:
             bool: 성공 여부
         """
-        audio_data = await self.synthesize(text, char_id, language)
+        audio_data = await self.synthesize(
+            text, char_id, language,
+            speed_factor=speed_factor,
+            top_k=top_k,
+            top_p=top_p,
+            temperature=temperature,
+        )
         if audio_data is None:
             return False
 

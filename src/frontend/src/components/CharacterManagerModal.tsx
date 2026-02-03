@@ -28,6 +28,11 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
     currentTrainingJob,
     loadTrainedModels,
     clearAllTrainedModels,
+    // 별칭 관련
+    characterAliases,
+    loadCharacterAliases,
+    addCharacterAlias,
+    removeCharacterAlias,
   } = useAppStore()
 
   // 로컬 상태
@@ -41,11 +46,17 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
   const [testError, setTestError] = useState<string | null>(null)
   const testAudioRef = useRef<HTMLAudioElement | null>(null)
 
+  // 별칭 편집 상태
+  const [editingAliasCharId, setEditingAliasCharId] = useState<string | null>(null)
+  const [newAliasInput, setNewAliasInput] = useState('')
+  const [aliasError, setAliasError] = useState<string | null>(null)
+
   // 모달 열릴 때 데이터 로드
   useEffect(() => {
     if (isOpen) {
       loadVoiceCharacters()
       loadTrainedModels()
+      loadCharacterAliases()
     }
     return () => {
       // 모달 닫힐 때 테스트 오디오 정리
@@ -53,8 +64,12 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
         testAudioRef.current.pause()
         testAudioRef.current = null
       }
+      // 별칭 편집 상태 초기화
+      setEditingAliasCharId(null)
+      setNewAliasInput('')
+      setAliasError(null)
     }
-  }, [isOpen, loadVoiceCharacters, loadTrainedModels])
+  }, [isOpen, loadVoiceCharacters, loadTrainedModels, loadCharacterAliases])
 
   // 정렬된 캐릭터 목록
   const sortedCharacters = useMemo(() => {
@@ -182,6 +197,43 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
   // 캐릭터를 테스트 대상으로 선택
   const handleSelectForTest = (charId: string) => {
     setTestCharId(charId)
+  }
+
+  // 별칭 편집 토글
+  const handleToggleAliasEdit = (charId: string) => {
+    if (editingAliasCharId === charId) {
+      setEditingAliasCharId(null)
+      setNewAliasInput('')
+      setAliasError(null)
+    } else {
+      setEditingAliasCharId(charId)
+      setNewAliasInput('')
+      setAliasError(null)
+    }
+  }
+
+  // 별칭 추가
+  const handleAddAlias = async (charId: string) => {
+    const alias = newAliasInput.trim()
+    if (!alias) return
+
+    try {
+      setAliasError(null)
+      await addCharacterAlias(charId, alias)
+      setNewAliasInput('')
+    } catch (error: any) {
+      setAliasError(error?.response?.data?.detail || '별칭 추가 실패')
+    }
+  }
+
+  // 별칭 삭제
+  const handleRemoveAlias = async (alias: string) => {
+    try {
+      setAliasError(null)
+      await removeCharacterAlias(alias)
+    } catch (error: any) {
+      setAliasError(error?.response?.data?.detail || '별칭 삭제 실패')
+    }
   }
 
   if (!isOpen) return null
@@ -345,6 +397,8 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
                 const isMaleDefault = defaultMaleVoices.includes(char.char_id)
                 const isNarrator = narratorCharId === char.char_id
                 const isTraining = isTrainingActive && currentTrainingJob?.char_id === char.char_id
+                const aliases = characterAliases[char.char_id] || []
+                const isEditingAlias = editingAliasCharId === char.char_id
 
                 return (
                   <div
@@ -386,6 +440,57 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
                         <span className="text-ark-white">{char.file_count}개</span>
                       </div>
                     </div>
+
+                    {/* 별칭 표시 */}
+                    {aliases.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        {aliases.map((alias) => (
+                          <span
+                            key={alias}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] bg-amber-500/20 text-amber-400 rounded"
+                            title={`별칭: ${alias}`}
+                          >
+                            {alias}
+                            {isEditingAlias && (
+                              <button
+                                onClick={() => handleRemoveAlias(alias)}
+                                className="hover:text-red-400"
+                              >
+                                ×
+                              </button>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* 별칭 편집 UI */}
+                    {isEditingAlias && (
+                      <div className="mb-2 space-y-1">
+                        <div className="flex gap-1">
+                          <input
+                            type="text"
+                            value={newAliasInput}
+                            onChange={(e) => setNewAliasInput(e.target.value)}
+                            placeholder="별칭 추가..."
+                            className="ark-input text-[10px] py-0.5 px-1.5 flex-1"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleAddAlias(char.char_id)
+                            }}
+                          />
+                          <button
+                            onClick={() => handleAddAlias(char.char_id)}
+                            disabled={!newAliasInput.trim()}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 disabled:opacity-50"
+                          >
+                            추가
+                          </button>
+                        </div>
+                        {aliasError && editingAliasCharId === char.char_id && (
+                          <p className="text-[9px] text-red-400">{aliasError}</p>
+                        )}
+                      </div>
+                    )}
 
                     {/* 상태 */}
                     <div className="flex items-center gap-1 mb-2">
@@ -441,6 +546,17 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
                             {isNarrator ? '나레이션 해제' : '나레이션'}
                           </button>
                           <button
+                            onClick={() => handleToggleAliasEdit(char.char_id)}
+                            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                              isEditingAlias
+                                ? 'bg-amber-500/30 text-amber-400'
+                                : 'bg-ark-panel text-ark-gray hover:text-ark-white'
+                            }`}
+                            title="NPC 이름을 이 캐릭터에 매핑"
+                          >
+                            {isEditingAlias ? '별칭 닫기' : `별칭${aliases.length > 0 ? `(${aliases.length})` : ''}`}
+                          </button>
+                          <button
                             onClick={() => handleSelectForTest(char.char_id)}
                             className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
                               testCharId === char.char_id
@@ -452,13 +568,26 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
                           </button>
                         </>
                       ) : (
-                        <button
-                          onClick={() => handlePrepareCharacter(char.char_id)}
-                          disabled={isTrainingActive}
-                          className="text-[10px] px-1.5 py-0.5 rounded bg-ark-panel text-ark-gray hover:text-ark-white disabled:opacity-50"
-                        >
-                          준비
-                        </button>
+                        <>
+                          <button
+                            onClick={() => handlePrepareCharacter(char.char_id)}
+                            disabled={isTrainingActive}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-ark-panel text-ark-gray hover:text-ark-white disabled:opacity-50"
+                          >
+                            준비
+                          </button>
+                          <button
+                            onClick={() => handleToggleAliasEdit(char.char_id)}
+                            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                              isEditingAlias
+                                ? 'bg-amber-500/30 text-amber-400'
+                                : 'bg-ark-panel text-ark-gray hover:text-ark-white'
+                            }`}
+                            title="NPC 이름을 이 캐릭터에 매핑"
+                          >
+                            {isEditingAlias ? '별칭 닫기' : `별칭${aliases.length > 0 ? `(${aliases.length})` : ''}`}
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>

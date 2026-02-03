@@ -237,6 +237,32 @@ class RenderManager:
                 first = job.dialogues[0]
                 logger.info(f"[RenderManager] 첫 번째 대사: [{first.get('char_id')}] {first['text'][:50]}...")
 
+            # 자동 준비 헬퍼 함수
+            from ..voice.gpt_sovits.training_worker import prepare_reference_audio
+            from ..backend.config import config
+
+            async def ensure_char_ready(cid: str) -> bool:
+                """캐릭터 음성 준비 확인 및 자동 준비"""
+                if await synthesizer.is_available(cid):
+                    return True
+                # 음성 파일이 있으면 자동 준비 시도
+                audio_dir = config.extracted_path / cid
+                if audio_dir.exists():
+                    logger.info(f"[RenderManager] 캐릭터 자동 준비 시도: {cid}")
+                    output_dir = config.models_path / "gpt_sovits" / cid
+                    gamedata_path = Path("data/gamedata_yostar")
+                    success = prepare_reference_audio(
+                        char_id=cid,
+                        audio_dir=audio_dir,
+                        output_dir=output_dir,
+                        gamedata_path=gamedata_path,
+                        language=config.gpt_sovits_language,
+                    )
+                    if success and await synthesizer.is_available(cid):
+                        logger.info(f"[RenderManager] 캐릭터 자동 준비 완료: {cid}")
+                        return True
+                return False
+
             for dialogue in job.dialogues:
                 if self._cancel_requested:
                     self._progress.status = RenderStatus.CANCELLED
@@ -246,6 +272,7 @@ class RenderManager:
 
                 index = dialogue["index"]
                 char_id = dialogue.get("char_id")
+                speaker_name = dialogue.get("speaker_name")
                 text = dialogue["text"]
 
                 # 이미 렌더링된 경우 스킵
@@ -258,17 +285,33 @@ class RenderManager:
 
                 # 사용할 캐릭터 ID 결정
                 char_id_to_use = char_id
+
+                # 매핑 키 (char_id가 없으면 name: 접두사 사용)
+                mapping_key = char_id or (f"name:{speaker_name}" if speaker_name else None)
+
+                logger.info(f"[RenderManager] 대사 {index}: char_id={char_id}, speaker_name={speaker_name}, mapping_key={mapping_key}")
+
                 if not char_id_to_use:
-                    # 나레이션 - narrator_char_id 또는 default_char_id 사용
-                    char_id_to_use = job.narrator_char_id or job.default_char_id
-                elif await synthesizer.is_available(char_id_to_use):
-                    # 캐릭터 자신의 모델이 있으면 그대로 사용
-                    pass
+                    # char_id가 없는 경우 - name: 접두사로 매핑 확인
+                    if mapping_key and mapping_key in job.speaker_voice_map:
+                        mapped = job.speaker_voice_map[mapping_key]
+                        logger.info(f"[RenderManager] 이름 매핑 사용: {mapping_key} → {mapped}")
+                        char_id_to_use = mapped
+                    else:
+                        # 매핑 없으면 narrator_char_id 또는 default_char_id 사용
+                        char_id_to_use = job.narrator_char_id or job.default_char_id
+                        logger.info(f"[RenderManager] 나레이션/기본 음성 → {char_id_to_use}")
+                elif await ensure_char_ready(char_id_to_use):
+                    # 캐릭터 자신의 모델이 있으면 (또는 자동 준비 성공하면) 그대로 사용
+                    logger.info(f"[RenderManager] 캐릭터 음성 사용: {char_id_to_use}")
                 elif char_id_to_use in job.speaker_voice_map:
                     # 모델 없고 수동 매핑이 있으면 사용
-                    char_id_to_use = job.speaker_voice_map[char_id_to_use]
+                    mapped = job.speaker_voice_map[char_id_to_use]
+                    logger.info(f"[RenderManager] 수동 매핑 사용: {char_id_to_use} → {mapped}")
+                    char_id_to_use = mapped
                 else:
                     # 모델도 없고 매핑도 없으면 - default_char_id 사용
+                    logger.info(f"[RenderManager] 기본 음성 사용: {char_id_to_use} → {job.default_char_id}")
                     char_id_to_use = job.default_char_id
 
                 # 음성 합성

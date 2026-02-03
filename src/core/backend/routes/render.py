@@ -155,6 +155,7 @@ async def start_render(
                 {
                     "index": i,
                     "char_id": dialogue.speaker_id,
+                    "speaker_name": dialogue.speaker_name,  # name: 접두사 매핑용
                     "text": dialogue.text,
                 }
             )

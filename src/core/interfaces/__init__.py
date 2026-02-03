@@ -1,4 +1,4 @@
-"""AVT 핵심 인터페이스 정의"""
+"""ArkSynth 핵심 인터페이스 정의"""
 
 from .tts import TTSProvider, TTSResult
 from .ocr import OCRProvider, OCRResult, BoundingBox

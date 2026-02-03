@@ -1,22 +1,85 @@
-# Python-generated files
+# Python
 __pycache__/
-*.py[oc]
+*.py[cod]
+*$py.class
+*.so
 build/
+dist/
 wheels/
-*.egg-info
+*.egg-info/
+*.egg
+.eggs/
+*.manifest
+*.spec
 
 # Virtual environments
-.venv
+.venv/
+venv/
+ENV/
 
-# Frontend build artifacts
+# Frontend
 src/frontend/dist/
 src/frontend/dist-electron/
 src/frontend/release/
 src/frontend/node_modules/
+*.tsbuildinfo
 
 # IDE
 .idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Large assets (음성, 모델 등)
+extracted/
+models/
+VoiceAssets/
+rendered/
+
+# External tools (GPT-SoVITS 등)
+tools/
+
+# Documentation (auto-generated)
+docs/
+
+# Cache
+data/cache/
+*.cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Logs
+*.log
+logs/
 
 # Temporary files
 *.tmp
-*.log
+*.temp
+temp_*.txt
+plan.txt
+
+# OS generated
+.DS_Store
+Thumbs.db
+Desktop.ini
+nul
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Test coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# Jupyter
+.ipynb_checkpoints/

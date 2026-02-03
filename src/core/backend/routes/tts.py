@@ -57,6 +57,12 @@ class SynthesizeRequest(BaseModel):
     char_id: str | None = None  # 캐릭터 ID (GPT-SoVITS용)
     use_gpt_sovits: bool = True  # GPT-SoVITS 사용 여부 (기본 True)
 
+    # GPT-SoVITS 파라미터 (전역 설정)
+    speed_factor: float = 1.0  # 음성 속도 (0.5~2.0)
+    top_k: int = 5  # 샘플링 다양성 (1~20)
+    top_p: float = 1.0  # Nucleus sampling (0.1~1.0)
+    temperature: float = 1.0  # 음성 랜덤성 (0.1~2.0)
+
 
 class SynthesizeResponse(BaseModel):
     """TTS 합성 응답 (메타데이터)"""
@@ -156,6 +162,10 @@ async def synthesize(request: SynthesizeRequest):
             char_id=request.char_id,
             text=request.text,
             language=config.gpt_sovits_language,
+            speed_factor=request.speed_factor,
+            top_k=request.top_k,
+            top_p=request.top_p,
+            temperature=request.temperature,
         )
 
         if not result:

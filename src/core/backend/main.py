@@ -1,4 +1,4 @@
-"""AVT 백엔드 서버 메인"""
+"""ArkSynth 백엔드 서버 메인"""
 
 import sys
 import uvicorn

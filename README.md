@@ -1,4 +1,4 @@
-# AVT - Arknights Voice Tools
+# ArkSynth
 
 명일방주(Arknights) 스토리 실시간 음성 더빙 앱
 
@@ -23,8 +23,8 @@
 ### 설치
 ```bash
 # 저장소 클론
-git clone --recursive https://github.com/yourname/AVT.git
-cd AVT
+git clone --recursive https://github.com/yourname/ArkSynth.git
+cd ArkSynth
 
 # 백엔드 의존성
 uv sync
@@ -38,7 +38,7 @@ npm install
 
 ### VSCode (권장)
 1. VSCode에서 프로젝트 열기
-2. `F5` → "Start AVT" 선택
+2. `F5` → "Start ArkSynth" 선택
 
 ### 수동 실행
 ```bash
@@ -48,7 +48,7 @@ npm run start
 
 ## 프로젝트 구조
 ```
-AVT/
+ArkSynth/
 ├── src/
 │   ├── core/           # Python 백엔드
 │   ├── tools/          # CLI 도구
