@@ -56,9 +56,7 @@ class GPTSoVITSConfig:
     """GPT-SoVITS 학습 및 추론 설정"""
 
     # GPT-SoVITS 설치 경로
-    gpt_sovits_path: Path = field(
-        default_factory=_get_default_gpt_sovits_path
-    )
+    gpt_sovits_path: Path = field(default_factory=_get_default_gpt_sovits_path)
 
     # API 서버 설정
     api_host: str = "127.0.0.1"
@@ -82,10 +80,12 @@ class GPTSoVITSConfig:
     hop_length: int = 640
     win_length: int = 2048
 
-    # 추론 설정
-    top_k: int = 5
-    top_p: float = 1.0
-    temperature: float = 1.0
+    # TTS 추론 설정 (GPT-SoVITS 권장 기본값)
+    # 이 값들은 백엔드에서 사용되며, 프론트엔드에서는 기본값만 사용
+    speed_factor: float = 1.0  # 음성 속도 (0.5~2.0, 1.0=기본)
+    top_k: int = 5  # 샘플링 다양성 (1~20, 높을수록 조기 EOS 방지)
+    top_p: float = 1.0  # Nucleus sampling (0.1~1.0)
+    temperature: float = 1.0  # 음성 랜덤성 (0.1~2.0, 1.0=자연스러움)
 
     # 언어 설정 (한국어 우선)
     default_language: str = "ko"
@@ -104,10 +104,9 @@ class GPTSoVITSConfig:
     def is_gpt_sovits_installed(self) -> bool:
         """GPT-SoVITS 설치 여부 확인"""
         # api_v2.py 또는 api.py 존재 확인
-        return (
-            (self.gpt_sovits_path / "api_v2.py").exists() or
-            (self.gpt_sovits_path / "api.py").exists()
-        )
+        return (self.gpt_sovits_path / "api_v2.py").exists() or (
+            self.gpt_sovits_path / "api.py"
+        ).exists()
 
     @property
     def python_path(self) -> Path | None:

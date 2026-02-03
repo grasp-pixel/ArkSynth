@@ -29,36 +29,36 @@ def preprocess_text_for_tts(text: str) -> str | None:
 
     # 원본 텍스트가 의미있는 내용을 포함하는지 확인
     # 말줄임표/마침표만 있는 경우 비언어적 발성으로 대체
-    meaningful_chars = re.sub(r'[.\s…,?!]+', '', text)
+    meaningful_chars = re.sub(r"[.\s…,?!]+", "", text)
     if not meaningful_chars:
         # 말줄임표나 문장부호만 있는 텍스트 → 비언어적 발성
         return "음..."
 
     # 괄호 안의 감탄사/의성어 제거 (예: "(한숨)" -> "")
     # TTS로 읽을 필요 없는 연출 지시문
-    text = re.sub(r'\([^)]+\)', '', text)
+    text = re.sub(r"\([^)]+\)", "", text)
 
     # 연속된 마침표 및 말줄임표 처리 (... 또는 … -> 쉼표)
     # GPT-SoVITS는 ...을 무시하거나 앞 문장을 스킵할 수 있음
-    text = re.sub(r'\.{2,}', ', ', text)
-    text = re.sub(r'…+', ', ', text)  # 유니코드 말줄임표(…)도 처리
+    text = re.sub(r"\.{2,}", ", ", text)
+    text = re.sub(r"…+", ", ", text)  # 유니코드 말줄임표(…)도 처리
 
     # 문장 중간의 마침표를 쉼표로 대체 (GPT-SoVITS 문장 분할 방지)
     # 마침표 뒤에 텍스트가 더 있는 경우에만 변환
     # "하이디 씨. 겨우" -> "하이디 씨, 겨우"
-    text = re.sub(r'\.\s+(?=\S)', ', ', text)
+    text = re.sub(r"\.\s+(?=\S)", ", ", text)
 
     # 연속된 물음표/느낌표 단순화
-    text = re.sub(r'[?!]{2,}', '?', text)
+    text = re.sub(r"[?!]{2,}", "?", text)
 
     # 앞뒤 공백 및 연속 공백 정리
-    text = re.sub(r'\s+', ' ', text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
 
     # 문장 시작의 쉼표/마침표 제거
-    text = re.sub(r'^[,.\s]+', '', text)
+    text = re.sub(r"^[,.\s]+", "", text)
 
     # 연속된 쉼표 정리
-    text = re.sub(r',\s*,+', ',', text)
+    text = re.sub(r",\s*,+", ",", text)
 
     # 전처리 후에도 빈 문자열이면 None 반환
     if not text.strip():
@@ -67,87 +67,88 @@ def preprocess_text_for_tts(text: str) -> str | None:
     return text
 
 
-def split_text_for_tts(text: str, max_length: int = 50) -> list[str]:
-    """긴 텍스트를 TTS용 세그먼트로 분할
+def split_text_for_tts(text: str, max_length: int = 35) -> list[str]:
+    """텍스트를 TTS용 세그먼트로 분할
 
-    GPT-SoVITS는 긴 텍스트 처리 시 앞부분이 잘리는 문제가 있어서
-    적절한 길이로 분할해서 개별 합성 후 연결해야 합니다.
+    GPT-SoVITS는 긴 텍스트에서 조기 EOS가 발생하여 앞부분이 잘리는 문제가 있음.
+    쉼표/문장부호 기준으로 공격적으로 분할하여 개별 합성 후 연결합니다.
 
     Args:
         text: 분할할 텍스트
-        max_length: 세그먼트 최대 길이 (기본 50자)
+        max_length: 세그먼트 최대 길이 (기본 35자)
 
     Returns:
         분할된 텍스트 세그먼트 목록
     """
     import re
 
-    if len(text) <= max_length:
-        return [text]
+    # 쉼표, 느낌표, 물음표 기준으로 무조건 분할
+    # 구분자를 캡처하여 앞 세그먼트에 붙임
+    parts = re.split(r"([!?])|,\s*", text)
 
     segments = []
+    current = ""
 
-    # 1차: 문장 구분자로 분할 (쉼표, 느낌표, 물음표)
-    # 느낌표/물음표 뒤에 분할하되 구분자는 앞 세그먼트에 포함
-    parts = re.split(r'([!?])\s*|,\s*', text)
-    # re.split with groups: ['텍스트', '!', '텍스트', '?', ...]
-    # 구분자를 앞 텍스트에 붙여서 재조합
-    merged_parts = []
     i = 0
     while i < len(parts):
-        part = parts[i] if parts[i] else ""
-        # 다음이 구분자(!, ?)이면 붙이기
-        if i + 1 < len(parts) and parts[i + 1] in ('!', '?'):
-            part += parts[i + 1]
-            i += 2
-        else:
+        part = parts[i]
+        if part is None:
             i += 1
-        if part.strip():
-            merged_parts.append(part.strip())
-    parts = merged_parts
-
-    current = ""
-    for part in parts:
-        part = part.strip()
-        if not part:
             continue
 
-        # 현재 세그먼트에 추가해도 max_length 이하면 추가
-        test = f"{current}, {part}" if current else part
-        if len(test) <= max_length:
-            current = test
-        else:
-            # 현재 세그먼트 저장
+        part = part.strip()
+        if not part:
+            i += 1
+            continue
+
+        # 구분자(!, ?)는 이전 세그먼트에 붙임
+        if part in ("!", "?"):
             if current:
-                segments.append(current)
+                current += part
+            i += 1
+            continue
 
-            # part 자체가 max_length보다 길면 강제 분할
-            if len(part) > max_length:
-                # 공백 기준으로 분할 시도
-                words = part.split()
-                word_segment = ""
-                for word in words:
-                    test_word = f"{word_segment} {word}" if word_segment else word
-                    if len(test_word) <= max_length:
-                        word_segment = test_word
-                    else:
-                        if word_segment:
-                            segments.append(word_segment)
-                        word_segment = word
-                if word_segment:
-                    current = word_segment
-                else:
-                    current = ""
+        # 현재 세그먼트가 있고 합치면 max_length 초과하면 저장 후 새로 시작
+        if current:
+            test = f"{current}, {part}"
+            if len(test) <= max_length:
+                current = test
             else:
+                segments.append(current)
                 current = part
+        else:
+            current = part
 
+        i += 1
+
+    # 마지막 세그먼트 저장
     if current:
         segments.append(current)
 
-    # 빈 세그먼트 제거 및 정리
-    segments = [s.strip() for s in segments if s.strip()]
+    # 너무 긴 세그먼트는 공백 기준으로 추가 분할
+    final_segments = []
+    for seg in segments:
+        if len(seg) <= max_length:
+            final_segments.append(seg)
+        else:
+            # 공백 기준 분할
+            words = seg.split()
+            word_seg = ""
+            for word in words:
+                test = f"{word_seg} {word}" if word_seg else word
+                if len(test) <= max_length:
+                    word_seg = test
+                else:
+                    if word_seg:
+                        final_segments.append(word_seg)
+                    word_seg = word
+            if word_seg:
+                final_segments.append(word_seg)
 
-    return segments if segments else [text]
+    # 빈 세그먼트 제거
+    final_segments = [s.strip() for s in final_segments if s.strip()]
+
+    return final_segments if final_segments else [text]
 
 
 class GPTSoVITSAPIClient:
@@ -189,7 +190,7 @@ class GPTSoVITSAPIClient:
             # 서버가 실행 중임을 의미함. 연결 자체가 되면 실행 중으로 판단
             async with session.get(
                 f"{self.api_url}/",
-                timeout=aiohttp.ClientTimeout(total=10)  # 합성 중에도 여유 있게
+                timeout=aiohttp.ClientTimeout(total=10),  # 합성 중에도 여유 있게
             ) as resp:
                 # 200, 404, 405 등 어떤 응답이든 서버가 살아있음
                 return True
@@ -211,7 +212,9 @@ class GPTSoVITSAPIClient:
             bool: 시작 성공 여부
         """
         if not self.config.is_gpt_sovits_installed:
-            logger.error(f"GPT-SoVITS가 설치되어 있지 않습니다: {self.config.gpt_sovits_path}")
+            logger.error(
+                f"GPT-SoVITS가 설치되어 있지 않습니다: {self.config.gpt_sovits_path}"
+            )
             return False
 
         if self._api_process and self._api_process.poll() is None:
@@ -233,7 +236,9 @@ class GPTSoVITSAPIClient:
             if python_exe is None:
                 logger.error(f"GPT-SoVITS Python 경로가 None입니다")
                 logger.error(f"  gpt_sovits_path: {self.config.gpt_sovits_path}")
-                logger.error(f"  runtime/python.exe 존재: {(self.config.gpt_sovits_path / 'runtime' / 'python.exe').exists()}")
+                logger.error(
+                    f"  runtime/python.exe 존재: {(self.config.gpt_sovits_path / 'runtime' / 'python.exe').exists()}"
+                )
                 return False
 
             if not python_exe.exists():
@@ -248,8 +253,10 @@ class GPTSoVITSAPIClient:
             cmd = [
                 str(python_exe_abs),
                 str(api_script_abs),
-                "-a", self.config.api_host,
-                "-p", str(self.config.api_port),
+                "-a",
+                self.config.api_host,
+                "-p",
+                str(self.config.api_port),
             ]
 
             logger.info(f"GPT-SoVITS API 서버 시작: {' '.join(cmd)}")
@@ -262,11 +269,14 @@ class GPTSoVITSAPIClient:
                 cwd=str(cwd_abs),
                 stdout=None,  # 콘솔로 직접 출력
                 stderr=None,
-                creationflags=subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0,
+                creationflags=subprocess.CREATE_NEW_CONSOLE
+                if sys.platform == "win32"
+                else 0,
             )
 
             # 프로세스가 즉시 종료되었는지 확인 (0.5초 대기)
             import time
+
             time.sleep(0.5)
             exit_code = self._api_process.poll()
             if exit_code is not None:
@@ -288,7 +298,9 @@ class GPTSoVITSAPIClient:
         status = {
             "gpt_sovits_installed": self.config.is_gpt_sovits_installed,
             "gpt_sovits_path": str(self.config.gpt_sovits_path),
-            "python_path": str(self.config.python_path) if self.config.python_path else None,
+            "python_path": str(self.config.python_path)
+            if self.config.python_path
+            else None,
             "api_url": self.api_url,
             "process_running": False,
             "process_pid": None,
@@ -426,7 +438,11 @@ class GPTSoVITSAPIClient:
         ref_audio = model_dir / "ref.wav"
         ref_text_file = model_dir / "ref.txt"
         if ref_audio.exists():
-            ref_text = ref_text_file.read_text(encoding="utf-8").strip() if ref_text_file.exists() else ""
+            ref_text = (
+                ref_text_file.read_text(encoding="utf-8").strip()
+                if ref_text_file.exists()
+                else ""
+            )
             refs.append((ref_audio, ref_text, len(ref_text)))
 
         # 추가 참조 (ref_1.wav, ref_2.wav, ... 최대 30개)
@@ -434,7 +450,11 @@ class GPTSoVITSAPIClient:
             ref_audio = model_dir / f"ref_{i}.wav"
             ref_text_file = model_dir / f"ref_{i}.txt"
             if ref_audio.exists():
-                ref_text = ref_text_file.read_text(encoding="utf-8").strip() if ref_text_file.exists() else ""
+                ref_text = (
+                    ref_text_file.read_text(encoding="utf-8").strip()
+                    if ref_text_file.exists()
+                    else ""
+                )
                 refs.append((ref_audio, ref_text, len(ref_text)))
 
         if not refs:
@@ -458,6 +478,7 @@ class GPTSoVITSAPIClient:
         """오디오 파일 길이 반환 (초)"""
         try:
             import wave
+
             with wave.open(str(audio_path), "rb") as wav:
                 frames = wav.getnframes()
                 rate = wav.getframerate()
@@ -551,15 +572,20 @@ class GPTSoVITSAPIClient:
             return None
 
         if text != original_text:
-            logger.info(f"[합성] 텍스트 전처리: '{original_text[:30]}' -> '{text[:30]}'")
+            logger.info(
+                f"[합성] 텍스트 전처리: '{original_text[:30]}' -> '{text[:30]}'"
+            )
 
-        # 긴 텍스트 분할 (GPT-SoVITS는 긴 텍스트에서 앞부분이 잘림)
-        segments = split_text_for_tts(text, max_length=50)
+        # 텍스트 분할 (GPT-SoVITS 조기 EOS 방지)
+        # 쉼표 기준으로 공격적으로 분할하여 개별 합성 후 연결
+        segments = split_text_for_tts(text, max_length=35)
 
         if len(segments) == 1:
-            # 짧은 텍스트: 직접 합성
+            # 단일 세그먼트: 직접 합성
             return await self._synthesize_segment(
-                segments[0], char_id, language,
+                segments[0],
+                char_id,
+                language,
                 speed_factor=speed_factor,
                 top_k=top_k,
                 top_p=top_p,
@@ -567,22 +593,26 @@ class GPTSoVITSAPIClient:
             )
 
         # 긴 텍스트: 분할 합성 후 연결
-        logger.info(f"[합성] 긴 텍스트 분할: {len(text)}자 -> {len(segments)}개 세그먼트")
+        logger.info(
+            f"[합성] 긴 텍스트 분할: {len(text)}자 -> {len(segments)}개 세그먼트"
+        )
         for i, seg in enumerate(segments):
-            logger.info(f"  [{i+1}] {seg[:30]}{'...' if len(seg) > 30 else ''}")
+            logger.info(f"  [{i + 1}] {seg[:30]}{'...' if len(seg) > 30 else ''}")
 
         audio_chunks = []
         for i, segment in enumerate(segments):
-            logger.info(f"[합성] 세그먼트 {i+1}/{len(segments)}: {segment[:20]}...")
+            logger.info(f"[합성] 세그먼트 {i + 1}/{len(segments)}: {segment[:20]}...")
             chunk = await self._synthesize_segment(
-                segment, char_id, language,
+                segment,
+                char_id,
+                language,
                 speed_factor=speed_factor,
                 top_k=top_k,
                 top_p=top_p,
                 temperature=temperature,
             )
             if chunk is None:
-                logger.error(f"[합성] 세그먼트 {i+1} 실패")
+                logger.error(f"[합성] 세그먼트 {i + 1} 실패")
                 return None
             audio_chunks.append(chunk)
 
@@ -610,19 +640,19 @@ class GPTSoVITSAPIClient:
         try:
             # 첫 번째 청크에서 오디오 파라미터 추출
             with io.BytesIO(audio_chunks[0]) as first_buf:
-                with wave.open(first_buf, 'rb') as first_wav:
+                with wave.open(first_buf, "rb") as first_wav:
                     params = first_wav.getparams()
 
             # 모든 청크의 프레임 데이터 추출
             all_frames = []
             for chunk in audio_chunks:
                 with io.BytesIO(chunk) as buf:
-                    with wave.open(buf, 'rb') as wav_file:
+                    with wave.open(buf, "rb") as wav_file:
                         all_frames.append(wav_file.readframes(wav_file.getnframes()))
 
             # 하나의 WAV로 합치기
             output = io.BytesIO()
-            with wave.open(output, 'wb') as out_wav:
+            with wave.open(output, "wb") as out_wav:
                 out_wav.setparams(params)
                 for frames in all_frames:
                     out_wav.writeframes(frames)
@@ -672,7 +702,8 @@ class GPTSoVITSAPIClient:
         prompt_text = ref_text
         if ref_text and len(ref_text) > 40:
             import re
-            sentences = re.split(r'[.!?。！？]', ref_text)
+
+            sentences = re.split(r"[.!?。！？]", ref_text)
             sentences = [s.strip() for s in sentences if s.strip()]
             if sentences:
                 prompt_text = sentences[-1]
@@ -698,18 +729,21 @@ class GPTSoVITSAPIClient:
             "top_k": top_k,
             "top_p": top_p,
             "temperature": temperature,
-            "text_split_method": "cut0",
+            "text_split_method": "cut0",  # GPT-SoVITS 내부 분할 비활성화 (앱에서 직접 분할)
             "speed_factor": speed_factor,
         }
 
         import time
+
         start_time = time.time()
 
         connector = aiohttp.TCPConnector(force_close=True)
         timeout = aiohttp.ClientTimeout(total=90)
 
         try:
-            async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+            async with aiohttp.ClientSession(
+                connector=connector, timeout=timeout
+            ) as session:
                 async with session.post(
                     f"{self.api_url}/tts",
                     json=params,
@@ -722,7 +756,9 @@ class GPTSoVITSAPIClient:
                         return None
 
                     audio_data = await resp.read()
-                    logger.debug(f"[합성] 세그먼트 완료 ({elapsed:.1f}초, {len(audio_data):,} bytes)")
+                    logger.debug(
+                        f"[합성] 세그먼트 완료 ({elapsed:.1f}초, {len(audio_data):,} bytes)"
+                    )
 
                     await asyncio.sleep(0.3)
                     return audio_data
@@ -764,7 +800,9 @@ class GPTSoVITSAPIClient:
             bool: 성공 여부
         """
         audio_data = await self.synthesize(
-            text, char_id, language,
+            text,
+            char_id,
+            language,
             speed_factor=speed_factor,
             top_k=top_k,
             top_p=top_p,
