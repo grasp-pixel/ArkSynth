@@ -862,37 +862,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistCurrentState(get)
   },
 
-  // 화자별 음성 결정 (voice_char_id → 캐릭터 음성 → 학습된 음성 → 매핑 → 성별 기반 기본 음성 자동 분배)
+  // 화자별 음성 결정 (수동 매핑 → voice_char_id → 캐릭터 음성 → 학습된 음성 → 성별 기반 기본 음성 자동 분배)
   getSpeakerVoice: (speakerId: string, speakerName?: string): string | null => {
     const { trainedCharIds, speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices, defaultVoices, voiceCharacters, episodeCharacters } = get()
 
-    // 0. episodeCharacters에서 voice_char_id 확인 (speaker_id와 다를 수 있음)
-    // name: 접두사 키인 경우 이름으로 찾기
-    let episodeChar
-    if (speakerId.startsWith('name:')) {
-      const charName = speakerId.slice(5)  // 'name:' 제거
-      episodeChar = episodeCharacters.find(c => c.name === charName)
-    } else {
-      episodeChar = episodeCharacters.find(c => c.char_id === speakerId)
-    }
-    const voiceCharId = episodeChar?.voice_char_id || speakerId
+    console.log('[getSpeakerVoice] 입력:', { speakerId, speakerName })
 
-    console.log('[getSpeakerVoice] 입력:', { speakerId, speakerName, voiceCharId, hasVoice: episodeChar?.has_voice })
-
-    // 1. voice_char_id가 음성 파일을 가지고 있으면 사용 (최우선)
-    const hasOwnVoice = voiceCharacters.some(v => v.char_id === voiceCharId)
-    if (hasOwnVoice) {
-      console.log('[getSpeakerVoice] 결과: 캐릭터 음성 사용 ->', voiceCharId)
-      return voiceCharId
-    }
-
-    // 2. 학습된 음성 있으면 사용
-    if (trainedCharIds.has(voiceCharId)) {
-      console.log('[getSpeakerVoice] 결과: 학습된 음성 사용 ->', voiceCharId)
-      return voiceCharId
-    }
-
-    // 3. 수동 매핑 있으면 사용 (음성 없는 캐릭터 전용)
+    // 0. 수동 매핑이 있으면 최우선 사용 (사용자 의도)
     const mapping = speakerVoiceMap[speakerId]
     if (mapping) {
       // 특수 값 처리: 자동 여성/남성
@@ -915,6 +891,32 @@ export const useAppStore = create<AppState>((set, get) => ({
         console.log('[getSpeakerVoice] 결과: 수동 매핑 ->', mapping)
         return mapping
       }
+    }
+
+    // 1. episodeCharacters에서 voice_char_id 확인 (speaker_id와 다를 수 있음)
+    // name: 접두사 키인 경우 이름으로 찾기
+    let episodeChar
+    if (speakerId.startsWith('name:')) {
+      const charName = speakerId.slice(5)  // 'name:' 제거
+      episodeChar = episodeCharacters.find(c => c.name === charName)
+    } else {
+      episodeChar = episodeCharacters.find(c => c.char_id === speakerId)
+    }
+    const voiceCharId = episodeChar?.voice_char_id || speakerId
+
+    console.log('[getSpeakerVoice] voiceCharId:', voiceCharId, 'hasVoice:', episodeChar?.has_voice)
+
+    // 2. voice_char_id가 음성 파일을 가지고 있으면 사용
+    const hasOwnVoice = voiceCharacters.some(v => v.char_id === voiceCharId)
+    if (hasOwnVoice) {
+      console.log('[getSpeakerVoice] 결과: 캐릭터 음성 사용 ->', voiceCharId)
+      return voiceCharId
+    }
+
+    // 3. 학습된 음성 있으면 사용
+    if (trainedCharIds.has(voiceCharId)) {
+      console.log('[getSpeakerVoice] 결과: 학습된 음성 사용 ->', voiceCharId)
+      return voiceCharId
     }
 
     // 4. 성별 기반 기본 음성 분배
