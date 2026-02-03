@@ -33,6 +33,8 @@ export default function DialogueViewer() {
     matchedIndex,
     matchSimilarity,
     groupCharacters,
+    renderProgress,
+    isRendering,
   } = useAppStore()
 
   // 음성 있는 캐릭터 ID Set (빠른 조회용)
@@ -132,6 +134,9 @@ export default function DialogueViewer() {
             ? getColorFromName(dialogue.speaker_name)
             : undefined
 
+          // 렌더링 상태 확인
+          const isRendered = renderProgress ? index < renderProgress.completed : false
+
           return (
             <div
               key={dialogue.id}
@@ -145,6 +150,8 @@ export default function DialogueViewer() {
                 matchSimilarity={isMatched ? matchSimilarity : 0}
                 speakerColor={speakerColor}
                 isPrepared={isPrepared}
+                isRendered={isRendered}
+                isRendering={isRendering && renderProgress?.completed === index}
                 onPlay={() => handlePlayClick(dialogue)}
               />
             </div>
@@ -163,10 +170,12 @@ interface DialogueItemProps {
   matchSimilarity?: number
   speakerColor?: string  // 음성 있는 캐릭터의 고유 색상
   isPrepared?: boolean   // 더빙 준비 완료 여부
+  isRendered?: boolean   // 사전 렌더링 완료 여부
+  isRendering?: boolean  // 현재 렌더링 중인 대사
   onPlay: () => void
 }
 
-function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, speakerColor, isPrepared, onPlay }: DialogueItemProps) {
+function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, speakerColor, isPrepared, isRendered, isRendering, onPlay }: DialogueItemProps) {
   const isNarration = !dialogue.speaker_name
   const hasVoice = !!speakerColor
 
@@ -177,10 +186,18 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
       }`}
     >
       <div className="flex items-start gap-3">
-        {/* 인덱스 */}
-        <span className="text-xs text-ark-gray font-mono w-8 shrink-0 pt-0.5">
-          #{String(index + 1).padStart(3, '0')}
-        </span>
+        {/* 인덱스 + 렌더링 상태 */}
+        <div className="flex items-center gap-1 shrink-0 pt-0.5">
+          <span className="text-xs text-ark-gray font-mono w-8">
+            #{String(index + 1).padStart(3, '0')}
+          </span>
+          {/* 렌더링 상태 표시 */}
+          {isRendering ? (
+            <span className="w-2 h-2 rounded-full bg-ark-orange ark-pulse" title="렌더링 중" />
+          ) : isRendered ? (
+            <span className="w-2 h-2 rounded-full bg-green-500" title="렌더링 완료" />
+          ) : null}
+        </div>
 
         {/* 내용 */}
         <div className="flex-1 min-w-0">

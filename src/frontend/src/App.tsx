@@ -4,8 +4,10 @@ import EpisodeSelector from './components/EpisodeSelector'
 import DialogueViewer from './components/DialogueViewer'
 import VoiceSetupPanel from './components/VoiceSetupPanel'
 import DubbingDashboard from './components/DubbingDashboard'
+import DubbingControlBar from './components/DubbingControlBar'
 import StatusBar from './components/StatusBar'
 import SettingsModal from './components/SettingsModal'
+import CharacterManagerModal from './components/CharacterManagerModal'
 
 function App() {
   const {
@@ -53,6 +55,9 @@ function App() {
   // 설정 모달 상태
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
+  // 캐릭터 관리 모달 상태
+  const [isCharacterManagerOpen, setIsCharacterManagerOpen] = useState(false)
+
   // 준비 버튼 핸들러
   const handlePrepare = () => {
     if (!selectedGroupId) {
@@ -75,9 +80,9 @@ function App() {
             </svg>
           </div>
           <h1 className="text-xl font-bold text-ark-white tracking-wide">
-            <span className="text-ark-orange">AVT</span>
+            <span className="text-ark-orange">ArkSynth</span>
             <span className="text-ark-gray mx-2">|</span>
-            <span className="text-sm font-normal">ARKNIGHTS VOICE TOOLS</span>
+            <span className="text-sm font-normal">ARKNIGHTS STORY VOICE</span>
           </h1>
         </div>
         <div className="flex items-center gap-4">
@@ -110,13 +115,15 @@ function App() {
               <button
                 onClick={startGptSovits}
                 disabled={isStartingGptSovits}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded bg-ark-panel border border-ark-border text-ark-gray hover:text-ark-white hover:border-ark-orange transition-colors disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-orange-500/30 hover:from-amber-400 hover:to-orange-400 hover:shadow-orange-500/50 transition-all animate-pulse hover:animate-none disabled:opacity-50 disabled:animate-none"
               >
                 {isStartingGptSovits ? (
-                  <span className="ark-pulse">시작 중...</span>
+                  <span>시작 중...</span>
                 ) : (
                   <>
-                    <span className="w-2 h-2 rounded-full bg-yellow-500" />
+                    <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+                      <path d="M8 5v14l11-7z"/>
+                    </svg>
                     <span>GPT-SoVITS 시작</span>
                   </>
                 )}
@@ -161,24 +168,37 @@ function App() {
 
       {/* 카테고리 탭 */}
       <div className="flex border-b border-ark-border bg-ark-dark">
-        {isLoadingCategories ? (
-          <div className="p-3 text-ark-gray text-sm ark-pulse">로딩 중...</div>
-        ) : (
-          categories.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => selectCategory(cat.id)}
-              className={`px-5 py-3 text-sm font-medium whitespace-nowrap transition-all border-b-2 ${
-                selectedCategoryId === cat.id
-                  ? 'bg-ark-orange/10 text-ark-orange border-ark-orange'
-                  : 'text-ark-gray hover:text-ark-white hover:bg-ark-panel/50 border-transparent'
-              }`}
-            >
-              {cat.name}
-              <span className="ml-1.5 text-xs opacity-70">({cat.group_count})</span>
-            </button>
-          ))
-        )}
+        <div className="flex-1 flex overflow-x-auto">
+          {isLoadingCategories ? (
+            <div className="p-3 text-ark-gray text-sm ark-pulse">로딩 중...</div>
+          ) : (
+            categories.map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => selectCategory(cat.id)}
+                className={`px-5 py-3 text-sm font-medium whitespace-nowrap transition-all border-b-2 ${
+                  selectedCategoryId === cat.id
+                    ? 'bg-ark-orange/10 text-ark-orange border-ark-orange'
+                    : 'text-ark-gray hover:text-ark-white hover:bg-ark-panel/50 border-transparent'
+                }`}
+              >
+                {cat.name}
+                <span className="ml-1.5 text-xs opacity-70">({cat.group_count})</span>
+              </button>
+            ))
+          )}
+        </div>
+
+        {/* 캐릭터 관리 버튼 */}
+        <button
+          onClick={() => setIsCharacterManagerOpen(true)}
+          className="px-4 py-2 text-ark-orange hover:bg-ark-orange/10 flex items-center gap-2 border-l border-ark-border transition-colors"
+        >
+          <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
+            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+          </svg>
+          <span className="text-sm font-medium">캐릭터 관리</span>
+        </button>
       </div>
 
       {/* 메인 컨텐츠 */}
@@ -211,7 +231,7 @@ function App() {
           </section>
 
           {/* 오른쪽: 조건부 패널 */}
-          <aside className="w-80 bg-ark-dark border-l border-ark-border overflow-y-auto flex flex-col">
+          <aside className="w-[400px] bg-ark-dark border-l border-ark-border overflow-y-auto flex flex-col">
             {isPrepared ? (
               <VoiceSetupPanel />
             ) : (
@@ -256,18 +276,22 @@ function App() {
                     </h4>
                     <p className="flex items-start gap-2">
                       <span className="text-ark-orange font-bold">1.</span>
-                      왼쪽에서 스토리 그룹을 선택하세요
+                      상단의 "GPT-SoVITS 시작" 버튼을 눌러 TTS 엔진을 시작하세요
                     </p>
                     <p className="flex items-start gap-2">
                       <span className="text-ark-orange font-bold">2.</span>
-                      에피소드를 선택하여 대사를 확인하세요
+                      왼쪽에서 스토리 그룹을 선택하세요
                     </p>
                     <p className="flex items-start gap-2">
                       <span className="text-ark-orange font-bold">3.</span>
-                      "더빙 준비" 버튼을 눌러 설정을 시작하세요
+                      에피소드를 선택하여 대사를 확인하세요
                     </p>
                     <p className="flex items-start gap-2">
                       <span className="text-ark-orange font-bold">4.</span>
+                      "더빙 준비" 버튼을 눌러 설정을 시작하세요
+                    </p>
+                    <p className="flex items-start gap-2">
+                      <span className="text-ark-orange font-bold">5.</span>
                       캐릭터 음성을 준비하고 더빙을 시작하세요
                     </p>
                   </div>
@@ -281,6 +305,9 @@ function App() {
       {/* 더빙 대시보드 (더빙 모드 시 하단 고정) */}
       <DubbingDashboard />
 
+      {/* 더빙 컨트롤 바 (준비됨 상태 시 하단 고정) */}
+      <DubbingControlBar />
+
       {/* 상태 바 */}
       <StatusBar />
 
@@ -288,6 +315,12 @@ function App() {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+      />
+
+      {/* 캐릭터 관리 모달 */}
+      <CharacterManagerModal
+        isOpen={isCharacterManagerOpen}
+        onClose={() => setIsCharacterManagerOpen(false)}
       />
     </div>
   )

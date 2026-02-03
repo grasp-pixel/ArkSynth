@@ -54,7 +54,10 @@ interface AppState {
   isLoadingEpisode: boolean
 
   // 음성 관련
-  defaultCharId: string | null  // 기본 캐릭터 ID (음성 모델 없는 캐릭터용)
+  defaultCharId: string | null  // 기본 캐릭터 ID (하위 호환)
+  defaultVoices: string[]  // 다중 기본 음성 목록 (하위 호환 - 여성으로 취급)
+  defaultFemaleVoices: string[]  // 기본 여성 음성
+  defaultMaleVoices: string[]  // 기본 남성 음성
   isPlaying: boolean
   currentDialogue: DialogueInfo | null
 
@@ -125,6 +128,19 @@ interface AppState {
   stopPlayback: () => void
   setDefaultCharId: (charId: string | null) => void
 
+  // 다중 기본 음성 액션
+  addDefaultVoice: (charId: string) => void
+  removeDefaultVoice: (index: number) => void
+  updateDefaultVoice: (index: number, charId: string) => void
+  // 성별 기반 기본 음성 액션
+  addDefaultFemaleVoice: (charId: string) => void
+  removeDefaultFemaleVoice: (index: number) => void
+  updateDefaultFemaleVoice: (index: number, charId: string) => void
+  addDefaultMaleVoice: (charId: string) => void
+  removeDefaultMaleVoice: (index: number) => void
+  updateDefaultMaleVoice: (index: number, charId: string) => void
+  getSpeakerVoice: (speakerId: string, speakerName?: string) => string | null
+
   // OCR 액션
   loadMonitors: () => Promise<void>
   setMonitor: (monitorId: number) => void
@@ -156,7 +172,8 @@ interface AppState {
   prepareForDubbing: () => Promise<void>
   cancelPrepare: () => void
   loadGroupCharacters: (groupId: string) => Promise<void>
-  setSpeakerVoice: (speakerId: string, voiceId: string) => void
+  setSpeakerVoice: (speakerId: string, voiceId: string | null) => void
+  clearSpeakerVoice: (speakerId: string) => void
   setNarratorCharId: (charId: string | null) => void
   loadVoiceCharacters: () => Promise<void>
   toggleAutoPlay: () => void
@@ -175,7 +192,7 @@ interface AppState {
 
   // 렌더링
   loadRenderStatus: () => Promise<void>
-  startRender: (episodeId: string) => Promise<void>
+  startRender: (episodeId: string, force?: boolean) => Promise<void>
   cancelRender: () => Promise<void>
   subscribeToRenderProgress: (episodeId: string) => void
   unsubscribeFromRenderProgress: () => void
@@ -195,7 +212,10 @@ interface PersistedState {
   selectedCategoryId: string | null
   selectedGroupId: string | null
   selectedEpisodeId: string | null
-  defaultCharId: string | null
+  defaultCharId: string | null  // 하위 호환
+  defaultVoices: string[]  // 다중 기본 음성 (하위 호환)
+  defaultFemaleVoices: string[]  // 기본 여성 음성
+  defaultMaleVoices: string[]  // 기본 남성 음성
   narratorCharId: string | null
   autoPlayOnMatch: boolean
 }
@@ -233,13 +253,56 @@ const persistCurrentState = (get: () => AppState) => {
     selectedGroupId: state.selectedGroupId,
     selectedEpisodeId: state.selectedEpisodeId,
     defaultCharId: state.defaultCharId,
+    defaultVoices: state.defaultVoices,
+    defaultFemaleVoices: state.defaultFemaleVoices,
+    defaultMaleVoices: state.defaultMaleVoices,
     narratorCharId: state.narratorCharId,
     autoPlayOnMatch: state.autoPlayOnMatch,
   })
 }
 
+// 문자열 해시 함수 (화자별 음성 분배용)
+const simpleHash = (str: string): number => {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash  // 32bit integer 변환
+  }
+  return Math.abs(hash)
+}
+
 // 오디오 재생 관리
 let currentAudio: HTMLAudioElement | null = null
+
+// 실시간 TTS 합성 및 재생 헬퍼 함수
+async function synthesizeAndPlayDialogue(
+  text: string,
+  charId: string,
+  set: (state: Partial<AppState>) => void
+) {
+  try {
+    console.log('[playDialogue] GPT-SoVITS 합성:', charId, text.substring(0, 30))
+    const audioBlob = await ttsApi.synthesize(text, charId)
+    const audioUrl = URL.createObjectURL(audioBlob)
+
+    currentAudio = new Audio(audioUrl)
+    currentAudio.onended = () => {
+      set({ isPlaying: false, currentDialogue: null })
+      URL.revokeObjectURL(audioUrl)
+    }
+    currentAudio.onerror = (e) => {
+      console.error('[playDialogue] 오디오 재생 오류:', e)
+      set({ isPlaying: false, currentDialogue: null })
+      URL.revokeObjectURL(audioUrl)
+    }
+
+    await currentAudio.play()
+  } catch (error) {
+    console.error('[playDialogue] GPT-SoVITS 합성 실패:', error)
+    set({ isPlaying: false, currentDialogue: null })
+  }
+}
 
 // OCR 모니터링 관련
 let monitoringInterval: ReturnType<typeof setInterval> | null = null
@@ -273,6 +336,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   isLoadingEpisodes: false,
   isLoadingEpisode: false,
   defaultCharId: persistedState.defaultCharId ?? null,
+  // 하위 호환: defaultVoices가 있으면 defaultFemaleVoices로 마이그레이션
+  defaultVoices: persistedState.defaultVoices ?? (persistedState.defaultCharId ? [persistedState.defaultCharId] : []),
+  defaultFemaleVoices: persistedState.defaultFemaleVoices ?? persistedState.defaultVoices ?? (persistedState.defaultCharId ? [persistedState.defaultCharId] : []),
+  defaultMaleVoices: persistedState.defaultMaleVoices ?? [],
   isPlaying: false,
   currentDialogue: null,
 
@@ -453,6 +520,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const data = await episodesApi.getEpisode(episodeId)
       set({ selectedEpisode: data })
+
+      // 렌더링 캐시 상태 확인
+      try {
+        const progress = await renderApi.getProgress(episodeId)
+        if (progress.status !== 'not_started') {
+          set({ renderProgress: progress })
+          // 캐시 완료된 에피소드면 cachedEpisodes에 추가
+          const safeId = episodeId.replace(/\//g, '_').replace(/\\/g, '_')
+          if (progress.status === 'completed' && !get().cachedEpisodes.includes(safeId)) {
+            set({ cachedEpisodes: [...get().cachedEpisodes, safeId] })
+          }
+        } else {
+          // 캐시 없으면 초기화
+          set({ renderProgress: null })
+        }
+      } catch {
+        // 렌더링 상태 조회 실패 (캐시 없음)
+        set({ renderProgress: null })
+      }
     } catch (error) {
       console.error('Failed to load episode:', error)
       set({ selectedEpisode: null })
@@ -466,20 +552,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ selectedEpisodeId: null, selectedEpisode: null })
   },
 
-  // 대사 재생 (GPT-SoVITS)
+  // 대사 재생 (캐시 우선, 없으면 GPT-SoVITS 실시간 합성)
   playDialogue: async (dialogue: DialogueInfo) => {
-    const { defaultCharId, narratorCharId, trainedCharIds } = get()
+    const {
+      narratorCharId, defaultVoices,
+      selectedEpisodeId, cachedEpisodes, renderProgress,
+      getSpeakerVoice
+    } = get()
 
     // 캐릭터 ID 결정 우선순위:
-    // 1. dialogue.speaker_id (화자)
+    // 1. dialogue.speaker_id (화자) → getSpeakerVoice로 음성 결정 (성별 기반)
     // 2. 나레이션이면 narratorCharId
-    // 3. defaultCharId (기본)
+    // 3. defaultFemaleVoices[0] (기본)
     let charIdToUse: string | null = null
+    const { defaultFemaleVoices } = get()
     if (dialogue.speaker_id) {
-      charIdToUse = dialogue.speaker_id
+      charIdToUse = getSpeakerVoice(dialogue.speaker_id, dialogue.speaker_name || undefined)
     } else {
       // 나레이션
-      charIdToUse = narratorCharId || defaultCharId
+      charIdToUse = narratorCharId || (defaultFemaleVoices.length > 0 ? defaultFemaleVoices[0] : (defaultVoices.length > 0 ? defaultVoices[0] : null))
     }
 
     // 기존 재생 중지
@@ -494,30 +585,51 @@ export const useAppStore = create<AppState>((set, get) => ({
       return
     }
 
-    // 백엔드에서 자동으로 참조 오디오 준비하므로 trainedCharIds 체크 제거
     set({ isPlaying: true, currentDialogue: dialogue })
 
-    try {
-      console.log('[playDialogue] GPT-SoVITS 합성:', charIdToUse, dialogue.text.substring(0, 30))
-      const audioBlob = await ttsApi.synthesize(dialogue.text, charIdToUse)
-      const audioUrl = URL.createObjectURL(audioBlob)
+    // 캐시 확인 - 배열 인덱스 찾기 (line_number가 아닌 실제 배열 인덱스 사용)
+    const { selectedEpisode } = get()
+    const dialogueIndex = selectedEpisode?.dialogues.findIndex(d => d.id === dialogue.id) ?? -1
+    const safeEpisodeId = selectedEpisodeId?.replace(/\//g, '_').replace(/\\/g, '_')
+    const safeProgressEpisodeId = renderProgress?.episode_id?.replace(/\//g, '_').replace(/\\/g, '_')
+    const isCached = safeEpisodeId && cachedEpisodes.includes(safeEpisodeId)
+    // 렌더링 진행 중인 에피소드에서 이미 완료된 대사 확인
+    const isRendered = dialogueIndex >= 0 && renderProgress &&
+      safeProgressEpisodeId === safeEpisodeId &&
+      dialogueIndex < renderProgress.completed
 
-      currentAudio = new Audio(audioUrl)
-      currentAudio.onended = () => {
-        set({ isPlaying: false, currentDialogue: null })
-        URL.revokeObjectURL(audioUrl)
-      }
-      currentAudio.onerror = (e) => {
-        console.error('[playDialogue] 오디오 재생 오류:', e)
-        set({ isPlaying: false, currentDialogue: null })
-        URL.revokeObjectURL(audioUrl)
-      }
+    // 캐시된 오디오 사용 시도
+    console.log('[playDialogue] 캐시 확인:', { dialogueIndex, isCached, isRendered, completed: renderProgress?.completed })
+    if ((isCached || isRendered) && selectedEpisodeId && dialogueIndex >= 0) {
+      const cachedAudioUrl = renderApi.getAudioUrl(selectedEpisodeId, dialogueIndex)
+      console.log('[playDialogue] 캐시 재생:', dialogueIndex, cachedAudioUrl)
 
-      await currentAudio.play()
-    } catch (error) {
-      console.error('[playDialogue] GPT-SoVITS 합성 실패:', error)
-      set({ isPlaying: false, currentDialogue: null })
+      try {
+        currentAudio = new Audio(cachedAudioUrl)
+
+        // 성공 시 핸들러
+        currentAudio.onended = () => {
+          set({ isPlaying: false, currentDialogue: null })
+        }
+
+        // 캐시 재생 실패 시 실시간 합성으로 폴백
+        currentAudio.onerror = async () => {
+          console.warn('[playDialogue] 캐시 재생 실패, 실시간 합성으로 폴백')
+          currentAudio = null
+          await synthesizeAndPlayDialogue(dialogue.text, charIdToUse!, set)
+        }
+
+        await currentAudio.play()
+        console.log('[playDialogue] 캐시 재생 성공')
+        return
+      } catch (error) {
+        console.warn('[playDialogue] 캐시 로드 실패:', error)
+        // 폴백으로 진행
+      }
     }
+
+    // 실시간 GPT-SoVITS 합성
+    await synthesizeAndPlayDialogue(dialogue.text, charIdToUse, set)
   },
 
   // 재생 중지
@@ -529,10 +641,121 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ isPlaying: false, currentDialogue: null })
   },
 
-  // 기본 캐릭터 선택
+  // 기본 캐릭터 선택 (하위 호환)
   setDefaultCharId: (charId: string | null) => {
     set({ defaultCharId: charId })
     persistCurrentState(get)
+  },
+
+  // 다중 기본 음성 추가
+  addDefaultVoice: (charId: string) => {
+    set((state) => {
+      // 이미 있으면 추가하지 않음
+      if (state.defaultVoices.includes(charId)) return state
+      return { defaultVoices: [...state.defaultVoices, charId] }
+    })
+    persistCurrentState(get)
+  },
+
+  // 다중 기본 음성 제거
+  removeDefaultVoice: (index: number) => {
+    set((state) => ({
+      defaultVoices: state.defaultVoices.filter((_, i) => i !== index)
+    }))
+    persistCurrentState(get)
+  },
+
+  // 다중 기본 음성 수정
+  updateDefaultVoice: (index: number, charId: string) => {
+    set((state) => {
+      const newVoices = [...state.defaultVoices]
+      newVoices[index] = charId
+      return { defaultVoices: newVoices }
+    })
+    persistCurrentState(get)
+  },
+
+  // 기본 여성 음성 관리
+  addDefaultFemaleVoice: (charId: string) => {
+    set((state) => {
+      if (state.defaultFemaleVoices.includes(charId)) return state
+      return { defaultFemaleVoices: [...state.defaultFemaleVoices, charId] }
+    })
+    persistCurrentState(get)
+  },
+  removeDefaultFemaleVoice: (index: number) => {
+    set((state) => ({
+      defaultFemaleVoices: state.defaultFemaleVoices.filter((_, i) => i !== index)
+    }))
+    persistCurrentState(get)
+  },
+  updateDefaultFemaleVoice: (index: number, charId: string) => {
+    set((state) => {
+      const newVoices = [...state.defaultFemaleVoices]
+      newVoices[index] = charId
+      return { defaultFemaleVoices: newVoices }
+    })
+    persistCurrentState(get)
+  },
+
+  // 기본 남성 음성 관리
+  addDefaultMaleVoice: (charId: string) => {
+    set((state) => {
+      if (state.defaultMaleVoices.includes(charId)) return state
+      return { defaultMaleVoices: [...state.defaultMaleVoices, charId] }
+    })
+    persistCurrentState(get)
+  },
+  removeDefaultMaleVoice: (index: number) => {
+    set((state) => ({
+      defaultMaleVoices: state.defaultMaleVoices.filter((_, i) => i !== index)
+    }))
+    persistCurrentState(get)
+  },
+  updateDefaultMaleVoice: (index: number, charId: string) => {
+    set((state) => {
+      const newVoices = [...state.defaultMaleVoices]
+      newVoices[index] = charId
+      return { defaultMaleVoices: newVoices }
+    })
+    persistCurrentState(get)
+  },
+
+  // 화자별 음성 결정 (학습된 음성 → 매핑 → 성별 기반 기본 음성 자동 분배)
+  getSpeakerVoice: (speakerId: string, speakerName?: string): string | null => {
+    const { trainedCharIds, speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices, defaultVoices } = get()
+
+    // 1. 학습된 음성 있으면 사용
+    if (trainedCharIds.has(speakerId)) return speakerId
+
+    // 2. 수동 매핑 있으면 사용
+    if (speakerVoiceMap[speakerId]) return speakerVoiceMap[speakerId]
+
+    // 3. 성별 기반 기본 음성 분배
+    // 남성 키워드: 명확한 남성 표현만 (남자, 남성, 소년, 청년, 노인/노년은 맥락에 따라 다르므로 제외)
+    const maleKeywords = ['남자', '남성', '소년', '청년', '신사', '아저씨']
+    const nameToCheck = speakerName || speakerId
+    const isMale = maleKeywords.some(kw => nameToCheck.includes(kw))
+
+    // 남성이고 남성 음성이 있으면 남성 음성 사용
+    if (isMale && defaultMaleVoices.length > 0) {
+      const hash = simpleHash(speakerId)
+      return defaultMaleVoices[hash % defaultMaleVoices.length]
+    }
+
+    // 여성 음성이 있으면 여성 음성 사용 (기본)
+    if (defaultFemaleVoices.length > 0) {
+      const hash = simpleHash(speakerId)
+      return defaultFemaleVoices[hash % defaultFemaleVoices.length]
+    }
+
+    // 하위 호환: 기존 defaultVoices 사용
+    if (defaultVoices.length > 0) {
+      const hash = simpleHash(speakerId)
+      return defaultVoices[hash % defaultVoices.length]
+    }
+
+    return null
   },
 
   // OCR: 모니터 목록 로드
@@ -923,6 +1146,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         if (result.matched && result.dialogue) {
           lastMatchedText = state.detectedText  // 매칭 성공한 텍스트 저장
+
+          // 이전 매칭 대사와 다른 경우 재생 중단 후 새 대사 재생
+          const { autoPlayOnMatch, playDialogue, stopPlayback, matchedDialogue: prevMatched, isPlaying } = get()
+          const isNewDialogue = !prevMatched || prevMatched.id !== result.dialogue.id
+
           set({
             matchedDialogue: result.dialogue,
             matchedIndex: result.index,
@@ -930,9 +1158,11 @@ export const useAppStore = create<AppState>((set, get) => ({
             isMatching: false,
           })
 
-          // 자동 재생
-          const { autoPlayOnMatch, playDialogue, isPlaying } = get()
-          if (autoPlayOnMatch && !isPlaying) {
+          // 자동 재생 (새 대사이면 현재 재생 중단 후 재생)
+          if (autoPlayOnMatch && isNewDialogue) {
+            if (isPlaying) {
+              stopPlayback()
+            }
             playDialogue(result.dialogue)
           }
         } else {
@@ -972,13 +1202,15 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // 더빙 준비 시작
   prepareForDubbing: async () => {
-    const { selectedGroupId, loadGroupCharacters } = get()
+    const { selectedGroupId, loadGroupCharacters, loadWindows } = get()
 
     if (!selectedGroupId) {
       set({ ocrError: '스토리 그룹을 먼저 선택하세요' })
       return
     }
 
+    // 윈도우 목록 새로고침 (병렬 실행)
+    loadWindows()
     await loadGroupCharacters(selectedGroupId)
     set({ isPrepared: true })
   },
@@ -1012,13 +1244,28 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   // 화자별 음성 설정
-  setSpeakerVoice: (speakerId: string, voiceId: string) => {
-    set((state) => ({
-      speakerVoiceMap: {
-        ...state.speakerVoiceMap,
-        [speakerId]: voiceId,
-      },
-    }))
+  setSpeakerVoice: (speakerId: string, voiceId: string | null) => {
+    set((state) => {
+      if (voiceId === null) {
+        // null이면 매핑 제거
+        const { [speakerId]: _, ...rest } = state.speakerVoiceMap
+        return { speakerVoiceMap: rest }
+      }
+      return {
+        speakerVoiceMap: {
+          ...state.speakerVoiceMap,
+          [speakerId]: voiceId,
+        },
+      }
+    })
+  },
+
+  // 화자별 음성 매핑 제거
+  clearSpeakerVoice: (speakerId: string) => {
+    set((state) => {
+      const { [speakerId]: _, ...rest } = state.speakerVoiceMap
+      return { speakerVoiceMap: rest }
+    })
   },
 
   // 나레이터 캐릭터 설정
@@ -1252,10 +1499,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   // 렌더링 시작
-  startRender: async (episodeId: string) => {
+  startRender: async (episodeId: string, force: boolean = false) => {
+    const { defaultCharId, narratorCharId } = get()
+
     try {
       set({ renderError: null })
-      const progress = await renderApi.startRender(episodeId)
+      const progress = await renderApi.startRender(
+        episodeId,
+        'ko',
+        defaultCharId || undefined,
+        narratorCharId || undefined,
+        force
+      )
 
       set({
         isRendering: progress.status === 'rendering',
