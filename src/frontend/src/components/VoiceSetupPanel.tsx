@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react'
-import { useAppStore } from '../stores/appStore'
+import { useAppStore, AUTO_VOICE_FEMALE, AUTO_VOICE_MALE, simpleHash } from '../stores/appStore'
 
 export default function VoiceSetupPanel() {
   const {
@@ -21,7 +21,6 @@ export default function VoiceSetupPanel() {
     loadTrainedModels,
     startBatchTraining,
     cancelTraining,
-    clearAllTrainedModels,
     unsubscribeFromTrainingProgress,
     // 에피소드 관련
     selectedEpisodeId,
@@ -53,20 +52,38 @@ export default function VoiceSetupPanel() {
     }
   }, [])
 
-  // 캐릭터 통계
+  // 캐릭터 통계 (voice_char_id 기준으로 학습 완료 체크)
   const characterStats = useMemo(() => {
     const withVoice = groupCharacters.filter(c => c.has_voice).length
-    const trained = groupCharacters.filter(c => c.char_id && trainedCharIds.has(c.char_id)).length
+    // voice_char_id가 있으면 그걸로 체크, 없으면 char_id로 체크
+    const trained = groupCharacters.filter(c => {
+      const voiceId = c.voice_char_id || c.char_id
+      return voiceId && trainedCharIds.has(voiceId)
+    }).length
     const total = groupCharacters.length
     return { withVoice, trained, total }
   }, [groupCharacters, trainedCharIds])
 
-  // 학습 가능한 캐릭터 (음성 있고 미학습)
+  // 학습 가능한 캐릭터 (음성 있고 미학습) - voice_char_id 기준
   const trainableCharacters = useMemo(() => {
-    return groupCharacters.filter(
-      c => c.has_voice && c.char_id && !trainedCharIds.has(c.char_id)
-    )
+    return groupCharacters.filter(c => {
+      if (!c.has_voice) return false
+      const voiceId = c.voice_char_id || c.char_id
+      return voiceId && !trainedCharIds.has(voiceId)
+    })
   }, [groupCharacters, trainedCharIds])
+
+  // 미학습 기본 캐릭터 수
+  const untrainedDefaultCount = useMemo(() => {
+    return [...defaultFemaleVoices, ...defaultMaleVoices].filter(id => !trainedCharIds.has(id)).length
+  }, [defaultFemaleVoices, defaultMaleVoices, trainedCharIds])
+
+  // 전체 준비 대상 수 (에피소드 캐릭터 + 기본 캐릭터, 중복 제거)
+  const totalTrainableCount = useMemo(() => {
+    const episodeIds = trainableCharacters.map(c => c.voice_char_id || c.char_id).filter((id): id is string => id !== null)
+    const defaultIds = [...defaultFemaleVoices, ...defaultMaleVoices].filter(id => !trainedCharIds.has(id))
+    return new Set([...episodeIds, ...defaultIds]).size
+  }, [trainableCharacters, defaultFemaleVoices, defaultMaleVoices, trainedCharIds])
 
   // 음성 없는 캐릭터 (수동 매핑 대상) - 에피소드 캐릭터 목록 기준
   const voicelessCharacters = useMemo(() => {
@@ -110,11 +127,22 @@ export default function VoiceSetupPanel() {
     }
   }
 
-  // 일괄 학습 시작
+  // 일괄 학습 시작 (voice_char_id 사용 + 기본 캐릭터 포함)
   const handleStartBatchTraining = async () => {
-    const charIds = trainableCharacters.map(c => c.char_id!).filter(Boolean)
-    if (charIds.length > 0) {
-      await startBatchTraining(charIds)
+    // voice_char_id가 있으면 사용, 없으면 char_id 사용
+    const charIdsFromEpisode = trainableCharacters
+      .map(c => c.voice_char_id || c.char_id)
+      .filter((id): id is string => id !== null)
+
+    // 기본 캐릭터 중 미학습 캐릭터 추가
+    const defaultCharIds = [...defaultFemaleVoices, ...defaultMaleVoices]
+      .filter(id => !trainedCharIds.has(id))
+
+    // 중복 제거 후 합치기
+    const allCharIds = [...new Set([...defaultCharIds, ...charIdsFromEpisode])]
+
+    if (allCharIds.length > 0) {
+      await startBatchTraining(allCharIds)
     }
   }
 
@@ -173,11 +201,15 @@ export default function VoiceSetupPanel() {
                     <span className="text-xs text-ark-gray">
                       {char.dialogue_count}대사
                     </span>
-                    {char.char_id && trainedCharIds.has(char.char_id) ? (
-                      <span className="text-xs text-green-400 font-medium">준비됨</span>
-                    ) : char.has_voice ? (
-                      <span className="text-xs text-ark-yellow">준비 필요</span>
-                    ) : null}
+                    {(() => {
+                      const voiceId = char.voice_char_id || char.char_id
+                      if (voiceId && trainedCharIds.has(voiceId)) {
+                        return <span className="text-xs text-green-400 font-medium">준비됨</span>
+                      } else if (char.has_voice) {
+                        return <span className="text-xs text-ark-yellow">준비 필요</span>
+                      }
+                      return null
+                    })()}
                   </div>
                 </div>
               ))}
@@ -293,17 +325,20 @@ export default function VoiceSetupPanel() {
                 준비 취소
               </button>
             </div>
-          ) : trainableCharacters.length > 0 ? (
+          ) : totalTrainableCount > 0 ? (
             // 학습 대기 상태
             <div className="space-y-3">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-ark-gray">
-                  {trainableCharacters.length}개 캐릭터 준비 가능
+                  {totalTrainableCount}개 캐릭터 준비 가능
+                  {untrainedDefaultCount > 0 && (
+                    <span className="text-ark-orange ml-1">(기본 {untrainedDefaultCount})</span>
+                  )}
                 </span>
               </div>
               <button
                 onClick={handleStartBatchTraining}
-                className="w-full ark-btn ark-btn-secondary text-sm"
+                className="w-full ark-btn ark-btn-secondary text-sm ark-pulse-subtle"
               >
                 음성 일괄 준비
               </button>
@@ -320,12 +355,9 @@ export default function VoiceSetupPanel() {
                 </svg>
                 <span className="text-sm">모든 캐릭터 준비 완료</span>
               </div>
-              <button
-                onClick={clearAllTrainedModels}
-                className="w-full ark-btn text-sm text-ark-gray hover:text-ark-white border-ark-border"
-              >
-                준비 초기화
-              </button>
+              <p className="text-xs text-ark-gray/70">
+                * 초기화는 캐릭터 관리에서 가능합니다
+              </p>
             </div>
           ) : (
             // 학습 가능한 캐릭터 없음
@@ -353,13 +385,28 @@ export default function VoiceSetupPanel() {
             ) : (
               <>
                 <p className="text-xs text-ark-gray/70 mb-3">
-                  * 자동: 기본 음성 분배
+                  * 자동: 이름 기반 분배 / 여성·남성: 성별 고정
                 </p>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {voicelessCharacters.map((char, idx) => {
                     const manualMapping = char.char_id ? speakerVoiceMap[char.char_id] : null
                     const autoVoice = char.char_id ? getSpeakerVoice(char.char_id, char.name) : null
                     const autoVoiceName = autoVoice ? voiceCharacters.find(v => v.char_id === autoVoice)?.name : null
+
+                    // 자동 여성/남성 선택 시 실제 선택될 캐릭터 계산
+                    const hash = char.char_id ? simpleHash(char.char_id) : 0
+                    const autoFemaleVoice = defaultFemaleVoices.length > 0
+                      ? defaultFemaleVoices[hash % defaultFemaleVoices.length]
+                      : null
+                    const autoMaleVoice = defaultMaleVoices.length > 0
+                      ? defaultMaleVoices[hash % defaultMaleVoices.length]
+                      : null
+                    const autoFemaleName = autoFemaleVoice
+                      ? voiceCharacters.find(v => v.char_id === autoFemaleVoice)?.name
+                      : null
+                    const autoMaleName = autoMaleVoice
+                      ? voiceCharacters.find(v => v.char_id === autoMaleVoice)?.name
+                      : null
 
                     return (
                       <div
@@ -382,6 +429,17 @@ export default function VoiceSetupPanel() {
                           <option value="">
                             자동 {autoVoiceName ? `(${autoVoiceName})` : ''}
                           </option>
+                          {defaultFemaleVoices.length > 0 && (
+                            <option value={AUTO_VOICE_FEMALE}>
+                              자동 (여성{autoFemaleName ? `-${autoFemaleName}` : ''})
+                            </option>
+                          )}
+                          {defaultMaleVoices.length > 0 && (
+                            <option value={AUTO_VOICE_MALE}>
+                              자동 (남성{autoMaleName ? `-${autoMaleName}` : ''})
+                            </option>
+                          )}
+                          <option disabled>──────────</option>
                           {availableVoices.map(v => (
                             <option key={v.char_id} value={v.char_id}>
                               {v.name}

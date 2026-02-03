@@ -177,6 +177,7 @@ class EpisodeCharacterInfo(BaseModel):
     name: str  # speaker_name (화자 표시 이름)
     dialogue_count: int
     has_voice: bool
+    voice_char_id: str | None = None  # 실제 음성 파일이 있는 캐릭터 ID (이름 매칭 시)
 
 
 def _find_operator_id_by_name(
@@ -234,16 +235,20 @@ async def get_episode_characters(episode_id: str, lang: str | None = None):
     characters = []
     for speaker_name, stats in speaker_stats.items():
         char_id = stats["char_id"]
+        voice_char_id = None  # 실제 음성 파일이 있는 캐릭터 ID
 
         # 1. char_id로 음성 확인
         has_voice = voice_mapper.has_voice(char_id) if char_id else False
+        if has_voice:
+            voice_char_id = char_id
 
         # 2. 없으면 speaker_name으로 오퍼레이터 ID 찾아서 음성 확인
         #    (NPC로 등장하지만 나중에 오퍼레이터로 출시된 캐릭터)
         if not has_voice and speaker_name:
             operator_id = _find_operator_id_by_name(loader, speaker_name, lang)
-            if operator_id:
-                has_voice = voice_mapper.has_voice(operator_id)
+            if operator_id and voice_mapper.has_voice(operator_id):
+                has_voice = True
+                voice_char_id = operator_id  # 이름 매칭된 오퍼레이터 ID 저장
 
         characters.append(
             EpisodeCharacterInfo(
@@ -251,6 +256,7 @@ async def get_episode_characters(episode_id: str, lang: str | None = None):
                 name=speaker_name or "나레이터",
                 dialogue_count=stats["count"],
                 has_voice=has_voice,
+                voice_char_id=voice_char_id,
             )
         )
 

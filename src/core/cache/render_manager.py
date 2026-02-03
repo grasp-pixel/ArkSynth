@@ -51,6 +51,9 @@ class RenderJob:
     episode_id: str
     dialogues: list[dict]  # {index, char_id, text}
     language: str = "ko"
+    default_char_id: str | None = None  # 모델 없는 캐릭터용 기본 음성
+    narrator_char_id: str | None = None  # 나레이션용 캐릭터
+    speaker_voice_map: dict[str, str] = field(default_factory=dict)  # 화자별 음성 매핑
     priority: int = 0
 
 
@@ -124,6 +127,10 @@ class RenderManager:
         episode_id: str,
         dialogues: list[dict],
         language: str = "ko",
+        default_char_id: str | None = None,
+        narrator_char_id: str | None = None,
+        speaker_voice_map: dict[str, str] | None = None,
+        force: bool = False,
     ) -> RenderProgress:
         """렌더링 시작
 
@@ -131,6 +138,10 @@ class RenderManager:
             episode_id: 에피소드 ID
             dialogues: 대사 목록 [{index, char_id, text}, ...]
             language: 언어 코드
+            default_char_id: 모델 없는 캐릭터용 기본 음성
+            narrator_char_id: 나레이션용 캐릭터
+            speaker_voice_map: 화자별 음성 매핑 {char_id: voice_char_id}
+            force: 기존 캐시 무시하고 다시 렌더링
 
         Returns:
             RenderProgress
@@ -139,6 +150,11 @@ class RenderManager:
             if self.current_episode_id == episode_id:
                 return self._progress  # type: ignore
             raise ValueError(f"이미 렌더링 중: {self.current_episode_id}")
+
+        # force=True이면 기존 캐시 삭제
+        if force and self.cache.has_cache(episode_id):
+            logger.info(f"기존 캐시 삭제 (force): {episode_id}")
+            self.cache.delete_cache(episode_id)
 
         # 이미 완료된 캐시 확인
         if self.cache.is_complete(episode_id):
@@ -156,6 +172,9 @@ class RenderManager:
             episode_id=episode_id,
             dialogues=dialogues,
             language=language,
+            default_char_id=default_char_id,
+            narrator_char_id=narrator_char_id,
+            speaker_voice_map=speaker_voice_map or {},
         )
 
         # 진행 상태 초기화
@@ -213,6 +232,11 @@ class RenderManager:
             synthesizer = get_synthesizer()
 
             # 대사별 렌더링
+            logger.info(f"[RenderManager] 렌더링 시작 - episode: {episode_id}, total dialogues: {len(job.dialogues)}")
+            if job.dialogues:
+                first = job.dialogues[0]
+                logger.info(f"[RenderManager] 첫 번째 대사: [{first.get('char_id')}] {first['text'][:50]}...")
+
             for dialogue in job.dialogues:
                 if self._cancel_requested:
                     self._progress.status = RenderStatus.CANCELLED
@@ -232,19 +256,32 @@ class RenderManager:
                 self._progress.current_text = text[:30] + "..." if len(text) > 30 else text
                 await self._notify_progress()
 
+                # 사용할 캐릭터 ID 결정
+                char_id_to_use = char_id
+                if not char_id_to_use:
+                    # 나레이션 - narrator_char_id 또는 default_char_id 사용
+                    char_id_to_use = job.narrator_char_id or job.default_char_id
+                elif char_id_to_use in job.speaker_voice_map:
+                    # 수동 매핑이 있으면 사용
+                    char_id_to_use = job.speaker_voice_map[char_id_to_use]
+                elif not await synthesizer.is_available(char_id_to_use):
+                    # 모델 없음 - default_char_id 사용
+                    char_id_to_use = job.default_char_id
+
                 # 음성 합성
                 audio_path = self.cache.get_audio_path(episode_id, index)
                 audio_path.parent.mkdir(parents=True, exist_ok=True)
 
-                if char_id and await synthesizer.is_available(char_id):
+                if char_id_to_use and await synthesizer.is_available(char_id_to_use):
                     # GPT-SoVITS로 합성
                     result = await synthesizer.synthesize(
-                        char_id, text, output_path=audio_path, language=job.language
+                        char_id_to_use, text, output_path=audio_path, language=job.language
                     )
                     duration = result.duration if result else 0.0
                 else:
-                    # Edge-TTS 폴백
-                    duration = await self._fallback_tts(text, audio_path, job.language)
+                    # 사용 가능한 모델 없음 - 스킵
+                    logger.warning(f"[RenderManager] 사용 가능한 모델 없음: {char_id} (기본: {job.default_char_id})")
+                    continue
 
                 # 캐시에 추가
                 if audio_path.exists():
@@ -272,28 +309,6 @@ class RenderManager:
 
         finally:
             self._current_job = None
-
-    async def _fallback_tts(self, text: str, output_path: Path, language: str) -> float:
-        """Edge-TTS 폴백 합성"""
-        try:
-            from ..voice.providers.edge_tts import EdgeTTSProvider
-
-            provider = EdgeTTSProvider()
-
-            # 언어별 음성 선택
-            voice = "ko-KR-SunHiNeural" if language == "ko" else "ja-JP-NanamiNeural"
-
-            audio_data = await provider.synthesize(text, voice=voice)
-
-            with open(output_path, "wb") as f:
-                f.write(audio_data)
-
-            # 대략적인 길이 추정 (글자당 0.1초)
-            return len(text) * 0.1
-
-        except Exception as e:
-            logger.error(f"Edge-TTS 폴백 실패: {e}")
-            return 0.0
 
 
 # 싱글톤 인스턴스

@@ -71,6 +71,7 @@ class GroupCharacterInfo(BaseModel):
     name: str
     dialogue_count: int
     has_voice: bool
+    voice_char_id: str | None = None  # 실제 음성 파일이 있는 캐릭터 ID (이름 매칭 시)
 
 
 # ========== 엔드포인트 ==========
@@ -226,15 +227,19 @@ async def list_group_characters(group_id: str, lang: str | None = None):
     for char_info in characters:
         char_id = char_info["char_id"]
         char_name = char_info["name"]
+        voice_char_id = None  # 실제 음성 파일이 있는 캐릭터 ID
 
         # 1. char_id로 음성 확인
         has_voice = voice_mapper.has_voice(char_id) if char_id else False
+        if has_voice:
+            voice_char_id = char_id
 
         # 2. 없으면 이름으로 오퍼레이터 ID 찾아서 음성 확인
         if not has_voice and char_name:
             operator_id = _find_operator_id_by_name(loader, char_name, lang)
-            if operator_id:
-                has_voice = voice_mapper.has_voice(operator_id)
+            if operator_id and voice_mapper.has_voice(operator_id):
+                has_voice = True
+                voice_char_id = operator_id  # 이름 매칭된 오퍼레이터 ID 저장
 
         result.append(
             GroupCharacterInfo(
@@ -242,6 +247,7 @@ async def list_group_characters(group_id: str, lang: str | None = None):
                 name=char_name,
                 dialogue_count=char_info["dialogue_count"],
                 has_voice=has_voice,
+                voice_char_id=voice_char_id,
             )
         )
 

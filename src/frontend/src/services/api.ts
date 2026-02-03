@@ -80,6 +80,7 @@ export interface GroupCharacterInfo {
   name: string
   dialogue_count: number
   has_voice: boolean
+  voice_char_id: string | null  // 실제 음성 파일이 있는 캐릭터 ID (이름 매칭 시)
 }
 
 export const episodesApi = {
@@ -653,6 +654,7 @@ export const renderApi = {
     language: string = 'ko',
     defaultCharId?: string,
     narratorCharId?: string,
+    speakerVoiceMap?: Record<string, string>,
     force: boolean = false
   ) => {
     const res = await api.post<RenderProgress>(
@@ -661,6 +663,7 @@ export const renderApi = {
         language,
         default_char_id: defaultCharId,
         narrator_char_id: narratorCharId,
+        speaker_voice_map: speakerVoiceMap,
         force
       }
     )

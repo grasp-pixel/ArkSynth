@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from ..config import config
 from ...cache import RenderCache, RenderManager, RenderProgress, RenderStatus
-from ...story.loader import StoryLoader
+from .episodes import get_loader as get_story_loader  # episodes API와 같은 loader 사용
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -20,7 +20,6 @@ router = APIRouter()
 # 전역 매니저 인스턴스
 _render_cache: RenderCache | None = None
 _render_manager: RenderManager | None = None
-_story_loader: StoryLoader | None = None
 
 
 def get_render_cache() -> RenderCache:
@@ -37,13 +36,6 @@ def get_render_manager() -> RenderManager:
     return _render_manager
 
 
-def get_story_loader() -> StoryLoader:
-    global _story_loader
-    if _story_loader is None:
-        _story_loader = StoryLoader(config.gamedata_path)
-    return _story_loader
-
-
 # === Request/Response 모델 ===
 
 
@@ -51,6 +43,10 @@ class StartRenderRequest(BaseModel):
     """렌더링 시작 요청"""
 
     language: str = "ko"
+    default_char_id: Optional[str] = None  # 모델 없는 캐릭터용 기본 음성
+    narrator_char_id: Optional[str] = None  # 나레이션용 캐릭터
+    speaker_voice_map: Optional[dict[str, str]] = None  # 화자별 음성 매핑 {char_id: voice_char_id}
+    force: bool = False  # 기존 캐시 무시하고 다시 렌더링
 
 
 class RenderProgressResponse(BaseModel):
@@ -132,6 +128,7 @@ async def start_render(
         }
 
     # 에피소드 대사 로드
+    logger.info(f"[Render] 렌더링 요청 - episode_id: {episode_id}")
     try:
         episode = loader.load_episode(episode_id)
         if not episode:
@@ -139,6 +136,10 @@ async def start_render(
                 status_code=404,
                 detail=f"에피소드를 찾을 수 없습니다: {episode_id}",
             )
+        logger.info(f"[Render] 에피소드 로드 완료 - title: {episode.title}, dialogues: {len(episode.dialogues)}")
+        if episode.dialogues:
+            first = episode.dialogues[0]
+            logger.info(f"[Render] 첫 번째 대사: [{first.speaker_name}] {first.text[:50]}...")
     except Exception as e:
         logger.error(f"에피소드 로드 실패: {e}")
         raise HTTPException(
@@ -149,11 +150,11 @@ async def start_render(
     # 대사 목록 생성 (음성 합성 대상만)
     dialogues = []
     for i, dialogue in enumerate(episode.dialogues):
-        if dialogue.type == "dialogue" and dialogue.text:
+        if dialogue.text:
             dialogues.append(
                 {
                     "index": i,
-                    "char_id": dialogue.character_id,
+                    "char_id": dialogue.speaker_id,
                     "text": dialogue.text,
                 }
             )
@@ -165,7 +166,15 @@ async def start_render(
         )
 
     # 렌더링 시작
-    progress = await manager.start_render(episode_id, dialogues, request.language)
+    progress = await manager.start_render(
+        episode_id,
+        dialogues,
+        request.language,
+        default_char_id=request.default_char_id,
+        narrator_char_id=request.narrator_char_id,
+        speaker_voice_map=request.speaker_voice_map,
+        force=request.force,
+    )
 
     return {
         "episode_id": episode_id,

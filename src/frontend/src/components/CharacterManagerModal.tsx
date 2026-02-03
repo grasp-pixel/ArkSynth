@@ -27,6 +27,7 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
     isTrainingActive,
     currentTrainingJob,
     loadTrainedModels,
+    clearAllTrainedModels,
   } = useAppStore()
 
   // 로컬 상태
@@ -68,6 +69,11 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
     switch (sortBy) {
       case 'ready':
         result.sort((a, b) => {
+          // 1순위: 기본 캐릭터 (여성/남성)
+          const aIsDefault = defaultFemaleVoices.includes(a.char_id) || defaultMaleVoices.includes(a.char_id) ? 1 : 0
+          const bIsDefault = defaultFemaleVoices.includes(b.char_id) || defaultMaleVoices.includes(b.char_id) ? 1 : 0
+          if (aIsDefault !== bIsDefault) return bIsDefault - aIsDefault
+          // 2순위: 준비됨
           const aReady = trainedCharIds.has(a.char_id) ? 1 : 0
           const bReady = trainedCharIds.has(b.char_id) ? 1 : 0
           return bReady - aReady || b.file_count - a.file_count
@@ -82,7 +88,7 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
     }
 
     return result
-  }, [voiceCharacters, trainedCharIds, searchQuery, sortBy])
+  }, [voiceCharacters, trainedCharIds, searchQuery, sortBy, defaultFemaleVoices, defaultMaleVoices])
 
   // 통계
   const stats = useMemo(() => ({
@@ -225,8 +231,19 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
               <option value="name">이름순</option>
             </select>
           </div>
-          <div className="text-sm text-ark-gray">
-            {stats.ready}/{stats.total} 준비됨
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-ark-gray">
+              {stats.ready}/{stats.total} 준비됨
+            </span>
+            {stats.ready > 0 && (
+              <button
+                onClick={clearAllTrainedModels}
+                className="text-xs px-2 py-1 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                title="모든 준비 데이터 초기화"
+              >
+                준비 초기화
+              </button>
+            )}
           </div>
         </div>
 

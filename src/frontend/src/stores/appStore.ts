@@ -221,7 +221,12 @@ interface PersistedState {
   defaultMaleVoices: string[]  // 기본 남성 음성
   narratorCharId: string | null
   autoPlayOnMatch: boolean
+  npcVoiceMap: Record<string, string>  // NPC 음성 매핑 (char_id → voice_id)
 }
+
+// 자동 음성 선택 특수 값
+export const AUTO_VOICE_FEMALE = '__auto_female__'
+export const AUTO_VOICE_MALE = '__auto_male__'
 
 // localStorage에서 상태 로드
 const loadPersistedState = (): Partial<PersistedState> => {
@@ -261,11 +266,12 @@ const persistCurrentState = (get: () => AppState) => {
     defaultMaleVoices: state.defaultMaleVoices,
     narratorCharId: state.narratorCharId,
     autoPlayOnMatch: state.autoPlayOnMatch,
+    npcVoiceMap: state.speakerVoiceMap,  // NPC 음성 매핑 저장
   })
 }
 
 // 문자열 해시 함수 (화자별 음성 분배용)
-const simpleHash = (str: string): number => {
+export const simpleHash = (str: string): number => {
   let hash = 0
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i)
@@ -376,7 +382,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   episodeCharacters: [],
   isLoadingCharacters: false,
   isLoadingEpisodeCharacters: false,
-  speakerVoiceMap: {},
+  speakerVoiceMap: persistedState.npcVoiceMap ?? {},  // 저장된 NPC 매핑 복원
   narratorCharId: persistedState.narratorCharId ?? null,
   autoPlayOnMatch: persistedState.autoPlayOnMatch ?? true,
 
@@ -738,7 +744,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (trainedCharIds.has(speakerId)) return speakerId
 
     // 2. 수동 매핑 있으면 사용
-    if (speakerVoiceMap[speakerId]) return speakerVoiceMap[speakerId]
+    const mapping = speakerVoiceMap[speakerId]
+    if (mapping) {
+      // 특수 값 처리: 자동 여성/남성
+      if (mapping === AUTO_VOICE_FEMALE) {
+        if (defaultFemaleVoices.length > 0) {
+          const hash = simpleHash(speakerId)
+          return defaultFemaleVoices[hash % defaultFemaleVoices.length]
+        }
+      } else if (mapping === AUTO_VOICE_MALE) {
+        if (defaultMaleVoices.length > 0) {
+          const hash = simpleHash(speakerId)
+          return defaultMaleVoices[hash % defaultMaleVoices.length]
+        }
+      } else {
+        // 일반 캐릭터 매핑
+        return mapping
+      }
+    }
 
     // 3. 성별 기반 기본 음성 분배
     // 남성 키워드: 명확한 남성 표현만 (남자, 남성, 소년, 청년, 노인/노년은 맥락에 따라 다르므로 제외)
@@ -1271,7 +1294,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 화자별 음성 설정
+  // 화자별 음성 설정 (NPC 매핑 저장 포함)
   setSpeakerVoice: (speakerId: string, voiceId: string | null) => {
     set((state) => {
       if (voiceId === null) {
@@ -1286,6 +1309,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         },
       }
     })
+    // NPC 매핑 저장
+    persistCurrentState(get)
   },
 
   // 화자별 음성 매핑 제거
@@ -1528,7 +1553,28 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // 렌더링 시작
   startRender: async (episodeId: string, force: boolean = false) => {
-    const { defaultCharId, narratorCharId } = get()
+    const { defaultCharId, narratorCharId, speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices } = get()
+
+    // speakerVoiceMap의 특수 값들을 실제 char_id로 해석
+    const resolvedVoiceMap: Record<string, string> = {}
+    for (const [speakerId, voiceId] of Object.entries(speakerVoiceMap)) {
+      if (voiceId === AUTO_VOICE_FEMALE) {
+        // 여성 자동 → 기본 여성 음성 중 하나
+        if (defaultFemaleVoices.length > 0) {
+          const hash = simpleHash(speakerId)
+          resolvedVoiceMap[speakerId] = defaultFemaleVoices[hash % defaultFemaleVoices.length]
+        }
+      } else if (voiceId === AUTO_VOICE_MALE) {
+        // 남성 자동 → 기본 남성 음성 중 하나
+        if (defaultMaleVoices.length > 0) {
+          const hash = simpleHash(speakerId)
+          resolvedVoiceMap[speakerId] = defaultMaleVoices[hash % defaultMaleVoices.length]
+        }
+      } else {
+        // 일반 매핑
+        resolvedVoiceMap[speakerId] = voiceId
+      }
+    }
 
     try {
       set({ renderError: null })
@@ -1537,6 +1583,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         'ko',
         defaultCharId || undefined,
         narratorCharId || undefined,
+        Object.keys(resolvedVoiceMap).length > 0 ? resolvedVoiceMap : undefined,
         force
       )
 
