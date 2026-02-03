@@ -92,7 +92,7 @@ class GPTSoVITSConfig:
 
     # 참조 오디오 설정
     min_ref_audio_length: float = 3.0  # 최소 참조 오디오 길이 (초)
-    max_ref_audio_length: float = 10.0  # 최대 참조 오디오 길이 (초) - 품질 유지를 위해 짧게
+    max_ref_audio_length: float = 20.0  # 최대 참조 오디오 길이 (초)
     ref_audio_count: int = 5  # 학습에 사용할 참조 오디오 개수
 
     @property

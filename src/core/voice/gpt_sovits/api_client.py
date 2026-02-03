@@ -450,7 +450,7 @@ class GPTSoVITSAPIClient:
             logger.error(f"참조 오디오가 없습니다: {char_id}")
             return None
 
-        logger.info(f"[합성] 기본 참조: {ref_audio_path.name}")
+        logger.info(f"[합성] 기본 참조: {ref_audio_path.name} (대사: {ref_text[:20]}...)" if ref_text else f"[합성] 기본 참조: {ref_audio_path.name}")
 
         # 추가 참조 오디오 (대사 있고 길이 적절한 모든 음성)
         aux_refs = self._get_aux_reference_audios(char_id, ref_audio_path)
@@ -478,7 +478,7 @@ class GPTSoVITSAPIClient:
             "text_lang": api_lang,
             "ref_audio_path": str(ref_audio_path.absolute()),
             "aux_ref_audio_paths": aux_refs,  # 추가 참조 오디오 (품질 향상)
-            "prompt_text": "",  # 빈 문자열 (ref_text 사용 시 음성에 포함됨)
+            "prompt_text": ref_text,  # 참조 오디오의 대사 텍스트 (정확한 합성에 필요)
             "prompt_lang": api_lang,
             "top_k": self.config.top_k,
             "top_p": self.config.top_p,

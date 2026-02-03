@@ -24,16 +24,44 @@ sys.path.insert(0, str(project_root / "src"))
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
-# 신뢰할 수 있는 음성 타이틀 (자연스러운 대화, 충분한 길이)
-# voiceTitle 기반 필터링 (캐릭터별로 voiceId 매핑이 다를 수 있음)
-RELIABLE_VOICE_TITLES = {
-    "어시스턴트 임명",
-    "대화 1", "대화 2", "대화 3",
-    "1차 정예화 후 대화", "2차 정예화 후 대화",
-    "신뢰도 상승 후 대화 1", "신뢰도 상승 후 대화 2", "신뢰도 상승 후 대화 3",
-    "오퍼레이터 입사",
+# 참조 오디오 선택 우선순위 (높을수록 우선)
+# 자연스러운 대화 톤, 적절한 길이
+VOICE_TITLE_PRIORITY = {
+    # 최우선 (자연스럽고 적절한 길이)
+    "신뢰도 터치": 100,
+    "팀장 임명": 95,
+    "팀 배치": 90,
+    "어시스턴트 임명": 85,  # 길이가 긴 경우 많음
+    "인사": 80,
+    "터치": 75,
+    # 대화류 (자연스럽지만 길이 다양)
+    "대화 1": 70,
+    "대화 2": 70,
+    "대화 3": 70,
+    "신뢰도 상승 후 대화 1": 65,
+    "신뢰도 상승 후 대화 2": 65,
+    "신뢰도 상승 후 대화 3": 65,
+    "1차 정예화 후 대화": 60,
+    "2차 정예화 후 대화": 60,
+    "오퍼레이터 입사": 55,
+    # 중간 우선순위
+    "시설에 배치": 40,
+    "타이틀": 30,
 }
-# 제외: 방치(짧음), 작전기록 학습(짧음), 정예화 승진(짧음), 전투 관련(짧고 특수한 톤)
+
+# 제외 목록 (전투/작전 관련 - 짧고 특수한 톤)
+EXCLUDED_VOICE_TITLES = {
+    "작전 실패",
+    "작전 개시",
+    "작전 출발",
+    "작전 중 1", "작전 중 2", "작전 중 3", "작전 중 4", "작전 중",
+    "배치 1", "배치 2",
+    "오퍼레이터 선택 1", "오퍼레이터 선택 2",
+    "3★ 작전 종료", "비 3★ 작전 종료", "고난이도 작전 종료",
+    "1차 정예화 (승진)", "2차 정예화 (승진)",
+    "작전기록 학습",  # 짧음
+    "방치",  # 짧음
+}
 
 
 def emit_progress(stage: str, progress: float, message: str, **kwargs):
@@ -197,7 +225,7 @@ def prepare_reference_audio(
 
     다양한 톤을 위해 여러 참조 오디오를 선택하고 준비합니다.
     - 텍스트가 있는 오디오만 선택
-    - 3~10초 사이의 오디오 선호 (GPT-SoVITS 서버 제한)
+    - min_duration~max_duration 사이의 오디오 선호
     - 다양한 텍스트 길이의 오디오 선택
     - WAV 형식으로 변환
 
@@ -253,22 +281,28 @@ def prepare_reference_audio(
         if not text:
             continue
 
+        # 제외 목록 체크
+        if title in EXCLUDED_VOICE_TITLES:
+            continue
+
         text_len = len(text)
         if text_len < 5:  # 너무 짧은 텍스트 제외
             continue
 
         duration = get_audio_duration(audio_file)
 
-        # 점수 계산
-        score = 0
+        # 점수 계산: 우선순위 기반
+        # 1. voiceTitle 우선순위 (0-100)
+        title_priority = VOICE_TITLE_PRIORITY.get(title, 10)  # 기본값 10
+
+        # 2. 유효 길이 보너스 (+50)
         is_valid_duration = min_duration <= duration <= max_duration
+        duration_bonus = 50 if is_valid_duration else 0
 
-        if is_valid_duration:
-            score += 100
-        elif duration > 0:
-            score += 50
+        # 3. 텍스트 길이 보너스 (최대 +20)
+        text_bonus = min(text_len, 40) // 2
 
-        score += min(text_len, 50)
+        score = title_priority + duration_bonus + text_bonus
 
         candidate = {
             "audio": audio_file,
@@ -284,12 +318,12 @@ def prepare_reference_audio(
         if is_valid_duration:
             valid_duration_candidates.append(candidate)
 
-    # 3-10초 범위 후보가 있으면 그것만 사용
+    # 유효 길이 범위 후보가 있으면 그것만 사용
     if valid_duration_candidates:
-        emit_progress("preprocessing", 0.55, f"{len(valid_duration_candidates)}개 유효 길이 오디오 발견 (3-10초)")
+        emit_progress("preprocessing", 0.55, f"{len(valid_duration_candidates)}개 유효 길이 오디오 발견 ({min_duration}-{max_duration}초)")
         candidates = valid_duration_candidates
     else:
-        emit_progress("preprocessing", 0.55, "경고: 3-10초 범위 오디오 없음, 가장 근접한 길이 사용")
+        emit_progress("preprocessing", 0.55, f"경고: {min_duration}-{max_duration}초 범위 오디오 없음, 가장 근접한 길이 사용")
 
     if not candidates:
         # 텍스트가 없으면 모든 오디오 파일로 fallback
@@ -429,6 +463,10 @@ def main():
     output_dir = Path(args.output_dir)
     gamedata_path = Path(args.gamedata_path)
 
+    # config에서 참조 오디오 길이 설정 가져오기
+    from core.voice.gpt_sovits.config import GPTSoVITSConfig
+    config = GPTSoVITSConfig()
+
     try:
         # 참조 오디오 준비 (zero-shot 합성용)
         if not prepare_reference_audio(
@@ -437,6 +475,8 @@ def main():
             output_dir,
             gamedata_path,
             args.language,
+            min_duration=config.min_ref_audio_length,
+            max_duration=config.max_ref_audio_length,
         ):
             emit_error("음성 준비 실패")
             sys.exit(1)
