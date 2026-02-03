@@ -13,6 +13,11 @@ from typing import Optional
 import aiohttp
 
 from .config import GPTSoVITSConfig
+from .reference_selector import (
+    select_reference_by_score,
+    get_all_references_by_score,
+    get_audio_duration,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -445,123 +450,59 @@ class GPTSoVITSAPIClient:
             return False
 
     def _select_reference_audio(self, char_id: str, text: str) -> tuple[Path, str]:
-        """텍스트에 적합한 참조 오디오 선택
+        """점수 기반으로 최적의 참조 오디오 선택
 
-        텍스트 길이에 따라 비슷한 길이의 참조 오디오를 선택합니다.
+        info.json의 score 정보를 활용하여 우선순위가 높은 참조 오디오를 선택합니다.
+        (training_worker와 동일한 우선순위 로직 사용)
 
         Args:
             char_id: 캐릭터 ID
-            text: 합성할 텍스트
+            text: 합성할 텍스트 (현재 미사용, 향후 확장용)
 
         Returns:
             (참조 오디오 경로, 참조 텍스트) 튜플
         """
         model_dir = self.config.get_model_path(char_id)
-        text_len = len(text)
 
-        # 모든 참조 오디오 수집
-        refs = []
+        # 공통 함수로 점수 기반 선택
+        ref_audio, ref_text, score = select_reference_by_score(
+            model_dir,
+            min_duration=self.config.min_ref_audio_length,
+            max_duration=self.config.max_ref_audio_length,
+        )
 
-        # 기본 참조 (ref.wav)
-        ref_audio = model_dir / "ref.wav"
-        ref_text_file = model_dir / "ref.txt"
-        if ref_audio.exists():
-            ref_text = (
-                ref_text_file.read_text(encoding="utf-8").strip()
-                if ref_text_file.exists()
-                else ""
-            )
-            refs.append((ref_audio, ref_text, len(ref_text)))
+        if ref_audio:
+            logger.debug(f"참조 오디오 선택: {ref_audio.name} (score: {score})")
+            return ref_audio, ref_text
 
-        # 추가 참조 (ref_1.wav, ref_2.wav, ... 최대 30개)
-        for i in range(1, 30):
-            ref_audio = model_dir / f"ref_{i}.wav"
-            ref_text_file = model_dir / f"ref_{i}.txt"
-            if ref_audio.exists():
-                ref_text = (
-                    ref_text_file.read_text(encoding="utf-8").strip()
-                    if ref_text_file.exists()
-                    else ""
-                )
-                refs.append((ref_audio, ref_text, len(ref_text)))
-
-        if not refs:
-            # 폴백: 기본 경로 반환
-            return self.config.get_ref_audio_path(char_id), ""
-
-        # 텍스트 길이에 가장 가까운 참조 선택
-        best_ref = refs[0]
-        best_diff = abs(refs[0][2] - text_len)
-
-        for ref_audio, ref_text, ref_len in refs:
-            diff = abs(ref_len - text_len)
-            if diff < best_diff:
-                best_diff = diff
-                best_ref = (ref_audio, ref_text, ref_len)
-
-        return best_ref[0], best_ref[1]
-
-    def _get_audio_duration(self, audio_path: Path) -> float:
-        """오디오 파일 길이 반환 (초)"""
-        try:
-            import wave
-
-            with wave.open(str(audio_path), "rb") as wav:
-                frames = wav.getnframes()
-                rate = wav.getframerate()
-                return frames / float(rate)
-        except Exception:
-            return 0.0
+        # 폴백: 기본 경로 반환
+        return self.config.get_ref_audio_path(char_id), ""
 
     def _get_aux_reference_audios(self, char_id: str, primary_ref: Path) -> list[str]:
         """추가 참조 오디오 경로 목록 (GPT-SoVITS v2 aux_ref_audio_paths용)
 
-        필터링 조건:
-        - 대사(txt 파일)가 있는 음성만 사용
-        - 길이가 min~max 범위 내인 음성만 사용
+        점수 순으로 정렬된 참조 오디오 목록을 반환합니다.
+        (training_worker와 동일한 로직 사용)
 
         Args:
             char_id: 캐릭터 ID
             primary_ref: 기본 참조 오디오 (제외됨)
 
         Returns:
-            추가 참조 오디오 경로 목록
+            추가 참조 오디오 경로 목록 (점수 내림차순)
         """
         model_dir = self.config.get_model_path(char_id)
-        aux_refs = []
-        min_len = self.config.min_ref_audio_length
-        max_len = self.config.max_ref_audio_length
 
-        def is_valid_ref(audio_path: Path, text_path: Path) -> bool:
-            """참조 오디오 유효성 검사"""
-            if not audio_path.exists() or audio_path == primary_ref:
-                return False
-            # 대사 파일이 있고 내용이 있어야 함
-            if not text_path.exists():
-                return False
-            text = text_path.read_text(encoding="utf-8").strip()
-            if not text:
-                return False
-            # 길이 필터링
-            duration = self._get_audio_duration(audio_path)
-            if duration < min_len or duration > max_len:
-                return False
-            return True
+        # 공통 함수로 점수 기반 참조 오디오 목록 조회
+        refs = get_all_references_by_score(
+            model_dir,
+            exclude_primary=primary_ref,
+            min_duration=self.config.min_ref_audio_length,
+            max_duration=self.config.max_ref_audio_length,
+        )
 
-        # 기본 참조 (ref.wav)
-        ref_audio = model_dir / "ref.wav"
-        ref_text = model_dir / "ref.txt"
-        if is_valid_ref(ref_audio, ref_text):
-            aux_refs.append(str(ref_audio.absolute()))
-
-        # 추가 참조 (ref_1.wav ~ ref_99.wav)
-        for i in range(1, 100):
-            ref_audio = model_dir / f"ref_{i}.wav"
-            ref_text = model_dir / f"ref_{i}.txt"
-            if is_valid_ref(ref_audio, ref_text):
-                aux_refs.append(str(ref_audio.absolute()))
-
-        return aux_refs
+        # 절대 경로 문자열로 변환
+        return [str(ref_audio.absolute()) for ref_audio, _, _ in refs]
 
     async def synthesize(
         self,
@@ -725,17 +666,9 @@ class GPTSoVITSAPIClient:
         # 추가 참조 오디오
         aux_refs = self._get_aux_reference_audios(char_id, ref_audio_path)
 
-        # prompt_text 처리: 너무 길면 모델이 이어서 말하는 문제 발생
+        # prompt_text: 참조 텍스트 전체 사용
+        # (마지막 문장만 추출하면 오디오와 불일치하여 품질 저하)
         prompt_text = ref_text
-        if ref_text and len(ref_text) > 40:
-            import re
-
-            sentences = re.split(r"[.!?。！？]", ref_text)
-            sentences = [s.strip() for s in sentences if s.strip()]
-            if sentences:
-                prompt_text = sentences[-1]
-                if len(prompt_text) < 10 and len(sentences) >= 2:
-                    prompt_text = sentences[-2] + ". " + sentences[-1]
 
         # GPT-SoVITS v2 언어 코드 변환
         lang_map = {
