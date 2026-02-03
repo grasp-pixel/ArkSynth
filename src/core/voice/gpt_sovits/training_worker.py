@@ -242,7 +242,7 @@ def prepare_reference_audio(
     emit_progress("preprocessing", 0.5, "참조 오디오 선택 중...")
 
     candidates = []
-    valid_duration_candidates = []  # 3-45초 범위 내 후보
+    valid_duration_candidates = []  # 3-10초 범위 내 후보
 
     for audio_file in audio_files:
         voice_id = audio_file.stem  # CN_001
@@ -251,10 +251,6 @@ def prepare_reference_audio(
         title = transcript_info.get("title", "")
 
         if not text:
-            continue
-
-        # 신뢰할 수 있는 대사만 선택 (voiceTitle 기반)
-        if title not in RELIABLE_VOICE_TITLES:
             continue
 
         text_len = len(text)
@@ -293,11 +289,11 @@ def prepare_reference_audio(
         emit_progress("preprocessing", 0.55, f"{len(valid_duration_candidates)}개 유효 길이 오디오 발견 (3-10초)")
         candidates = valid_duration_candidates
     else:
-        emit_progress("preprocessing", 0.55, "경고: 3-45초 범위 오디오 없음, 가장 근접한 길이 사용")
+        emit_progress("preprocessing", 0.55, "경고: 3-10초 범위 오디오 없음, 가장 근접한 길이 사용")
 
     if not candidates:
-        # 신뢰할 수 있는 대사가 없으면, 텍스트 있는 모든 파일로 fallback
-        emit_progress("preprocessing", 0.55, "경고: 신뢰할 수 있는 대사 없음, 모든 대사로 fallback")
+        # 텍스트가 없으면 모든 오디오 파일로 fallback
+        emit_progress("preprocessing", 0.55, "경고: 대사 텍스트 없음, 모든 오디오로 fallback")
         for audio_file in audio_files:
             voice_id = audio_file.stem
             transcript_info = transcripts.get(voice_id, {})
