@@ -12,6 +12,7 @@ from ..config import config
 from ...voice.character_mapping import CharacterVoiceMapper
 from ...voice.charword_loader import reset_charword_loader
 from ...voice.dialogue_stats import DialogueStatsManager
+from ...voice.alias_resolver import invalidate_cache as invalidate_alias_cache
 
 logger = logging.getLogger(__name__)
 
@@ -249,15 +250,12 @@ def _save_aliases(aliases: dict[str, str]) -> None:
 
 
 def _invalidate_aliases_cache() -> None:
-    """별칭 캐시 무효화 (episodes.py 캐시도 같이)"""
+    """별칭 캐시 무효화"""
     global _character_aliases_cache
     _character_aliases_cache = None
 
-    # episodes.py의 캐시도 무효화
-    from .episodes import _character_aliases
-    import importlib
-    from . import episodes
-    episodes._character_aliases = None
+    # 공통 모듈의 캐시도 무효화
+    invalidate_alias_cache()
 
 
 class AliasInfo(BaseModel):

@@ -163,13 +163,14 @@ export default function DialogueViewer() {
           const isRendered = renderProgress ? index < renderProgress.completed : false
 
           // 사용될 캐릭터 ID 계산 (디버그용)
+          // speaker_name을 우선으로 사용 (speaker_id는 화면 표시용 캐릭터, speaker_name이 실제 화자)
           let resolvedCharId: string | null = null
           if (showCharIds) {
-            if (dialogue.speaker_id) {
-              resolvedCharId = getSpeakerVoice(dialogue.speaker_id, dialogue.speaker_name || undefined)
-            } else if (dialogue.speaker_name) {
+            if (dialogue.speaker_name) {
               const nameKey = `name:${dialogue.speaker_name}`
               resolvedCharId = getSpeakerVoice(nameKey, dialogue.speaker_name)
+            } else if (dialogue.speaker_id) {
+              resolvedCharId = getSpeakerVoice(dialogue.speaker_id, dialogue.speaker_name || undefined)
             } else {
               // 나레이션
               resolvedCharId = narratorCharId || (defaultFemaleVoices.length > 0 ? defaultFemaleVoices[0] : (defaultVoices.length > 0 ? defaultVoices[0] : null))

@@ -10,6 +10,7 @@ from typing import Callable, Any
 
 from .render_cache import RenderCache, get_render_cache
 from ..backend import get_gpu_semaphore
+from ..voice.alias_resolver import resolve_voice_char_id
 
 logger = logging.getLogger(__name__)
 
@@ -216,21 +217,25 @@ class RenderManager:
         episode_id = job.episode_id
 
         try:
+            # 합성기 가져오기 (config 참조 위해 먼저 로드)
+            from ..voice.gpt_sovits import get_synthesizer
+
+            synthesizer = get_synthesizer()
+
+            # 백엔드 config에서 언어 설정 가져오기 (실시간 TTS와 동일)
+            from ..backend.config import config as app_config
+            gpt_language = app_config.gpt_sovits_language
+
             # 메타데이터 생성 또는 로드
             meta = self.cache.get_meta(episode_id)
             if meta is None:
                 meta = self.cache.create_meta(
-                    episode_id, len(job.dialogues), job.language
+                    episode_id, len(job.dialogues), gpt_language
                 )
 
             # 이미 렌더링된 인덱스
             rendered_indices = {a.index for a in meta.audios}
             self._progress.completed = len(rendered_indices)
-
-            # 합성기 가져오기
-            from ..voice.gpt_sovits import get_synthesizer
-
-            synthesizer = get_synthesizer()
 
             # 대사별 렌더링
             logger.info(f"[RenderManager] 렌더링 시작 - episode: {episode_id}, total dialogues: {len(job.dialogues)}")
@@ -291,21 +296,33 @@ class RenderManager:
                 # 따옴표는 게임 내 역할극 강조 표시이므로 유지 (예: '오니')
                 mapping_key = char_id or (f"name:{speaker_name}" if speaker_name else None)
 
-                logger.info(f"[RenderManager] 대사 {index}: char_id={char_id}, speaker_name={speaker_name}, mapping_key={mapping_key}")
+                # 별칭 매핑 확인 (speaker_name으로 음성 있는 캐릭터 찾기)
+                alias_char_id = resolve_voice_char_id(speaker_name=speaker_name, char_id=char_id)
+
+                logger.info(f"[RenderManager] 대사 {index}: char_id={char_id}, speaker_name={speaker_name}, alias={alias_char_id}")
 
                 if not char_id_to_use:
-                    # char_id가 없는 경우 - name: 접두사로 매핑 확인
-                    if mapping_key and mapping_key in job.speaker_voice_map:
+                    # char_id가 없는 경우
+                    if alias_char_id and await ensure_char_ready(alias_char_id):
+                        # 별칭으로 찾은 캐릭터 사용
+                        logger.info(f"[RenderManager] 별칭 매핑 사용: {speaker_name} → {alias_char_id}")
+                        char_id_to_use = alias_char_id
+                    elif mapping_key and mapping_key in job.speaker_voice_map:
+                        # 수동 매핑 사용
                         mapped = job.speaker_voice_map[mapping_key]
-                        logger.info(f"[RenderManager] 이름 매핑 사용: {mapping_key} → {mapped}")
+                        logger.info(f"[RenderManager] 수동 매핑 사용: {mapping_key} → {mapped}")
                         char_id_to_use = mapped
                     else:
-                        # 매핑 없으면 narrator_char_id 또는 default_char_id 사용
+                        # 나레이션/기본 음성 사용
                         char_id_to_use = job.narrator_char_id or job.default_char_id
                         logger.info(f"[RenderManager] 나레이션/기본 음성 → {char_id_to_use}")
                 elif await ensure_char_ready(char_id_to_use):
                     # 캐릭터 자신의 모델이 있으면 (또는 자동 준비 성공하면) 그대로 사용
                     logger.info(f"[RenderManager] 캐릭터 음성 사용: {char_id_to_use}")
+                elif alias_char_id and await ensure_char_ready(alias_char_id):
+                    # 별칭으로 찾은 캐릭터 사용
+                    logger.info(f"[RenderManager] 별칭 매핑 사용: {speaker_name} → {alias_char_id}")
+                    char_id_to_use = alias_char_id
                 elif char_id_to_use in job.speaker_voice_map:
                     # 모델 없고 수동 매핑이 있으면 사용
                     mapped = job.speaker_voice_map[char_id_to_use]
@@ -324,9 +341,17 @@ class RenderManager:
                     # GPU 세마포어: OCR과 동시 실행 방지
                     gpu_sem = get_gpu_semaphore()
                     async with gpu_sem:
-                        # GPT-SoVITS로 합성
+                        # GPT-SoVITS로 합성 (실시간 TTS와 동일한 config 파라미터 사용)
+                        gpt_config = synthesizer.config
                         result = await synthesizer.synthesize(
-                            char_id_to_use, text, output_path=audio_path, language=job.language
+                            char_id_to_use,
+                            text,
+                            output_path=audio_path,
+                            language=app_config.gpt_sovits_language,
+                            speed_factor=gpt_config.speed_factor,
+                            top_k=gpt_config.top_k,
+                            top_p=gpt_config.top_p,
+                            temperature=gpt_config.temperature,
                         )
                     duration = result.duration if result else 0.0
                 else:
