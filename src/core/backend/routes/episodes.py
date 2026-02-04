@@ -8,38 +8,12 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from ..config import config
+from ..shared_loaders import get_story_loader, get_voice_mapper
 from ...story.loader import StoryLoader
-from ...voice.character_mapping import CharacterVoiceMapper
 from ...voice.alias_resolver import resolve_voice_char_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-# 전역 로더 (lazy init)
-_loader: StoryLoader | None = None
-_voice_mapper: CharacterVoiceMapper | None = None
-
-
-def get_loader() -> StoryLoader:
-    global _loader
-    if _loader is None:
-        _loader = StoryLoader(config.data_path)
-    return _loader
-
-
-def get_voice_mapper() -> CharacterVoiceMapper:
-    global _voice_mapper
-    if _voice_mapper is None:
-        _voice_mapper = CharacterVoiceMapper(
-            extracted_path=config.extracted_path,
-        )
-    return _voice_mapper
-
-
-def reset_episode_loader() -> None:
-    """에피소드 로더 인스턴스 리셋"""
-    global _loader
-    _loader = None
 
 
 class EpisodeSummary(BaseModel):
@@ -79,7 +53,7 @@ async def list_main_episodes(lang: str | None = None):
     Args:
         lang: 언어 코드 (기본값: ko_KR)
     """
-    loader = get_loader()
+    loader = get_story_loader()
     lang = lang or config.game_language
 
     episodes = loader.list_main_episodes(lang=lang)
@@ -122,7 +96,7 @@ async def list_main_episodes(lang: str | None = None):
 @router.get("/{episode_id}")
 async def get_episode(episode_id: str, lang: str | None = None):
     """에피소드 상세 정보 조회"""
-    loader = get_loader()
+    loader = get_story_loader()
     lang = lang or config.game_language
 
     episode = loader.load_episode(episode_id, lang=lang)
@@ -155,7 +129,7 @@ async def get_episode_dialogues(
     limit: int = 50,
 ):
     """에피소드 대사 목록 (페이지네이션)"""
-    loader = get_loader()
+    loader = get_story_loader()
     lang = lang or config.game_language
 
     episode = loader.load_episode(episode_id, lang=lang)
@@ -230,7 +204,7 @@ async def get_episode_characters(episode_id: str, lang: str | None = None):
     char_id가 없는 경우 speaker_name으로 구분.
     나레이션(char_id도 speaker_name도 없는 대사)은 별도로 집계.
     """
-    loader = get_loader()
+    loader = get_story_loader()
     voice_mapper = get_voice_mapper()
     lang = lang or config.game_language
 

@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from ..config import config
 from ...cache import RenderCache, RenderManager, RenderProgress, RenderStatus, GroupRenderProgress
-from .episodes import get_loader as get_story_loader  # episodes API와 같은 loader 사용
+from ..shared_loaders import get_story_loader
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

@@ -4,37 +4,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from ..config import config
+from ..shared_loaders import get_story_loader, get_voice_mapper, reset_story_loader
 from ...models.story import StoryCategory
 from ...story.loader import StoryLoader
-from ...voice.character_mapping import CharacterVoiceMapper
 
 router = APIRouter()
-
-# 전역 로더 (lazy init)
-_loader: StoryLoader | None = None
-_voice_mapper: CharacterVoiceMapper | None = None
-
-
-def get_loader() -> StoryLoader:
-    global _loader
-    if _loader is None:
-        _loader = StoryLoader(config.data_path)
-    return _loader
-
-
-def get_voice_mapper() -> CharacterVoiceMapper:
-    global _voice_mapper
-    if _voice_mapper is None:
-        _voice_mapper = CharacterVoiceMapper(
-            extracted_path=config.extracted_path,
-        )
-    return _voice_mapper
-
-
-def reset_story_loader() -> None:
-    """스토리 로더 인스턴스 리셋"""
-    global _loader
-    _loader = None
 
 
 # ========== 응답 모델 ==========
@@ -89,7 +63,7 @@ async def list_categories(lang: str | None = None):
 
     각 카테고리별 그룹 수와 에피소드 수를 반환
     """
-    loader = get_loader()
+    loader = get_story_loader()
     lang = lang or config.game_language
 
     stats = loader.get_category_stats(lang)
@@ -128,7 +102,7 @@ async def list_categories(lang: str | None = None):
 @router.get("/categories/{category_id}/groups")
 async def list_category_groups(category_id: str, lang: str | None = None):
     """카테고리별 스토리 그룹 목록"""
-    loader = get_loader()
+    loader = get_story_loader()
     lang = lang or config.game_language
 
     # 카테고리 ID -> StoryCategory enum
@@ -158,7 +132,7 @@ async def list_category_groups(category_id: str, lang: str | None = None):
 @router.get("/groups/{group_id}/episodes")
 async def list_group_episodes(group_id: str, lang: str | None = None):
     """스토리 그룹의 에피소드 목록"""
-    loader = get_loader()
+    loader = get_story_loader()
     lang = lang or config.game_language
 
     # 그룹 존재 확인
@@ -214,7 +188,7 @@ async def list_group_characters(group_id: str, lang: str | None = None):
 
     그룹 내 모든 에피소드를 파싱하여 등장 캐릭터와 대사 수를 집계합니다.
     """
-    loader = get_loader()
+    loader = get_story_loader()
     voice_mapper = get_voice_mapper()
     lang = lang or config.game_language
 

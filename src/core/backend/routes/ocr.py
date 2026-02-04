@@ -10,7 +10,8 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from PIL import Image
 
-from .episodes import get_loader, DialogueInfo
+from .episodes import DialogueInfo
+from ..shared_loaders import get_story_loader
 from .. import gpu_semaphore_context
 
 router = APIRouter()
@@ -926,7 +927,7 @@ async def match_dialogue(request: MatchDialogueRequest):
 
     try:
         # 에피소드 로드
-        loader = get_loader()
+        loader = get_story_loader()
         episode = loader.load_episode(request.episode_id)
 
         if episode is None:

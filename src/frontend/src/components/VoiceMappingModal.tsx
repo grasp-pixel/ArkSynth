@@ -37,9 +37,13 @@ function CharacterStanding({
   className?: string
   showPlaceholder?: boolean
 }) {
-  const [hasError, setHasError] = useState(false)
+  // 에러가 발생한 charId를 저장 (다른 charId로 바뀌면 에러 상태 무효화)
+  const [errorCharId, setErrorCharId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const imageUrl = charId ? `${API_BASE}/api/voice/images/${charId}` : null
+
+  // 현재 charId에서 에러가 발생했는지 확인
+  const hasError = errorCharId === charId
 
   if (!imageUrl || hasError) {
     return showPlaceholder ? (
@@ -55,7 +59,7 @@ function CharacterStanding({
   }
 
   return (
-    <div className={`bg-ark-black/30 border border-ark-border overflow-hidden flex items-end justify-center relative ${className}`}>
+    <div className={`bg-ark-black/30 border border-ark-border overflow-hidden flex items-start justify-center relative ${className}`}>
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center text-ark-gray/30">
           <span className="text-sm">...</span>
@@ -64,9 +68,9 @@ function CharacterStanding({
       <img
         src={imageUrl}
         alt={alt}
-        className="max-w-full max-h-full object-contain object-bottom"
+        className="w-full h-full object-cover object-top"
         onLoad={() => setIsLoading(false)}
-        onError={() => { setHasError(true); setIsLoading(false) }}
+        onError={() => { setErrorCharId(charId ?? null); setIsLoading(false) }}
       />
     </div>
   )
@@ -504,7 +508,7 @@ function CharacterMappingRow({
           <CharacterStanding
             charId={char.char_id}
             alt={char.name}
-            className="w-16 h-24 rounded"
+            className="w-20 h-32 rounded"
           />
           {/* 화살표 */}
           <div className="flex items-center px-1 text-ark-gray/50">
@@ -516,7 +520,7 @@ function CharacterMappingRow({
           <CharacterStanding
             charId={mappedCharId}
             alt={mappedCharName ?? '매핑 필요'}
-            className="w-16 h-24 rounded"
+            className="w-20 h-32 rounded"
             showPlaceholder={true}
           />
         </div>

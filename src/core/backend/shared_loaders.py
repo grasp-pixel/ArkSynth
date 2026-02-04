@@ -3,8 +3,8 @@
 stories.py, episodes.py 등에서 동일한 로더 인스턴스를 사용하기 위한 중앙 관리 모듈.
 """
 
-from ...story.loader import StoryLoader
-from ...voice.character_mapping import CharacterVoiceMapper
+from ..story.loader import StoryLoader
+from ..voice.character_mapping import CharacterVoiceMapper
 from .config import config
 
 # 전역 로더 인스턴스
@@ -26,6 +26,7 @@ def get_voice_mapper() -> CharacterVoiceMapper:
     if _voice_mapper is None:
         _voice_mapper = CharacterVoiceMapper(
             extracted_path=config.extracted_path,
+            gamedata_path=config.gamedata_yostar_path,
         )
     return _voice_mapper
 

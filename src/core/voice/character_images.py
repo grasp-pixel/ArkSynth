@@ -11,6 +11,18 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+
+def is_valid_image(path: Path) -> bool:
+    """이미지 파일이 유효한지 검사 (손상 여부 확인)"""
+    try:
+        from PIL import Image
+        with Image.open(path) as img:
+            img.load()  # 실제로 이미지 데이터 로드하여 검증
+        return True
+    except Exception:
+        logger.warning(f"손상된 이미지: {path}")
+        return False
+
 # 로컬 추출 이미지 경로
 EXTRACTED_IMAGES_PATH = Path("extracted/images/characters")
 EXTRACTED_CHARARTS_PATH = Path("extracted/images/chararts")
@@ -365,7 +377,10 @@ class CharacterImageProvider:
         # 1. chararts에서 먼저 찾기 (초상화)
         result = find_chararts_image(char_id, self.chararts_path)
         if result:
-            return result
+            # 손상된 이미지인지 검사
+            if is_valid_image(result):
+                return result
+            logger.info(f"chararts 이미지 손상, characters로 폴백: {char_id}")
 
         # 2. characters에서 폴백 검색 (스토리 스탠딩)
         return find_local_image(char_id, self.extracted_path)
