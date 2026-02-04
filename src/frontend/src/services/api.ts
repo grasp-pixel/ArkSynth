@@ -1118,6 +1118,23 @@ export const extractApi = {
     )
     return res.data
   },
+
+  // GPU 세마포어 설정
+  getGpuSemaphore: async () => {
+    const res = await api.get<{ enabled: boolean; description: string }>(
+      '/api/settings/gpu-semaphore'
+    )
+    return res.data
+  },
+
+  setGpuSemaphore: async (enabled: boolean) => {
+    const res = await api.post<{ enabled: boolean; message: string }>(
+      '/api/settings/gpu-semaphore',
+      null,
+      { params: { enabled } }
+    )
+    return res.data
+  },
 }
 
 // 추출 진행률 SSE 스트림

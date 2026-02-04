@@ -758,3 +758,28 @@ async def check_voice_assets():
         "languages": languages,
         "total_bundles": sum(languages.values())
     }
+
+
+# ============================================================================
+# GPU 세마포어 설정
+# ============================================================================
+
+@router.get("/gpu-semaphore")
+async def get_gpu_semaphore_status():
+    """GPU 세마포어 상태 조회"""
+    from .. import is_gpu_semaphore_enabled
+    return {
+        "enabled": is_gpu_semaphore_enabled(),
+        "description": "활성화 시 OCR과 TTS가 동시에 실행되지 않음 (GPU 메모리 보호)"
+    }
+
+
+@router.post("/gpu-semaphore")
+async def set_gpu_semaphore_status(enabled: bool):
+    """GPU 세마포어 활성화/비활성화"""
+    from .. import set_gpu_semaphore_enabled
+    set_gpu_semaphore_enabled(enabled)
+    return {
+        "enabled": enabled,
+        "message": f"GPU 세마포어 {'활성화' if enabled else '비활성화'}됨"
+    }

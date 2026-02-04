@@ -30,6 +30,10 @@ function App() {
     gptSovitsError,
     checkGptSovitsStatus,
     startGptSovits,
+    // GPU 세마포어
+    gpuSemaphoreEnabled,
+    loadGpuSemaphoreStatus,
+    toggleGpuSemaphore,
     // 음성 캐릭터
     loadVoiceCharacters,
     // 패널 접기
@@ -50,8 +54,9 @@ function App() {
       loadCategories()
       checkGptSovitsStatus()
       loadVoiceCharacters()  // 음성 캐릭터 목록 로드 (getSpeakerVoice에서 사용)
+      loadGpuSemaphoreStatus()  // GPU 세마포어 상태 로드
     }
-  }, [backendStatus, loadCategories, checkGptSovitsStatus, loadVoiceCharacters])
+  }, [backendStatus, loadCategories, checkGptSovitsStatus, loadVoiceCharacters, loadGpuSemaphoreStatus])
 
   // GPT-SoVITS 상태 주기적 확인 (30초)
   useEffect(() => {
@@ -148,6 +153,29 @@ function App() {
               </span>
             )}
           </div>
+
+          {/* GPU 세마포어 토글 */}
+          <button
+            onClick={toggleGpuSemaphore}
+            className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded transition-colors ${
+              gpuSemaphoreEnabled
+                ? 'bg-ark-gray/30 text-ark-gray hover:bg-ark-gray/40'
+                : 'bg-ark-orange/20 text-ark-orange hover:bg-ark-orange/30'
+            }`}
+            title={gpuSemaphoreEnabled
+              ? 'GPU 잠금 활성화됨 (OCR/TTS 순차 실행)'
+              : 'GPU 잠금 비활성화됨 (OCR/TTS 동시 실행 가능)'
+            }
+          >
+            <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor">
+              {gpuSemaphoreEnabled ? (
+                <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+              ) : (
+                <path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z"/>
+              )}
+            </svg>
+            <span>GPU</span>
+          </button>
 
           {/* 백엔드 상태 */}
           <div className="flex items-center gap-2">

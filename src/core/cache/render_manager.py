@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Callable, Any
 
 from .render_cache import RenderCache, get_render_cache
-from ..backend import get_gpu_semaphore
+from ..backend import gpu_semaphore_context
 from ..voice.alias_resolver import resolve_voice_char_id
 
 logger = logging.getLogger(__name__)
@@ -339,8 +339,7 @@ class RenderManager:
 
                 if char_id_to_use and await synthesizer.is_available(char_id_to_use):
                     # GPU 세마포어: OCR과 동시 실행 방지
-                    gpu_sem = get_gpu_semaphore()
-                    async with gpu_sem:
+                    async with gpu_semaphore_context():
                         # GPT-SoVITS로 합성 (실시간 TTS와 동일한 config 파라미터 사용)
                         gpt_config = synthesizer.config
                         result = await synthesizer.synthesize(

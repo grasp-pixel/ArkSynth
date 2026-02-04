@@ -10,7 +10,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from ..config import config
-from .. import get_gpu_semaphore
+from .. import gpu_semaphore_context
 from ...voice.providers.edge_tts import EdgeTTSProvider
 from ...voice.gpt_sovits import GPTSoVITSConfig, GPTSoVITSModelManager
 from ...voice.gpt_sovits.synthesizer import GPTSoVITSSynthesizer
@@ -151,9 +151,8 @@ async def synthesize(request: SynthesizeRequest):
             )
 
         # GPU 세마포어: OCR과 동시 실행 방지 (메모리 부족 크래시 방지)
-        gpu_sem = get_gpu_semaphore()
-        async with gpu_sem:
-            logger.info(f"GPU 세마포어 획득: {request.char_id}")
+        async with gpu_semaphore_context():
+            logger.info(f"GPU 세마포어 통과: {request.char_id}")
 
             # 모델 로드
             if not await synthesizer.load_model(request.char_id):

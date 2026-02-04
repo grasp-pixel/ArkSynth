@@ -7,6 +7,7 @@ import {
   voiceApi,
   trainingApi,
   renderApi,
+  settingsApi,
   healthCheck,
   createDialogueStream,
   createTrainingStream,
@@ -124,6 +125,9 @@ interface AppState {
   isStartingGptSovits: boolean
   gptSovitsError: string | null
 
+  // GPU 세마포어 (OCR/TTS 동시 실행 제한)
+  gpuSemaphoreEnabled: boolean
+
   // 볼륨 설정
   volume: number  // 재생 볼륨 (0.0~1.0)
   isMuted: boolean
@@ -225,6 +229,10 @@ interface AppState {
   // GPT-SoVITS
   checkGptSovitsStatus: () => Promise<void>
   startGptSovits: () => Promise<void>
+
+  // GPU 세마포어
+  loadGpuSemaphoreStatus: () => Promise<void>
+  toggleGpuSemaphore: () => Promise<void>
 
   // 볼륨 설정
   setVolume: (volume: number) => void
@@ -457,6 +465,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   gptSovitsStatus: null,
   isStartingGptSovits: false,
   gptSovitsError: null,
+
+  // GPU 세마포어 초기 상태 (기본 활성화)
+  gpuSemaphoreEnabled: true,
 
   // 볼륨 설정 초기 상태 (localStorage에서 복원)
   volume: persistedState.volume ?? 1.0,
@@ -2008,6 +2019,27 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ gptSovitsError: errorMsg })
     } finally {
       set({ isStartingGptSovits: false })
+    }
+  },
+
+  // GPU 세마포어 상태 로드
+  loadGpuSemaphoreStatus: async () => {
+    try {
+      const result = await settingsApi.getGpuSemaphore()
+      set({ gpuSemaphoreEnabled: result.enabled })
+    } catch (error) {
+      console.error('Failed to load GPU semaphore status:', error)
+    }
+  },
+
+  // GPU 세마포어 토글
+  toggleGpuSemaphore: async () => {
+    const { gpuSemaphoreEnabled } = get()
+    try {
+      const result = await settingsApi.setGpuSemaphore(!gpuSemaphoreEnabled)
+      set({ gpuSemaphoreEnabled: result.enabled })
+    } catch (error) {
+      console.error('Failed to toggle GPU semaphore:', error)
     }
   },
 

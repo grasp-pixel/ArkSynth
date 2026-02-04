@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from PIL import Image
 
 from .episodes import get_loader, DialogueInfo
-from .. import get_gpu_semaphore
+from .. import gpu_semaphore_context
 
 router = APIRouter()
 
@@ -233,7 +233,9 @@ async def detect_window_dialogue(
                     image.height,
                 )
             )
-            print(f"[OCR-API] 상단 {ignore_top_ratio*100:.0f}% 제외 후: {image.width}x{image.height}")
+            print(
+                f"[OCR-API] 상단 {ignore_top_ratio * 100:.0f}% 제외 후: {image.width}x{image.height}"
+            )
 
         # 2. OCR
         ocr_start = time.time()
@@ -268,7 +270,9 @@ async def detect_window_dialogue(
                     sorted_results
                 )
                 total_elapsed = time.time() - total_start
-                print(f"[OCR-API] 완료: '{combined_text[:50]}...' (총 {total_elapsed:.2f}초)")
+                print(
+                    f"[OCR-API] 완료: '{combined_text[:50]}...' (총 {total_elapsed:.2f}초)"
+                )
                 return DetectDialogueResponse(
                     text=combined_text,
                     confidence=avg_confidence,
@@ -1015,6 +1019,7 @@ async def stream_window_dialogue(
 
     async def event_generator():
         import sys
+
         global _window_stability
 
         print(f"[SSE] 스트림 시작: hwnd={hwnd}, lang={lang}", flush=True)
@@ -1092,7 +1097,10 @@ async def stream_window_dialogue(
                     ocr_reason = ""
 
                     # 조건 1: 화면 안정화 + 새 화면
-                    if state.stability_count >= stability_threshold and current_hash != state.last_stable_hash:
+                    if (
+                        state.stability_count >= stability_threshold
+                        and current_hash != state.last_stable_hash
+                    ):
                         should_ocr = True
                         ocr_reason = "안정화"
                         state.last_stable_hash = current_hash
@@ -1111,16 +1119,18 @@ async def stream_window_dialogue(
 
                     # OCR 실행 (GPU 세마포어 + 타임아웃 적용)
                     # GPU 세마포어: TTS와 동시 실행 방지 (메모리 부족 크래시 방지)
-                    gpu_sem = get_gpu_semaphore()
                     ocr_start = time.time()
                     try:
-                        async with gpu_sem:
-                            print(f"[SSE] GPU 세마포어 획득", flush=True)
+                        async with gpu_semaphore_context():
+                            print(f"[SSE] GPU 세마포어 통과", flush=True)
                             results = await asyncio.wait_for(
                                 ocr.recognize(image),
                                 timeout=10.0,  # 10초 타임아웃
                             )
-                        print(f"[SSE] OCR 완료: {len(results) if results else 0}개 결과, {time.time() - ocr_start:.2f}초", flush=True)
+                        print(
+                            f"[SSE] OCR 완료: {len(results) if results else 0}개 결과, {time.time() - ocr_start:.2f}초",
+                            flush=True,
+                        )
                     except asyncio.TimeoutError:
                         print("[SSE] OCR 타임아웃 (10초)", flush=True)
                         await asyncio.sleep(poll_interval)
@@ -1142,7 +1152,10 @@ async def stream_window_dialogue(
                             is_new = combined_text != state.last_text
                             if is_new:
                                 state.last_text = combined_text
-                                print(f"[SSE] 새 대사 감지: '{combined_text[:50]}...' (신뢰도: {avg_confidence:.2f})", flush=True)
+                                print(
+                                    f"[SSE] 새 대사 감지: '{combined_text[:50]}...' (신뢰도: {avg_confidence:.2f})",
+                                    flush=True,
+                                )
                                 yield {
                                     "event": "dialogue",
                                     "data": json.dumps(
