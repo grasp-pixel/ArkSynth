@@ -55,8 +55,8 @@ def preprocess_text_for_tts(text: str) -> str | None:
     # 앞뒤 공백 및 연속 공백 정리
     text = re.sub(r"\s+", " ", text).strip()
 
-    # 문장 시작의 쉼표/마침표 제거
-    text = re.sub(r"^[,.\s]+", "", text)
+    # 문장 시작의 쉼표/마침표 제거 (한글 마침표 포함)
+    text = re.sub(r"^[,.。\s]+", "", text)
 
     # 연속된 쉼표 정리
     text = re.sub(r",\s*,+", ",", text)
@@ -698,6 +698,12 @@ class GPTSoVITSAPIClient:
         # prompt_text: 참조 텍스트 전체 사용
         # (마지막 문장만 추출하면 오디오와 불일치하여 품질 저하)
         prompt_text = ref_text
+
+        # 디버깅용 로깅: 실제 API로 전송되는 참조 정보
+        logger.info(f"[합성] === API 요청 파라미터 ===")
+        logger.info(f"[합성] 목표 텍스트: {text}")
+        logger.info(f"[합성] 참조 오디오: {ref_audio_path.name}")
+        logger.info(f"[합성] 참조 텍스트: {prompt_text}")
 
         # GPT-SoVITS v2 언어 코드 변환
         lang_map = {
