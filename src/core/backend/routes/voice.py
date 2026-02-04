@@ -10,32 +10,20 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from ..config import config
+from ..shared_loaders import get_voice_mapper, reset_story_loader, reset_voice_mapper
 from ...voice.character_mapping import CharacterVoiceMapper
 from ...voice.charword_loader import reset_charword_loader
 from ...voice.dialogue_stats import DialogueStatsManager
 from ...voice.alias_resolver import invalidate_cache as invalidate_alias_cache
 from ...voice.gender_mapper import GenderMapper
 from ...voice.character_images import CharacterImageProvider
-from .stories import reset_story_loader
-from .episodes import reset_episode_loader
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# 전역 매퍼
-_mapper: CharacterVoiceMapper | None = None
+# 전역 매퍼 (통계 관리자만 로컬 유지)
 _stats_manager: DialogueStatsManager | None = None
-
-
-def get_mapper() -> CharacterVoiceMapper:
-    global _mapper
-    if _mapper is None:
-        _mapper = CharacterVoiceMapper(
-            extracted_path=config.extracted_path,
-            gamedata_path=config.gamedata_yostar_path,
-        )
-    return _mapper
 
 
 def get_stats_manager() -> DialogueStatsManager:
@@ -58,7 +46,7 @@ class CharacterVoiceInfo(BaseModel):
 @router.get("/characters")
 async def list_voice_characters(lang: str | None = None):
     """음성이 있는 캐릭터 목록 (대사 수 포함)"""
-    mapper = get_mapper()
+    mapper = get_voice_mapper()
     stats_manager = get_stats_manager()
     lang = lang or config.voice_language
     characters = mapper.get_available_characters(lang)
@@ -91,7 +79,7 @@ async def list_voice_characters(lang: str | None = None):
 @router.get("/characters/{char_id}")
 async def get_character_voice_info(char_id: str, lang: str | None = None):
     """특정 캐릭터의 음성 정보"""
-    mapper = get_mapper()
+    mapper = get_voice_mapper()
     lang = lang or config.voice_language
 
     if not mapper.has_voice(char_id, lang):
@@ -113,7 +101,7 @@ async def get_character_voice_info(char_id: str, lang: str | None = None):
 @router.get("/summary")
 async def get_voice_summary(lang: str | None = None):
     """음성 데이터 요약 정보"""
-    mapper = get_mapper()
+    mapper = get_voice_mapper()
     lang = lang or config.voice_language
     return mapper.get_voice_summary(lang)
 
@@ -121,7 +109,7 @@ async def get_voice_summary(lang: str | None = None):
 @router.get("/check/{char_id}")
 async def check_voice_availability(char_id: str, lang: str | None = None):
     """캐릭터 음성 존재 여부 확인"""
-    mapper = get_mapper()
+    mapper = get_voice_mapper()
     lang = lang or config.voice_language
     has_voice = mapper.has_voice(char_id, lang)
 
@@ -147,24 +135,19 @@ async def rebuild_dialogue_stats():
 async def refresh_character_data():
     """캐릭터 데이터 새로고침 (게임 데이터 업데이트 후 호출)
 
-    캐릭터 매핑 캐시, 대사 통계, charword 로더를 모두 갱신합니다.
+    캐릭터 매핑 캐시, 대사 통계, charword 로더, 이미지 프로바이더를 모두 갱신합니다.
     """
-    global _mapper, _stats_manager
+    global _stats_manager, _image_provider
 
-    # 매퍼 캐시 초기화 및 재생성
-    if _mapper:
-        _mapper.clear_cache()
-    _mapper = CharacterVoiceMapper(
-        extracted_path=config.extracted_path,
-        gamedata_path=config.gamedata_yostar_path,
-    )
+    # 공유 로더 리셋 (story_loader + voice_mapper)
+    reset_story_loader()
+    reset_voice_mapper()
 
     # charword 로더 캐시 리셋
     reset_charword_loader()
 
-    # 스토리 로더 리셋 (stories.py + episodes.py 모두)
-    reset_story_loader()
-    reset_episode_loader()
+    # 이미지 프로바이더 리셋
+    _image_provider = None
 
     # 대사 통계 재계산 (항상 rebuild 호출)
     if _stats_manager is None:
@@ -172,7 +155,8 @@ async def refresh_character_data():
     _stats_manager.rebuild_stats(config.game_language)
 
     # 새로운 캐릭터 목록 가져오기
-    voice_info = _mapper.scan_voice_folders(config.voice_language)
+    mapper = get_voice_mapper()
+    voice_info = mapper.scan_voice_folders(config.voice_language)
 
     return {
         "total_characters": len(voice_info),
@@ -357,6 +341,12 @@ def get_image_provider() -> CharacterImageProvider:
     if _image_provider is None:
         _image_provider = CharacterImageProvider()
     return _image_provider
+
+
+def reset_image_provider() -> None:
+    """이미지 프로바이더 캐시 리셋"""
+    global _image_provider
+    _image_provider = None
 
 
 @router.get("/genders")

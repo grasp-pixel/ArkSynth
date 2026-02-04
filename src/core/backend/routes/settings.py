@@ -942,7 +942,10 @@ async def start_image_extraction():
                     except Exception:
                         stats["failed"] += 1
 
-            # 완료
+            # 완료 - 이미지 프로바이더 캐시 리셋
+            from .voice import reset_image_provider
+            reset_image_provider()
+
             await _image_extract_progress_queue.put(ImageExtractProgress(
                 stage="complete",
                 processed=stats["processed"],
