@@ -31,6 +31,8 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
     getModelType,
     getSegmentCount,
     canFinetune,
+    gptSovitsStatus,
+    checkGptSovitsStatus,
     // 별칭 관련
     characterAliases,
     loadCharacterAliases,
@@ -703,6 +705,41 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
               } ${!testCharId || !testText.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {isTesting ? '중지' : '테스트'}
+            </button>
+          </div>
+          {/* 제로샷 강제 모드 토글 (테스트/비교용) */}
+          <div className="flex items-center justify-between pt-2 border-t border-ark-border/50">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-ark-gray">제로샷 강제 모드</span>
+              <span className="text-[10px] text-ark-gray/50">(학습 모델 무시, 품질 비교용)</span>
+            </div>
+            <button
+              onClick={async () => {
+                try {
+                  const newState = !gptSovitsStatus?.force_zero_shot
+                  await ttsApi.setForceZeroShot(newState)
+                  checkGptSovitsStatus()
+                } catch (e) {
+                  console.error('제로샷 모드 토글 실패:', e)
+                }
+              }}
+              disabled={!gptSovitsStatus?.api_running}
+              className={`relative w-10 h-5 rounded-full transition-colors ${
+                !gptSovitsStatus?.api_running
+                  ? 'bg-ark-gray/20 cursor-not-allowed'
+                  : gptSovitsStatus?.force_zero_shot
+                    ? 'bg-amber-500'
+                    : 'bg-ark-gray/30'
+              }`}
+              title={!gptSovitsStatus?.api_running
+                ? 'GPT-SoVITS 연결 필요'
+                : gptSovitsStatus?.force_zero_shot
+                  ? '클릭하면 학습 모델 사용으로 전환'
+                  : '클릭하면 제로샷 모드로 전환'}
+            >
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                gptSovitsStatus?.force_zero_shot ? 'translate-x-5' : 'translate-x-0.5'
+              }`} />
             </button>
           </div>
           {testError && (

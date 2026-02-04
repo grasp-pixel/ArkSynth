@@ -44,6 +44,7 @@ class GPTSoVITSSynthesizer:
         self._model_loaded = False
         self._api_started = False
         self._synthesizing = False  # 합성 진행 중 플래그
+        self._force_zero_shot = False  # 제로샷 강제 모드 (테스트/비교용)
 
     async def ensure_api_running(self) -> bool:
         """API 서버가 실행 중인지 확인
@@ -77,6 +78,24 @@ class GPTSoVITSSynthesizer:
         """현재 음성 합성 진행 중 여부"""
         return self._synthesizing
 
+    @property
+    def force_zero_shot(self) -> bool:
+        """제로샷 강제 모드 여부 (학습 모델 무시)"""
+        return self._force_zero_shot
+
+    def set_force_zero_shot(self, enabled: bool) -> None:
+        """제로샷 강제 모드 설정
+
+        True로 설정하면 학습된 모델이 있어도 제로샷 모드로 동작합니다.
+        테스트/품질 비교용으로 사용합니다.
+        """
+        if self._force_zero_shot != enabled:
+            self._force_zero_shot = enabled
+            # 모드 변경 시 현재 로드된 모델 해제 (다음 합성 시 재로드)
+            self._loaded_model_id = None
+            self._model_loaded = False
+            logger.info(f"제로샷 강제 모드: {'활성화' if enabled else '비활성화'}")
+
     async def load_model(self, char_id: str) -> bool:
         """모델 로드
 
@@ -97,12 +116,15 @@ class GPTSoVITSSynthesizer:
                 return False
 
             # Zero-shot 모드인지 확인
+            # force_zero_shot이 활성화되면 학습 모델이 있어도 제로샷 사용
+            has_trained = self.model_manager.has_trained_model(char_id)
             is_zero_shot = self.model_manager.is_zero_shot_ready(char_id) and \
-                           not self.model_manager.has_trained_model(char_id)
+                           (not has_trained or self._force_zero_shot)
 
             if is_zero_shot:
                 # Zero-shot: 사전 학습된 모델 사용 (모델 로드 불필요)
-                logger.info(f"Zero-shot 모드: {char_id} (사전 학습 모델 사용)")
+                mode_reason = "강제 제로샷" if (has_trained and self._force_zero_shot) else "사전 학습 모델"
+                logger.info(f"Zero-shot 모드: {char_id} ({mode_reason} 사용)")
                 self._loaded_model_id = char_id
                 self._model_loaded = True
                 return True

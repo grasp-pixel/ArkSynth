@@ -214,6 +214,20 @@ export const ttsApi = {
     const res = await api.get<GptSovitsDiagnosis>('/api/tts/gpt-sovits/diagnose')
     return res.data
   },
+
+  // 제로샷 강제 모드 상태 조회
+  getForceZeroShot: async () => {
+    const res = await api.get<{ force_zero_shot: boolean }>('/api/tts/gpt-sovits/force-zero-shot')
+    return res.data
+  },
+
+  // 제로샷 강제 모드 토글
+  setForceZeroShot: async (enabled: boolean) => {
+    const res = await api.post<{ force_zero_shot: boolean; message: string }>(
+      `/api/tts/gpt-sovits/force-zero-shot?enabled=${enabled}`
+    )
+    return res.data
+  },
 }
 
 // GPT-SoVITS 진단 타입

@@ -120,7 +120,7 @@ interface AppState {
   renderError: string | null  // 렌더링 오류
 
   // GPT-SoVITS 관련
-  gptSovitsStatus: { installed: boolean; api_running: boolean; synthesizing?: boolean } | null
+  gptSovitsStatus: { installed: boolean; api_running: boolean; synthesizing?: boolean; force_zero_shot?: boolean } | null
   isStartingGptSovits: boolean
   gptSovitsError: string | null
 

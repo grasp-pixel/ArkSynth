@@ -291,6 +291,7 @@ async def gpt_sovits_status():
             "installed": synthesizer.config.is_gpt_sovits_installed,
             "api_running": api_running,
             "synthesizing": is_synthesizing,  # 합성 진행 중 상태 추가
+            "force_zero_shot": synthesizer.force_zero_shot,  # 제로샷 강제 모드
             "ready_characters": ready_chars,
             "ready_count": len(ready_chars),
         }
@@ -406,3 +407,30 @@ async def diagnose_gpt_sovits():
             "error": str(e),
             "error_type": type(e).__name__,
         }
+
+
+@router.get("/gpt-sovits/force-zero-shot")
+async def get_force_zero_shot():
+    """제로샷 강제 모드 상태 조회
+
+    True면 학습된 모델이 있어도 제로샷 모드로 동작합니다.
+    """
+    synthesizer = get_gpt_synthesizer()
+    return {
+        "force_zero_shot": synthesizer.force_zero_shot,
+    }
+
+
+@router.post("/gpt-sovits/force-zero-shot")
+async def set_force_zero_shot(enabled: bool = True):
+    """제로샷 강제 모드 토글
+
+    True로 설정하면 학습된 모델이 있어도 제로샷 모드로 동작합니다.
+    테스트/품질 비교용으로 사용합니다.
+    """
+    synthesizer = get_gpt_synthesizer()
+    synthesizer.set_force_zero_shot(enabled)
+    return {
+        "force_zero_shot": synthesizer.force_zero_shot,
+        "message": f"제로샷 강제 모드가 {'활성화' if enabled else '비활성화'}되었습니다",
+    }
