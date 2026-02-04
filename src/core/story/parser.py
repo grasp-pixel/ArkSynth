@@ -51,6 +51,7 @@ class StoryParser:
         # charslot 커맨드용 슬롯별 캐릭터 관리
         self._char_slots: dict[str, str] = {}  # slot -> char_id ("l", "r", "m")
         self._focused_slot: str | None = None  # 현재 포커스된 슬롯
+        self._using_charslot_mode: bool = False  # charslot 모드 활성화 여부
 
     def parse_file(self, filepath: str | Path) -> Episode:
         """스토리 파일을 파싱하여 Episode 객체 반환
@@ -78,6 +79,7 @@ class StoryParser:
         self._current_focus = 1
         self._char_slots = {}
         self._focused_slot = None
+        self._using_charslot_mode = False
         dialogue_index = 0
 
         for line_num, line in enumerate(lines, 1):
@@ -184,6 +186,9 @@ class StoryParser:
         # 파라미터 파싱
         params = self._parse_params(params_str)
 
+        # 커맨드 이름 저장 (charslot/Character 구분용)
+        params["_cmd_name"] = cmd_name
+
         # 커맨드 타입 결정
         cmd_type = self.COMMAND_TYPE_MAP.get(cmd_name, CommandType.UNKNOWN)
 
@@ -218,8 +223,14 @@ class StoryParser:
         1. Character: [Character(name="...", name2="...", focus=1)]
         2. charslot: [charslot(slot="l", name="...", focus="l")]
         """
-        # charslot 형식 감지 (slot 파라미터가 있으면 charslot)
-        if "slot" in params:
+        # 커맨드 이름 확인 (charslot/Character 구분)
+        cmd_name = params.pop("_cmd_name", "")
+
+        # charslot 형식 감지
+        if cmd_name == "charslot" or "slot" in params:
+            # charslot 모드 활성화 (한 번 활성화되면 에피소드 끝까지 유지)
+            self._using_charslot_mode = True
+
             slot = params.get("slot", "").strip()
             char_name = params.get("name", "").strip()
             focus = params.get("focus", "").strip()
@@ -269,11 +280,11 @@ class StoryParser:
         charslot 형식: focus="l"/"r"/"m" -> 해당 슬롯의 캐릭터
         Character 형식: focus=1/2 -> name/name2
         """
-        # charslot 형식 우선 (슬롯 데이터가 있으면)
-        if self._char_slots:
+        # charslot 모드면 항상 charslot 로직 사용 (빈 슬롯이어도 Character 모드로 폴백하지 않음)
+        if self._using_charslot_mode:
             if self._focused_slot and self._focused_slot in self._char_slots:
                 return self._char_slots[self._focused_slot]
-            # focus가 없으면 None (화자 불명)
+            # focus가 없거나 슬롯이 비어있으면 None (화면에 캐릭터 없음)
             return None
 
         # Character 형식 (기존 로직)
