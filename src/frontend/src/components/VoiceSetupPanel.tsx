@@ -1,12 +1,14 @@
-import { useEffect, useMemo } from 'react'
-import { useAppStore, AUTO_VOICE_FEMALE, AUTO_VOICE_MALE, simpleHash } from '../stores/appStore'
+import { useEffect, useMemo, useState } from 'react'
+import { useAppStore } from '../stores/appStore'
+import VoiceMappingModal from './VoiceMappingModal'
 
 export default function VoiceSetupPanel() {
+  const [isVoiceMappingModalOpen, setIsVoiceMappingModalOpen] = useState(false)
+
   const {
     episodeCharacters,
     episodeNarrationCount,
     isLoadingEpisodeCharacters,
-    voiceCharacters,
     loadVoiceCharacters,
     autoPlayOnMatch,
     toggleAutoPlay,
@@ -34,12 +36,18 @@ export default function VoiceSetupPanel() {
     cancelRender,
     deleteRenderCache,
     loadRenderStatus,
+    // 그룹 렌더링
+    isGroupRendering,
+    groupRenderProgress,
+    groupRenderError,
+    startGroupRender,
+    cancelGroupRender,
+    // 그룹 정보
+    selectedGroupId,
     // 음성 매핑
     speakerVoiceMap,
-    setSpeakerVoice,
     defaultFemaleVoices,
     defaultMaleVoices,
-    getSpeakerVoice,
     // 모델 타입 조회
     trainedModels,
     canFinetune,
@@ -111,10 +119,13 @@ export default function VoiceSetupPanel() {
     return episodeCharacters.filter(c => !c.has_voice && c.name)
   }, [episodeCharacters])
 
-  // 매핑 가능한 음성 목록 (학습 완료된 것만)
-  const availableVoices = useMemo(() => {
-    return voiceCharacters.filter(c => trainedCharIds.has(c.char_id))
-  }, [voiceCharacters, trainedCharIds])
+  // 매핑 완료된 캐릭터 수
+  const mappedCount = useMemo(() => {
+    return voicelessCharacters.filter(c => {
+      const key = c.char_id || `name:${c.name}`
+      return speakerVoiceMap[key] !== undefined
+    }).length
+  }, [voicelessCharacters, speakerVoiceMap])
 
   // 현재 에피소드 캐시 상태
   const episodeCacheStatus = useMemo(() => {
@@ -437,100 +448,53 @@ export default function VoiceSetupPanel() {
           )}
         </div>
 
-        {/* 음성 매핑 (현재 에피소드 - 음성 없는 캐릭터) */}
+        {/* 음성 매핑 (간소화) */}
         <div className="p-4 border-b border-ark-border">
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-medium text-ark-gray">음성 매핑</h4>
-              <span className="text-xs text-ark-gray">
-                현재 에피소드 {voicelessCharacters.length}명
-              </span>
-            </div>
-            {isLoadingEpisodeCharacters ? (
-              <div className="text-center text-ark-gray py-4 ark-pulse">로딩 중...</div>
-            ) : voicelessCharacters.length === 0 ? (
-              <div className="flex items-center gap-2 text-green-400">
-                <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
-                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-                </svg>
-                <span className="text-sm">모든 캐릭터가 음성을 보유하고 있습니다</span>
-              </div>
-            ) : (
-              <>
-                <p className="text-xs text-ark-gray/70 mb-3">
-                  * 자동: 이름 기반 분배 / 여성·남성: 성별 고정
-                </p>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {voicelessCharacters.map((char, idx) => {
-                    // char_id가 없으면 name을 키로 사용 (name: 접두사 추가)
-                    const mappingKey = char.char_id || `name:${char.name}`
-                    const manualMapping = speakerVoiceMap[mappingKey]
-                    const autoVoice = getSpeakerVoice(mappingKey, char.name)
-                    const autoVoiceName = autoVoice ? voiceCharacters.find(v => v.char_id === autoVoice)?.name : null
-
-                    // 자동 여성/남성 선택 시 실제 선택될 캐릭터 계산
-                    const hash = simpleHash(mappingKey)
-                    const autoFemaleVoice = defaultFemaleVoices.length > 0
-                      ? defaultFemaleVoices[hash % defaultFemaleVoices.length]
-                      : null
-                    const autoMaleVoice = defaultMaleVoices.length > 0
-                      ? defaultMaleVoices[hash % defaultMaleVoices.length]
-                      : null
-                    const autoFemaleName = autoFemaleVoice
-                      ? voiceCharacters.find(v => v.char_id === autoFemaleVoice)?.name
-                      : null
-                    const autoMaleName = autoMaleVoice
-                      ? voiceCharacters.find(v => v.char_id === autoMaleVoice)?.name
-                      : null
-
-                    return (
-                      <div
-                        key={`${mappingKey}-${idx}`}
-                        className="flex items-center gap-2 p-2 rounded bg-ark-black/30"
-                      >
-                        <span className="text-sm flex-shrink-0 w-28 truncate text-ark-white" title={char.name}>
-                          {char.name}
-                          {!char.char_id && <span className="text-ark-gray/50 text-xs ml-1">(이름)</span>}
-                        </span>
-                        <span className="text-xs text-ark-gray flex-shrink-0">→</span>
-                        <select
-                          value={manualMapping ?? ''}
-                          onChange={(e) => {
-                            setSpeakerVoice(mappingKey, e.target.value || null)
-                          }}
-                          className="ark-input text-xs flex-1 min-w-0"
-                        >
-                          <option value="">
-                            자동 {autoVoiceName ? `(${autoVoiceName})` : ''}
-                          </option>
-                          {defaultFemaleVoices.length > 0 && (
-                            <option value={AUTO_VOICE_FEMALE}>
-                              자동 (여성{autoFemaleName ? `-${autoFemaleName}` : ''})
-                            </option>
-                          )}
-                          {defaultMaleVoices.length > 0 && (
-                            <option value={AUTO_VOICE_MALE}>
-                              자동 (남성{autoMaleName ? `-${autoMaleName}` : ''})
-                            </option>
-                          )}
-                          <option disabled>──────────</option>
-                          {availableVoices.map(v => (
-                            <option key={v.char_id} value={v.char_id}>
-                              {v.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )
-                  })}
-                </div>
-              </>
-            )}
-            {defaultFemaleVoices.length === 0 && defaultMaleVoices.length === 0 && (
-              <p className="mt-2 text-xs text-ark-yellow">
-                * 기본 음성이 설정되지 않았습니다. 캐릭터 관리에서 설정하세요.
-              </p>
-            )}
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-medium text-ark-gray">음성 매핑</h4>
+            <span className="text-xs text-ark-gray">
+              {voicelessCharacters.length > 0
+                ? `${mappedCount}/${voicelessCharacters.length}명 매핑`
+                : '모두 보유'}
+            </span>
           </div>
+          {isLoadingEpisodeCharacters ? (
+            <div className="text-center text-ark-gray py-4 ark-pulse">로딩 중...</div>
+          ) : voicelessCharacters.length === 0 ? (
+            <div className="flex items-center gap-2 text-green-400">
+              <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+              </svg>
+              <span className="text-sm">모든 캐릭터가 음성을 보유하고 있습니다</span>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-ark-gray/70">
+                음성이 없는 캐릭터에 대체 음성을 지정합니다
+              </p>
+              <button
+                onClick={() => setIsVoiceMappingModalOpen(true)}
+                className="w-full ark-btn ark-btn-secondary text-sm flex items-center justify-center gap-2"
+              >
+                <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+                  <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                </svg>
+                음성 매핑 설정
+              </button>
+              {defaultFemaleVoices.length === 0 && defaultMaleVoices.length === 0 && (
+                <p className="text-xs text-ark-yellow">
+                  * 기본 음성이 설정되지 않았습니다. 캐릭터 관리에서 설정하세요.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* 음성 매핑 모달 */}
+        <VoiceMappingModal
+          isOpen={isVoiceMappingModalOpen}
+          onClose={() => setIsVoiceMappingModalOpen(false)}
+        />
 
         {/* 재생 설정 */}
         <div className="p-4 border-b border-ark-border">
@@ -694,6 +658,97 @@ export default function VoiceSetupPanel() {
               {!gptSovitsStatus?.api_running && (
                 <p className="text-xs text-ark-yellow">
                   * GPT-SoVITS를 먼저 시작하세요
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* 그룹 사전 더빙 */}
+        <div className="p-4 border-b border-ark-border">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-medium text-ark-gray">그룹 사전 더빙</h4>
+            {groupRenderProgress?.status === 'completed' && (
+              <span className="text-xs text-green-400">완료됨</span>
+            )}
+          </div>
+
+          {!selectedGroupId ? (
+            <p className="text-xs text-ark-gray/70">
+              스토리 그룹을 먼저 선택하세요
+            </p>
+          ) : isGroupRendering && groupRenderProgress ? (
+            // 그룹 렌더링 진행 중
+            <div className="space-y-3">
+              {/* 전체 진행률 */}
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-ark-white">
+                  에피소드 {groupRenderProgress.completed_episodes}/{groupRenderProgress.total_episodes}
+                </span>
+                <span className="text-ark-orange">
+                  {groupRenderProgress.overall_progress.toFixed(0)}%
+                </span>
+              </div>
+              <div className="w-full bg-ark-black rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-ark-orange h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${groupRenderProgress.overall_progress}%` }}
+                />
+              </div>
+
+              {/* 현재 에피소드 */}
+              {groupRenderProgress.current_episode_id && (
+                <div className="bg-ark-black/50 rounded p-2 border border-ark-border">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-ark-gray">현재:</span>
+                    <span className="text-ark-white truncate ml-2 flex-1 text-right">
+                      {groupRenderProgress.current_episode_id.split('/').pop()}
+                    </span>
+                  </div>
+                  <div className="w-full bg-ark-black rounded-full h-1 mt-2 overflow-hidden">
+                    <div
+                      className="bg-cyan-500 h-1 rounded-full transition-all duration-300"
+                      style={{ width: `${(groupRenderProgress.current_episode_progress || 0) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={cancelGroupRender}
+                className="w-full ark-btn text-sm text-red-400 hover:text-red-300 border-red-400/30"
+              >
+                그룹 렌더링 취소
+              </button>
+            </div>
+          ) : (
+            // 그룹 렌더링 시작 가능
+            <div className="space-y-2">
+              <p className="text-xs text-ark-gray/70">
+                선택된 그룹의 모든 에피소드를 한번에 렌더링합니다
+              </p>
+              <button
+                onClick={() => startGroupRender(selectedGroupId)}
+                disabled={!gptSovitsStatus?.api_running || isRendering}
+                className={`w-full ark-btn ark-btn-primary text-sm ${
+                  (!gptSovitsStatus?.api_running || isRendering) ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+              >
+                그룹 전체 사전 더빙
+              </button>
+              {!gptSovitsStatus?.api_running && (
+                <p className="text-xs text-ark-yellow">
+                  * GPT-SoVITS를 먼저 시작하세요
+                </p>
+              )}
+              {isRendering && (
+                <p className="text-xs text-ark-yellow">
+                  * 현재 에피소드 렌더링이 완료된 후 시작 가능합니다
+                </p>
+              )}
+              {groupRenderError && (
+                <p className="text-xs text-red-400">
+                  {groupRenderError}
                 </p>
               )}
             </div>

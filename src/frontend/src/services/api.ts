@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const API_BASE = 'http://127.0.0.1:8000'
+export const API_BASE = 'http://127.0.0.1:8000'
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -338,6 +338,180 @@ export const voiceApi = {
     )
     return res.data
   },
+
+  // === 캐릭터 성별/이미지 API ===
+
+  // 모든 캐릭터 성별 목록
+  listGenders: async () => {
+    const res = await api.get<{ total: number; genders: Record<string, string> }>('/api/voice/genders')
+    return res.data
+  },
+
+  // 캐릭터 성별 조회
+  getCharacterGender: async (charId: string) => {
+    const res = await api.get<{ char_id: string; gender: string | null }>(
+      `/api/voice/characters/${encodeURIComponent(charId)}/gender`
+    )
+    return res.data
+  },
+
+  // 캐릭터 이미지 URL 조회
+  getCharacterImages: async (charId: string) => {
+    const res = await api.get<{ char_id: string; avatar_url: string | null; portrait_url: string | null }>(
+      `/api/voice/characters/${encodeURIComponent(charId)}/images`
+    )
+    return res.data
+  },
+
+  // 캐시된 얼굴 아바타 URL 목록 (로컬 API URL)
+  listAvatars: async () => {
+    const res = await api.get<{ total: number; cached: number; avatars: Record<string, string> }>('/api/voice/avatars')
+    return res.data
+  },
+
+  // 캐시된 스탠딩 이미지 URL 목록 (로컬 API URL)
+  listPortraits: async () => {
+    const res = await api.get<{ total: number; cached: number; portraits: Record<string, string> }>('/api/voice/portraits')
+    return res.data
+  },
+
+  // === 이미지 캐싱 API ===
+
+  // 이미지 캐시 상태 조회
+  getAvatarCacheStatus: async () => {
+    const res = await api.get<{
+      total: number
+      avatars: { cached: number; path: string }
+      portraits: { cached: number; path: string }
+      cached: number  // 하위 호환성
+      cache_path: string  // 하위 호환성
+    }>('/api/voice/avatars/cache-status')
+    return res.data
+  },
+
+  // 캐시된 얼굴 아바타 이미지 URL (로컬)
+  getCachedAvatarUrl: (charId: string) => {
+    return `${API_BASE}/api/voice/avatars/${encodeURIComponent(charId)}`
+  },
+
+  // 캐시된 스탠딩 이미지 URL (로컬)
+  getCachedPortraitUrl: (charId: string) => {
+    return `${API_BASE}/api/voice/portraits/${encodeURIComponent(charId)}`
+  },
+
+  // 아바타 캐시 삭제
+  clearAvatarCache: async () => {
+    const res = await api.delete<{ deleted: number; message: string }>('/api/voice/avatars/cache')
+    return res.data
+  },
+
+  // 이미지 캐시 삭제 (avatar/portrait/both)
+  clearImageCache: async (imageType: 'avatar' | 'portrait' | 'both' = 'both') => {
+    const res = await api.delete<{ deleted: number; message: string }>(
+      `/api/voice/images/cache?image_type=${imageType}`
+    )
+    return res.data
+  },
+}
+
+// 이미지 다운로드 진행률 타입
+export interface AvatarDownloadProgress {
+  status: 'starting' | 'downloading' | 'completed' | 'error'
+  total: number
+  completed: number
+  current?: string
+  error?: string
+}
+
+// 이미지 다운로드 SSE 스트림 (avatar + portrait)
+export function createImageDownloadStream(
+  options: {
+    charIds?: string[]
+    imageType?: 'avatar' | 'portrait' | 'both'
+    onProgress?: (progress: AvatarDownloadProgress) => void
+    onComplete?: (total: number) => void
+    onError?: (error: string) => void
+  } = {}
+): { close: () => void } {
+  const { charIds, imageType = 'both', onProgress, onComplete, onError } = options
+
+  const controller = new AbortController()
+
+  const fetchStream = async () => {
+    try {
+      const url = new URL(`${API_BASE}/api/voice/images/download`)
+      url.searchParams.set('image_type', imageType)
+
+      const res = await fetch(url.toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: charIds ? JSON.stringify(charIds) : null,
+        signal: controller.signal,
+      })
+
+      const reader = res.body?.getReader()
+      if (!reader) {
+        onError?.('스트림 읽기 실패')
+        return
+      }
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6)) as AvatarDownloadProgress
+              onProgress?.(data)
+
+              if (data.status === 'completed') {
+                onComplete?.(data.completed)
+              } else if (data.status === 'error') {
+                onError?.(data.error || '다운로드 실패')
+              }
+            } catch {
+              // JSON 파싱 실패 무시
+            }
+          }
+        }
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name !== 'AbortError') {
+        onError?.(err.message)
+      }
+    }
+  }
+
+  fetchStream()
+
+  return {
+    close: () => controller.abort()
+  }
+}
+
+// 하위 호환성
+export function createAvatarDownloadStream(
+  charIds?: string[],
+  options: {
+    onProgress?: (progress: AvatarDownloadProgress) => void
+    onComplete?: (total: number) => void
+    onError?: (error: string) => void
+  } = {}
+): { close: () => void } {
+  return createImageDownloadStream({
+    charIds,
+    imageType: 'both',  // 둘 다 다운로드
+    ...options,
+  })
 }
 
 // OCR 관련 타입
@@ -705,6 +879,23 @@ export interface RenderStatusResponse {
   current_progress: RenderProgress | null
 }
 
+export interface GroupRenderProgress {
+  group_id: string
+  status: 'idle' | 'rendering' | 'completed' | 'cancelled' | 'failed'
+  total_episodes: number
+  completed_episodes: number
+  current_episode_id: string | null
+  current_episode_progress: number  // 0~1
+  overall_progress: number  // 0~100
+  error: string | null
+}
+
+export interface GroupRenderStatusResponse {
+  is_group_rendering: boolean
+  current_group_id: string | null
+  group_progress: GroupRenderProgress | null
+}
+
 export interface CacheInfo {
   episode_id: string
   total_dialogues: number
@@ -785,6 +976,44 @@ export const renderApi = {
     )
     return res.data
   },
+
+  // === 그룹 렌더링 ===
+
+  // 그룹 렌더링 상태
+  getGroupStatus: async () => {
+    const res = await api.get<GroupRenderStatusResponse>('/api/render/group-status')
+    return res.data
+  },
+
+  // 그룹 렌더링 시작
+  startGroupRender: async (
+    groupId: string,
+    language: string = 'ko',
+    defaultCharId?: string,
+    narratorCharId?: string,
+    speakerVoiceMap?: Record<string, string>,
+    force: boolean = false
+  ) => {
+    const res = await api.post<GroupRenderProgress & { message: string }>(
+      `/api/render/start-group/${encodeURIComponent(groupId)}`,
+      {
+        language,
+        default_char_id: defaultCharId,
+        narrator_char_id: narratorCharId,
+        speaker_voice_map: speakerVoiceMap,
+        force
+      }
+    )
+    return res.data
+  },
+
+  // 그룹 렌더링 취소
+  cancelGroupRender: async () => {
+    const res = await api.delete<{ cancelled: boolean; group_id: string | null }>(
+      '/api/render/cancel-group'
+    )
+    return res.data
+  },
 }
 
 // 렌더링 진행률 SSE 스트림
@@ -818,6 +1047,46 @@ export function createRenderStream(
 
   eventSource.onerror = () => {
     onError?.('Render stream connection failed')
+  }
+
+  return {
+    close: () => {
+      eventSource.close()
+    }
+  }
+}
+
+// 그룹 렌더링 진행률 SSE 스트림
+export function createGroupRenderStream(
+  groupId: string,
+  options: {
+    onProgress?: (progress: GroupRenderProgress) => void
+    onComplete?: (progress: GroupRenderProgress) => void
+    onError?: (error: string) => void
+  } = {}
+): { close: () => void } {
+  const { onProgress, onComplete, onError } = options
+
+  const eventSource = new EventSource(
+    `${API_BASE}/api/render/stream-group/${encodeURIComponent(groupId)}`
+  )
+
+  eventSource.addEventListener('progress', (event) => {
+    const progress = JSON.parse(event.data) as GroupRenderProgress
+    onProgress?.(progress)
+  })
+
+  eventSource.addEventListener('complete', (event) => {
+    const progress = JSON.parse(event.data) as GroupRenderProgress
+    onComplete?.(progress)
+  })
+
+  eventSource.addEventListener('ping', () => {
+    // 킵얼라이브, 무시
+  })
+
+  eventSource.onerror = () => {
+    onError?.('Group render stream connection failed')
   }
 
   return {

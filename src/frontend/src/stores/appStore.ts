@@ -12,6 +12,7 @@ import {
   createDialogueStream,
   createTrainingStream,
   createRenderStream,
+  createGroupRenderStream,
   type EpisodeDetail,
   type DialogueInfo,
   type EpisodeSummary,
@@ -27,6 +28,7 @@ import {
   type TrainingJob,
   type TrainedModel,
   type RenderProgress,
+  type GroupRenderProgress,
   type VoiceCharacter,
 } from '../services/api'
 
@@ -118,6 +120,11 @@ interface AppState {
   renderProgress: RenderProgress | null  // 현재 렌더링 진행률
   cachedEpisodes: string[]  // 캐시된 에피소드 목록
   renderError: string | null  // 렌더링 오류
+
+  // 그룹 렌더링 관련
+  isGroupRendering: boolean  // 그룹 렌더링 진행 중
+  groupRenderProgress: GroupRenderProgress | null  // 그룹 렌더링 진행률
+  groupRenderError: string | null  // 그룹 렌더링 오류
 
   // GPT-SoVITS 관련
   gptSovitsStatus: { installed: boolean; api_running: boolean; synthesizing?: boolean; force_zero_shot?: boolean } | null
@@ -227,6 +234,12 @@ interface AppState {
   unsubscribeFromRenderProgress: () => void
   getRenderedAudioUrl: (index: number) => string | null
   isDialogueRendered: (index: number) => boolean
+
+  // 그룹 렌더링
+  startGroupRender: (groupId: string, force?: boolean) => Promise<void>
+  cancelGroupRender: () => Promise<void>
+  subscribeToGroupRenderProgress: (groupId: string) => void
+  unsubscribeFromGroupRenderProgress: () => void
 
   // GPT-SoVITS
   checkGptSovitsStatus: () => Promise<void>
@@ -462,6 +475,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   renderProgress: null,
   cachedEpisodes: [],
   renderError: null,
+
+  // 그룹 렌더링 초기 상태
+  isGroupRendering: false,
+  groupRenderProgress: null,
+  groupRenderError: null,
 
   // GPT-SoVITS 초기 상태
   gptSovitsStatus: null,
@@ -2015,6 +2033,117 @@ export const useAppStore = create<AppState>((set, get) => ({
     return index < renderProgress.completed
   },
 
+  // === 그룹 렌더링 ===
+
+  // 그룹 렌더링 시작
+  startGroupRender: async (groupId: string, force: boolean = false) => {
+    const { defaultCharId, narratorCharId, speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices } = get()
+
+    // 특수 값들을 실제 char_id로 해석
+    const resolvedVoiceMap: Record<string, string> = {}
+    for (const [speakerId, voiceId] of Object.entries(speakerVoiceMap)) {
+      if (voiceId === AUTO_VOICE_FEMALE) {
+        if (defaultFemaleVoices.length > 0) {
+          const hash = simpleHash(speakerId)
+          resolvedVoiceMap[speakerId] = defaultFemaleVoices[hash % defaultFemaleVoices.length]
+        }
+      } else if (voiceId === AUTO_VOICE_MALE) {
+        if (defaultMaleVoices.length > 0) {
+          const hash = simpleHash(speakerId)
+          resolvedVoiceMap[speakerId] = defaultMaleVoices[hash % defaultMaleVoices.length]
+        }
+      } else {
+        resolvedVoiceMap[speakerId] = voiceId
+      }
+    }
+
+    try {
+      set({ groupRenderError: null })
+
+      console.log('[startGroupRender] 그룹 렌더링 시작 요청:', {
+        groupId,
+        defaultCharId,
+        narratorCharId,
+        speakerVoiceMap: Object.keys(resolvedVoiceMap).length,
+        force,
+      })
+
+      const progress = await renderApi.startGroupRender(
+        groupId,
+        'ko',
+        defaultCharId || undefined,
+        narratorCharId || undefined,
+        Object.keys(resolvedVoiceMap).length > 0 ? resolvedVoiceMap : undefined,
+        force
+      )
+
+      set({
+        isGroupRendering: progress.status === 'rendering',
+        groupRenderProgress: progress,
+      })
+
+      // 렌더링 진행 중이면 구독 시작
+      if (progress.status === 'rendering') {
+        get().subscribeToGroupRenderProgress(groupId)
+      }
+    } catch (error: any) {
+      console.error('Failed to start group render:', error)
+      const errorMsg = error?.response?.data?.detail || '그룹 렌더링 시작 실패'
+      set({ groupRenderError: errorMsg })
+    }
+  },
+
+  // 그룹 렌더링 취소
+  cancelGroupRender: async () => {
+    try {
+      await renderApi.cancelGroupRender()
+      set({
+        isGroupRendering: false,
+        groupRenderProgress: null,
+      })
+      get().unsubscribeFromGroupRenderProgress()
+    } catch (error) {
+      console.error('Failed to cancel group render:', error)
+      set({ groupRenderError: '그룹 렌더링 취소 실패' })
+    }
+  },
+
+  // 그룹 렌더링 진행 상황 구독
+  subscribeToGroupRenderProgress: (groupId: string) => {
+    if (groupRenderStream) {
+      groupRenderStream.close()
+    }
+
+    groupRenderStream = createGroupRenderStream(groupId, {
+      onProgress: (progress) => {
+        set({
+          groupRenderProgress: progress,
+          isGroupRendering: progress.status === 'rendering',
+        })
+      },
+      onComplete: (progress) => {
+        set({
+          groupRenderProgress: progress,
+          isGroupRendering: false,
+        })
+        // 캐시 목록 갱신
+        get().loadRenderStatus()
+      },
+      onError: (error) => {
+        console.error('Group render stream error:', error)
+        set({ groupRenderError: error })
+      },
+    })
+  },
+
+  // 그룹 렌더링 진행 상황 구독 해제
+  unsubscribeFromGroupRenderProgress: () => {
+    if (groupRenderStream) {
+      groupRenderStream.close()
+      groupRenderStream = null
+    }
+  },
+
   // === GPT-SoVITS ===
 
   // GPT-SoVITS 상태 확인
@@ -2113,3 +2242,6 @@ let trainingStream: { close: () => void } | null = null
 
 // 렌더링 스트림 참조
 let renderStream: { close: () => void } | null = null
+
+// 그룹 렌더링 스트림 참조
+let groupRenderStream: { close: () => void } | null = null

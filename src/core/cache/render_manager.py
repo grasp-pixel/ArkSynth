@@ -59,6 +59,32 @@ class RenderJob:
     priority: int = 0
 
 
+@dataclass
+class GroupRenderProgress:
+    """그룹 렌더링 진행 상태"""
+
+    group_id: str
+    status: RenderStatus
+    total_episodes: int
+    completed_episodes: int
+    current_episode_id: str | None = None
+    current_episode_progress: float = 0.0  # 현재 에피소드 진행률 (0~1)
+    error: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+
+    @property
+    def overall_progress(self) -> float:
+        """전체 진행률 (0~100)"""
+        if self.total_episodes == 0:
+            return 0.0
+        base = (self.completed_episodes / self.total_episodes) * 100
+        if self.current_episode_id:
+            episode_contrib = (1 / self.total_episodes) * self.current_episode_progress * 100
+            return base + episode_contrib
+        return base
+
+
 class RenderManager:
     """백그라운드 렌더링 관리자
 
@@ -73,13 +99,27 @@ class RenderManager:
         self._task: asyncio.Task | None = None
         self._progress_callbacks: list[Callable[[RenderProgress], Any]] = []
 
+        # 그룹 렌더링 상태
+        self._group_progress: GroupRenderProgress | None = None
+        self._group_cancel_requested = False
+        self._group_task: asyncio.Task | None = None
+        self._group_progress_callbacks: list[Callable[[GroupRenderProgress], Any]] = []
+
     @property
     def is_rendering(self) -> bool:
         return self._task is not None and not self._task.done()
 
     @property
+    def is_group_rendering(self) -> bool:
+        return self._group_task is not None and not self._group_task.done()
+
+    @property
     def current_episode_id(self) -> str | None:
         return self._current_job.episode_id if self._current_job else None
+
+    @property
+    def current_group_id(self) -> str | None:
+        return self._group_progress.group_id if self._group_progress else None
 
     def get_progress(self, episode_id: str | None = None) -> RenderProgress | None:
         """진행 상태 조회"""
@@ -384,6 +424,190 @@ class RenderManager:
 
         finally:
             self._current_job = None
+
+    # === 그룹 렌더링 ===
+
+    def get_group_progress(self) -> GroupRenderProgress | None:
+        """그룹 렌더링 진행 상태 조회"""
+        return self._group_progress
+
+    def add_group_progress_callback(self, callback: Callable[[GroupRenderProgress], Any]):
+        """그룹 진행률 콜백 등록"""
+        self._group_progress_callbacks.append(callback)
+
+    def remove_group_progress_callback(self, callback: Callable[[GroupRenderProgress], Any]):
+        """그룹 진행률 콜백 제거"""
+        if callback in self._group_progress_callbacks:
+            self._group_progress_callbacks.remove(callback)
+
+    async def _notify_group_progress(self):
+        """그룹 진행률 콜백 호출"""
+        if self._group_progress:
+            for callback in self._group_progress_callbacks:
+                try:
+                    result = callback(self._group_progress)
+                    if asyncio.iscoroutine(result):
+                        await result
+                except Exception as e:
+                    logger.error(f"그룹 진행률 콜백 오류: {e}")
+
+    async def start_group_render(
+        self,
+        group_id: str,
+        episode_ids: list[str],
+        get_dialogues: Callable[[str], list[dict]],
+        language: str = "ko",
+        default_char_id: str | None = None,
+        narrator_char_id: str | None = None,
+        speaker_voice_map: dict[str, str] | None = None,
+        force: bool = False,
+    ) -> GroupRenderProgress:
+        """그룹 전체 렌더링 시작
+
+        Args:
+            group_id: 그룹 ID
+            episode_ids: 에피소드 ID 목록
+            get_dialogues: 에피소드 ID로 대사 목록을 가져오는 함수
+            language: 언어 코드
+            default_char_id: 모델 없는 캐릭터용 기본 음성
+            narrator_char_id: 나레이션용 캐릭터
+            speaker_voice_map: 화자별 음성 매핑
+            force: 기존 캐시 무시하고 다시 렌더링
+
+        Returns:
+            GroupRenderProgress
+        """
+        if self.is_group_rendering:
+            raise ValueError(f"이미 그룹 렌더링 중: {self.current_group_id}")
+
+        if self.is_rendering:
+            raise ValueError(f"에피소드 렌더링 중: {self.current_episode_id}")
+
+        # 진행 상태 초기화
+        self._group_progress = GroupRenderProgress(
+            group_id=group_id,
+            status=RenderStatus.RENDERING,
+            total_episodes=len(episode_ids),
+            completed_episodes=0,
+            started_at=datetime.now().isoformat(),
+        )
+
+        self._group_cancel_requested = False
+
+        # 백그라운드 태스크 시작
+        self._group_task = asyncio.create_task(
+            self._group_render_task(
+                episode_ids=episode_ids,
+                get_dialogues=get_dialogues,
+                language=language,
+                default_char_id=default_char_id,
+                narrator_char_id=narrator_char_id,
+                speaker_voice_map=speaker_voice_map or {},
+                force=force,
+            )
+        )
+
+        await self._notify_group_progress()
+        return self._group_progress
+
+    async def cancel_group_render(self) -> bool:
+        """그룹 렌더링 취소"""
+        if not self.is_group_rendering:
+            return False
+
+        self._group_cancel_requested = True
+        # 현재 진행 중인 에피소드 렌더링도 취소
+        if self.is_rendering:
+            await self.cancel_render()
+
+        logger.info(f"그룹 렌더링 취소 요청: {self.current_group_id}")
+        return True
+
+    async def _group_render_task(
+        self,
+        episode_ids: list[str],
+        get_dialogues: Callable[[str], list[dict]],
+        language: str,
+        default_char_id: str | None,
+        narrator_char_id: str | None,
+        speaker_voice_map: dict[str, str],
+        force: bool,
+    ):
+        """그룹 렌더링 백그라운드 태스크"""
+        if not self._group_progress:
+            return
+
+        try:
+            for i, episode_id in enumerate(episode_ids):
+                if self._group_cancel_requested:
+                    self._group_progress.status = RenderStatus.CANCELLED
+                    self._group_progress.finished_at = datetime.now().isoformat()
+                    await self._notify_group_progress()
+                    break
+
+                self._group_progress.current_episode_id = episode_id
+                self._group_progress.current_episode_progress = 0.0
+                await self._notify_group_progress()
+
+                # 대사 목록 가져오기
+                dialogues = get_dialogues(episode_id)
+                if not dialogues:
+                    logger.warning(f"대사 없음, 스킵: {episode_id}")
+                    self._group_progress.completed_episodes += 1
+                    continue
+
+                # 에피소드 렌더링 (에피소드 진행률 콜백 등록)
+                def episode_progress_callback(progress: RenderProgress):
+                    if self._group_progress:
+                        self._group_progress.current_episode_progress = (
+                            progress.completed / progress.total if progress.total > 0 else 0
+                        )
+                        # 동기 콜백 호출 (이미 async context 안이므로)
+                        asyncio.create_task(self._notify_group_progress())
+
+                self.add_progress_callback(episode_progress_callback)
+
+                try:
+                    await self.start_render(
+                        episode_id=episode_id,
+                        dialogues=dialogues,
+                        language=language,
+                        default_char_id=default_char_id,
+                        narrator_char_id=narrator_char_id,
+                        speaker_voice_map=speaker_voice_map,
+                        force=force,
+                    )
+
+                    # 에피소드 렌더링 완료 대기
+                    if self._task:
+                        await self._task
+
+                finally:
+                    self.remove_progress_callback(episode_progress_callback)
+
+                # 취소 확인
+                if self._group_cancel_requested:
+                    break
+
+                self._group_progress.completed_episodes += 1
+                self._group_progress.current_episode_progress = 1.0
+                await self._notify_group_progress()
+
+            # 완료 처리
+            if not self._group_cancel_requested:
+                self._group_progress.status = RenderStatus.COMPLETED
+                self._group_progress.current_episode_id = None
+                self._group_progress.finished_at = datetime.now().isoformat()
+                await self._notify_group_progress()
+                logger.info(f"그룹 렌더링 완료: {self._group_progress.group_id}")
+
+        except Exception as e:
+            logger.error(f"그룹 렌더링 실패: {e}")
+            if self._group_progress:
+                self._group_progress.status = RenderStatus.FAILED
+                self._group_progress.error = str(e)
+                self._group_progress.finished_at = datetime.now().isoformat()
+                await self._notify_group_progress()
 
 
 # 싱글톤 인스턴스

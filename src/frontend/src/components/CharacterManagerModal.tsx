@@ -1,8 +1,8 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useAppStore } from '../stores/appStore'
-import { ttsApi } from '../services/api'
+import { ttsApi, voiceApi, createAvatarDownloadStream, type AvatarDownloadProgress, API_BASE } from '../services/api'
 
-type SortBy = 'ready' | 'files' | 'name'
+type SortBy = 'dialogues' | 'files' | 'name' | 'id'
 
 interface CharacterManagerModalProps {
   isOpen: boolean
@@ -30,7 +30,6 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
     clearAllTrainedModels,
     getModelType,
     getSegmentCount,
-    canFinetune,
     gptSovitsStatus,
     checkGptSovitsStatus,
     // 별칭 관련
@@ -42,7 +41,9 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
 
   // 로컬 상태
   const [searchQuery, setSearchQuery] = useState('')
-  const [sortBy, setSortBy] = useState<SortBy>('ready')
+  const [sortBy, setSortBy] = useState<SortBy>('dialogues')
+  const [readyFirst, setReadyFirst] = useState(true)
+  const [defaultFirst, setDefaultFirst] = useState(true)  // 기본 음성/나레이터 우선
 
   // 테스트 관련 상태
   const [testCharId, setTestCharId] = useState<string | null>(null)
@@ -56,12 +57,67 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
   const [newAliasInput, setNewAliasInput] = useState('')
   const [aliasError, setAliasError] = useState<string | null>(null)
 
+  // 성별/이미지 데이터
+  const [genders, setGenders] = useState<Record<string, string>>({})
+  const [avatars, setAvatars] = useState<Record<string, string>>({})  // 얼굴 아바타
+  const [portraits, setPortraits] = useState<Record<string, string>>({})  // 스탠딩 이미지
+
+  // 이미지 캐시 상태
+  const [imageCacheStatus, setImageCacheStatus] = useState<{
+    total: number
+    avatars: { cached: number }
+    portraits: { cached: number }
+  } | null>(null)
+  const [isDownloadingImages, setIsDownloadingImages] = useState(false)
+  const [imageDownloadProgress, setImageDownloadProgress] = useState<AvatarDownloadProgress | null>(null)
+  const imageDownloadRef = useRef<{ close: () => void } | null>(null)
+
+  // 이미지 캐시 상태 로드 함수
+  const loadImageCacheStatus = async () => {
+    try {
+      const status = await voiceApi.getAvatarCacheStatus()
+      setImageCacheStatus({
+        total: status.total,
+        avatars: status.avatars,
+        portraits: status.portraits,
+      })
+    } catch {
+      // 무시
+    }
+  }
+
+  // 이미지 목록 로드 함수
+  const loadImages = async () => {
+    const [avatarRes, portraitRes] = await Promise.all([
+      voiceApi.listAvatars().catch(() => ({ avatars: {} })),
+      voiceApi.listPortraits().catch(() => ({ portraits: {} })),
+    ])
+    // 상대 URL에 API_BASE 붙이기
+    const avatarsWithBase: Record<string, string> = {}
+    for (const [charId, url] of Object.entries(avatarRes.avatars)) {
+      avatarsWithBase[charId] = `${API_BASE}${url}`
+    }
+    const portraitsWithBase: Record<string, string> = {}
+    for (const [charId, url] of Object.entries(portraitRes.portraits)) {
+      portraitsWithBase[charId] = `${API_BASE}${url}`
+    }
+    setAvatars(avatarsWithBase)
+    setPortraits(portraitsWithBase)
+  }
+
   // 모달 열릴 때 데이터 로드
   useEffect(() => {
     if (isOpen) {
       loadVoiceCharacters()
       loadTrainedModels()
       loadCharacterAliases()
+      loadImageCacheStatus()
+      loadImages()
+
+      // 성별 데이터 로드
+      voiceApi.listGenders().catch(() => ({ genders: {} })).then((res) => {
+        setGenders(res.genders)
+      })
     }
     return () => {
       // 모달 닫힐 때 테스트 오디오 정리
@@ -73,6 +129,11 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
       setEditingAliasCharId(null)
       setNewAliasInput('')
       setAliasError(null)
+      // 이미지 다운로드 스트림 정리
+      if (imageDownloadRef.current) {
+        imageDownloadRef.current.close()
+        imageDownloadRef.current = null
+      }
     }
   }, [isOpen, loadVoiceCharacters, loadTrainedModels, loadCharacterAliases])
 
@@ -82,33 +143,58 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
 
     // 검색 필터
     if (searchQuery) {
-      result = result.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      const query = searchQuery.toLowerCase()
+      result = result.filter(c =>
+        c.name.toLowerCase().includes(query) ||
+        c.char_id.toLowerCase().includes(query)
+      )
     }
 
-    // 정렬
-    switch (sortBy) {
-      case 'ready':
-        result.sort((a, b) => {
-          // 1순위: 기본 캐릭터 (여성/남성)
-          const aIsDefault = defaultFemaleVoices.includes(a.char_id) || defaultMaleVoices.includes(a.char_id) ? 1 : 0
-          const bIsDefault = defaultFemaleVoices.includes(b.char_id) || defaultMaleVoices.includes(b.char_id) ? 1 : 0
-          if (aIsDefault !== bIsDefault) return bIsDefault - aIsDefault
-          // 2순위: 준비됨
-          const aReady = trainedCharIds.has(a.char_id) ? 1 : 0
-          const bReady = trainedCharIds.has(b.char_id) ? 1 : 0
-          return bReady - aReady || b.file_count - a.file_count
-        })
-        break
-      case 'files':
-        result.sort((a, b) => b.file_count - a.file_count)
-        break
-      case 'name':
-        result.sort((a, b) => a.name.localeCompare(b.name, 'ko'))
-        break
+    // 기본 정렬
+    const sortFn = (a: typeof result[0], b: typeof result[0]) => {
+      switch (sortBy) {
+        case 'dialogues':
+          return (b.dialogue_count || 0) - (a.dialogue_count || 0)
+        case 'files':
+          return b.file_count - a.file_count
+        case 'name':
+          return a.name.localeCompare(b.name, 'ko')
+        case 'id':
+          // char_XXX_name 형식에서 숫자 추출하여 정렬 (출시순에 가까움)
+          const aNum = parseInt(a.char_id.match(/char_(\d+)/)?.[1] || '0')
+          const bNum = parseInt(b.char_id.match(/char_(\d+)/)?.[1] || '0')
+          return bNum - aNum  // 최신순
+        default:
+          return 0
+      }
     }
+
+    result.sort((a, b) => {
+      // 기본 음성/나레이터 우선 토글이 켜져 있으면 먼저
+      if (defaultFirst) {
+        const aDefault = (
+          defaultFemaleVoices.includes(a.char_id) ||
+          defaultMaleVoices.includes(a.char_id) ||
+          narratorCharId === a.char_id
+        ) ? 1 : 0
+        const bDefault = (
+          defaultFemaleVoices.includes(b.char_id) ||
+          defaultMaleVoices.includes(b.char_id) ||
+          narratorCharId === b.char_id
+        ) ? 1 : 0
+        if (aDefault !== bDefault) return bDefault - aDefault
+      }
+      // 준비됨 우선 토글이 켜져 있으면 준비된 캐릭터 먼저
+      if (readyFirst) {
+        const aReady = trainedCharIds.has(a.char_id) ? 1 : 0
+        const bReady = trainedCharIds.has(b.char_id) ? 1 : 0
+        if (aReady !== bReady) return bReady - aReady
+      }
+      return sortFn(a, b)
+    })
 
     return result
-  }, [voiceCharacters, trainedCharIds, searchQuery, sortBy, defaultFemaleVoices, defaultMaleVoices])
+  }, [voiceCharacters, trainedCharIds, searchQuery, sortBy, readyFirst, defaultFirst, defaultFemaleVoices, defaultMaleVoices, narratorCharId])
 
   // 통계
   const stats = useMemo(() => ({
@@ -246,6 +332,47 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
     }
   }
 
+  // 이미지 다운로드 시작 (avatar + portrait 둘 다)
+  const handleStartImageDownload = () => {
+    if (isDownloadingImages) return
+
+    setIsDownloadingImages(true)
+    setImageDownloadProgress({ status: 'starting', total: 0, completed: 0 })
+
+    imageDownloadRef.current = createAvatarDownloadStream(undefined, {
+      onProgress: (progress) => {
+        setImageDownloadProgress(progress)
+      },
+      onComplete: () => {
+        setIsDownloadingImages(false)
+        setImageDownloadProgress(null)
+        loadImageCacheStatus()
+        loadImages()
+      },
+      onError: (error) => {
+        console.error('[Image] 다운로드 실패:', error)
+        setIsDownloadingImages(false)
+        setImageDownloadProgress({ status: 'error', total: 0, completed: 0, error })
+      },
+    })
+  }
+
+  // 이미지 캐시 삭제
+  const handleClearImageCache = async () => {
+    try {
+      await voiceApi.clearImageCache('both')
+      setImageCacheStatus(prev => prev ? {
+        ...prev,
+        avatars: { cached: 0 },
+        portraits: { cached: 0 },
+      } : null)
+      setAvatars({})
+      setPortraits({})
+    } catch (error) {
+      console.error('[Image] 캐시 삭제 실패:', error)
+    }
+  }
+
   if (!isOpen) return null
 
   return (
@@ -254,7 +381,7 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
 
       {/* 모달 */}
-      <div className="relative bg-ark-dark border border-ark-border rounded-lg shadow-2xl w-[900px] max-h-[85vh] flex flex-col">
+      <div className="relative bg-ark-dark border border-ark-border rounded-lg shadow-2xl w-[1100px] max-h-[85vh] flex flex-col">
         {/* 헤더 */}
         <div className="flex items-center justify-between p-4 border-b border-ark-border">
           <h2 className="text-lg font-bold text-ark-white flex items-center gap-2">
@@ -288,11 +415,30 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
               onChange={(e) => setSortBy(e.target.value as SortBy)}
               className="ark-input text-sm"
             >
-              <option value="ready">준비됨 우선</option>
+              <option value="dialogues">대사 수</option>
               <option value="files">파일 수</option>
+              <option value="id">출시순</option>
               <option value="name">이름순</option>
             </select>
           </div>
+          <label className="flex items-center gap-1.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={defaultFirst}
+              onChange={(e) => setDefaultFirst(e.target.checked)}
+              className="w-3.5 h-3.5 rounded border-ark-border bg-ark-black text-ark-orange focus:ring-ark-orange"
+            />
+            <span className="text-xs text-ark-gray">기본 우선</span>
+          </label>
+          <label className="flex items-center gap-1.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={readyFirst}
+              onChange={(e) => setReadyFirst(e.target.checked)}
+              className="w-3.5 h-3.5 rounded border-ark-border bg-ark-black text-ark-orange focus:ring-ark-orange"
+            />
+            <span className="text-xs text-ark-gray">준비됨 우선</span>
+          </label>
           <div className="flex items-center gap-3">
             <span className="text-sm text-ark-gray">
               {stats.ready}/{stats.total} 준비됨
@@ -389,6 +535,57 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
           <p className="text-[10px] text-ark-gray/50 mt-1">
             * 기본(여성): 일반 캐릭터 / 기본(남성): "남자", "남성", "소년", "청년" 포함 캐릭터
           </p>
+
+          {/* 이미지 캐시 관리 */}
+          <div className="flex items-center justify-between pt-2 mt-2 border-t border-ark-border/30">
+            <div className="flex items-center gap-3 text-xs text-ark-gray">
+              <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+                <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+              </svg>
+              <span>
+                얼굴: {imageCacheStatus ? `${imageCacheStatus.avatars.cached}/${imageCacheStatus.total}` : '...'}
+              </span>
+              <span>
+                스탠딩: {imageCacheStatus ? `${imageCacheStatus.portraits.cached}/${imageCacheStatus.total}` : '...'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {isDownloadingImages ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-24 h-2 bg-ark-border rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-ark-orange transition-all"
+                      style={{
+                        width: imageDownloadProgress?.total
+                          ? `${(imageDownloadProgress.completed / imageDownloadProgress.total) * 100}%`
+                          : '0%'
+                      }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-ark-gray">
+                    {imageDownloadProgress?.completed || 0}/{imageDownloadProgress?.total || 0}
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <button
+                    onClick={handleStartImageDownload}
+                    className="text-[10px] px-2 py-1 rounded bg-ark-orange/20 text-ark-orange hover:bg-ark-orange/30"
+                  >
+                    다운로드
+                  </button>
+                  {imageCacheStatus && (imageCacheStatus.avatars.cached > 0 || imageCacheStatus.portraits.cached > 0) && (
+                    <button
+                      onClick={handleClearImageCache}
+                      className="text-[10px] px-2 py-1 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                    >
+                      캐시 삭제
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* 캐릭터 그리드 */}
@@ -400,7 +597,7 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
               {searchQuery ? '검색 결과가 없습니다' : '캐릭터가 없습니다'}
             </div>
           ) : (
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-3 gap-4">
               {sortedCharacters.map((char) => {
                 const isReady = trainedCharIds.has(char.char_id)
                 const isFemaleDefault = defaultFemaleVoices.includes(char.char_id)
@@ -410,278 +607,341 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
                 const aliases = characterAliases[char.char_id] || []
                 const isEditingAlias = editingAliasCharId === char.char_id
 
+                const charGender = genders[char.char_id]
+                const charAvatar = avatars[char.char_id]  // 얼굴 (원형 초상화용)
+                const charPortrait = portraits[char.char_id]  // 스탠딩 (배경용)
+
                 return (
                   <div
                     key={char.char_id}
-                    className={`p-3 rounded border transition-colors ${
+                    className={`relative rounded-lg border overflow-hidden min-h-[180px] ${
                       isReady
-                        ? 'bg-green-500/10 border-green-500/30'
-                        : 'bg-ark-black/30 border-ark-border'
+                        ? 'border-green-500/50'
+                        : 'border-ark-border'
                     }`}
                   >
-                    {/* 이름 + 뱃지 */}
-                    <div className="flex items-start justify-between gap-1 mb-2">
-                      <span className="text-sm text-ark-white font-medium truncate" title={char.name}>
-                        {char.name}
-                      </span>
-                      <div className="flex gap-1 flex-shrink-0">
-                        {isFemaleDefault && (
-                          <span className="text-[10px] px-1 py-0.5 rounded bg-pink-500/20 text-pink-400">
-                            여성
-                          </span>
-                        )}
-                        {isMaleDefault && (
-                          <span className="text-[10px] px-1 py-0.5 rounded bg-blue-500/20 text-blue-400">
-                            남성
-                          </span>
-                        )}
-                        {isNarrator && (
-                          <span className="text-[10px] px-1 py-0.5 rounded bg-purple-500/20 text-purple-400">
-                            나레이션
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                    {/* 기본 배경 */}
+                    <div className={`absolute inset-0 ${isReady ? 'bg-green-500/10' : 'bg-ark-black/50'}`} />
 
-                    {/* 정보 */}
-                    <div className="text-xs text-ark-gray mb-2">
-                      <div className="flex justify-between">
-                        <span>음성 파일</span>
-                        <span className="text-ark-white">{char.file_count}개</span>
-                      </div>
-                      {isReady && (
-                        <div className="flex justify-between text-green-400/80">
-                          <span>전처리 세그먼트</span>
-                          <span>{getSegmentCount(char.char_id)}개</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* 별칭 표시 */}
-                    {aliases.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mb-2">
-                        {aliases.map((alias) => (
-                          <span
-                            key={alias}
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] bg-amber-500/20 text-amber-400 rounded"
-                            title={`별칭: ${alias}`}
-                          >
-                            {alias}
-                            {isEditingAlias && (
-                              <button
-                                onClick={() => handleRemoveAlias(alias)}
-                                className="hover:text-red-400"
-                              >
-                                ×
-                              </button>
-                            )}
-                          </span>
-                        ))}
+                    {/* 스탠딩 이미지 (우측에, mask로 페이드) */}
+                    {charPortrait && (
+                      <div className="absolute -right-4 top-0 bottom-0 w-1/2 pointer-events-none">
+                        <img
+                          src={charPortrait}
+                          alt=""
+                          className="w-full h-full object-cover object-top"
+                          style={{
+                            maskImage: 'linear-gradient(to left, black 30%, transparent 90%)',
+                            WebkitMaskImage: 'linear-gradient(to left, black 30%, transparent 90%)',
+                          }}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none'
+                          }}
+                        />
                       </div>
                     )}
 
-                    {/* 별칭 편집 UI */}
-                    {isEditingAlias && (
-                      <div className="mb-2 space-y-1">
-                        <div className="flex gap-1">
-                          <input
-                            type="text"
-                            value={newAliasInput}
-                            onChange={(e) => setNewAliasInput(e.target.value)}
-                            placeholder="별칭 추가..."
-                            className="ark-input text-[10px] py-0.5 px-1.5 flex-1"
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleAddAlias(char.char_id)
-                            }}
-                          />
-                          <button
-                            onClick={() => handleAddAlias(char.char_id)}
-                            disabled={!newAliasInput.trim()}
-                            className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 disabled:opacity-50"
-                          >
-                            추가
-                          </button>
-                        </div>
-                        {aliasError && editingAliasCharId === char.char_id && (
-                          <p className="text-[9px] text-red-400">{aliasError}</p>
-                        )}
-                      </div>
-                    )}
-
-                    {/* 상태 */}
-                    <div className="flex items-center gap-1 mb-2">
-                      {isReady ? (
-                        getModelType(char.char_id) === 'finetuned' ? (
-                          <span className="text-xs text-purple-400 flex items-center gap-1">
-                            <svg viewBox="0 0 24 24" className="w-3 h-3" fill="currentColor">
-                              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-                            </svg>
-                            학습됨
-                          </span>
-                        ) : (
-                          <span className="text-xs text-green-400 flex items-center gap-1">
-                            <svg viewBox="0 0 24 24" className="w-3 h-3" fill="currentColor">
-                              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-                            </svg>
-                            준비됨
-                          </span>
-                        )
-                      ) : isTraining ? (
-                        <div className="flex flex-col gap-1 w-full">
-                          <div className="flex items-center gap-1">
-                            <span className="w-2 h-2 rounded-full bg-ark-orange ark-pulse" />
-                            <span className="text-xs text-ark-orange">
-                              {currentTrainingJob?.mode === 'finetune' ? '학습 중' : '준비 중'}
-                              {currentTrainingJob?.progress != null && ` ${Math.round(currentTrainingJob.progress * 100)}%`}
-                            </span>
-                          </div>
-                          {/* 진행률 바 */}
-                          {currentTrainingJob?.progress != null && (
-                            <div className="w-full h-1 bg-ark-border rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-ark-orange transition-all duration-300"
-                                style={{ width: `${Math.round(currentTrainingJob.progress * 100)}%` }}
-                              />
+                    {/* 컨텐츠 */}
+                    <div className="relative z-10 p-3 h-full flex flex-col">
+                      {/* 헤더: 아바타 + 이름 + 뱃지 */}
+                      <div className="flex items-start gap-2 mb-2">
+                        {/* 원형 아바타 (얼굴 이미지) */}
+                        <div className="w-12 h-12 rounded-full bg-ark-black/70 overflow-hidden flex-shrink-0 border-2 border-white/20">
+                          {charAvatar ? (
+                            <img
+                              src={charAvatar}
+                              alt={char.name}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none'
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-ark-gray text-sm">
+                              ?
                             </div>
                           )}
-                          {/* 단계 메시지 */}
-                          {currentTrainingJob?.message && (
-                            <span className="text-[10px] text-ark-gray/70 truncate" title={currentTrainingJob.message}>
-                              {currentTrainingJob.message}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-base text-white font-bold truncate drop-shadow-lg" title={char.name}>
+                              {char.name}
                             </span>
+                            {/* 성별 */}
+                            {charGender && (
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                charGender === 'female'
+                                  ? 'bg-pink-500/30 text-pink-300'
+                                  : 'bg-blue-500/30 text-blue-300'
+                              }`}>
+                                {charGender === 'female' ? '♀' : '♂'}
+                              </span>
+                            )}
+                          </div>
+                          {/* 기본 음성 뱃지 */}
+                          <div className="flex gap-1 mt-1 flex-wrap">
+                            {isFemaleDefault && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-pink-500/40 text-pink-200">
+                                기본(여)
+                              </span>
+                            )}
+                            {isMaleDefault && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/40 text-blue-200">
+                                기본(남)
+                              </span>
+                            )}
+                            {isNarrator && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/40 text-purple-200">
+                                나레이션
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 정보 - 하단에 고정 */}
+                      <div className="mt-auto">
+                        <div className="text-xs text-white/80 space-y-0.5 mb-2 bg-black/40 rounded px-1.5 py-1 inline-block">
+                          <div className="flex justify-between">
+                            <span>대사</span>
+                            <span className="text-white font-medium">{char.dialogue_count?.toLocaleString() || 0}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>음성</span>
+                            <span className="text-white font-medium">{char.file_count}개</span>
+                          </div>
+                          {isReady && (
+                            <div className="flex justify-between text-green-300">
+                              <span>세그먼트</span>
+                              <span>{getSegmentCount(char.char_id)}개</span>
+                            </div>
                           )}
                         </div>
-                      ) : (
-                        <span className="text-xs text-ark-gray/50">준비 필요</span>
-                      )}
-                    </div>
 
-                    {/* 액션 버튼 */}
-                    <div className="flex flex-wrap gap-1">
-                      {isReady ? (
-                        <>
-                          <button
-                            onClick={() => handleToggleFemaleDefault(char.char_id)}
-                            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                              isFemaleDefault
-                                ? 'bg-pink-500/30 text-pink-400'
-                                : 'bg-ark-panel text-ark-gray hover:text-ark-white'
-                            }`}
-                          >
-                            {isFemaleDefault ? '여성 해제' : '여성'}
-                          </button>
-                          <button
-                            onClick={() => handleToggleMaleDefault(char.char_id)}
-                            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                              isMaleDefault
-                                ? 'bg-blue-500/30 text-blue-400'
-                                : 'bg-ark-panel text-ark-gray hover:text-ark-white'
-                            }`}
-                          >
-                            {isMaleDefault ? '남성 해제' : '남성'}
-                          </button>
-                          <button
-                            onClick={() => handleToggleNarrator(char.char_id)}
-                            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                              isNarrator
-                                ? 'bg-purple-500/30 text-purple-400'
-                                : 'bg-ark-panel text-ark-gray hover:text-ark-white'
-                            }`}
-                          >
-                            {isNarrator ? '나레이션 해제' : '나레이션'}
-                          </button>
-                          <button
-                            onClick={() => handleToggleAliasEdit(char.char_id)}
-                            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                              isEditingAlias
-                                ? 'bg-amber-500/30 text-amber-400'
-                                : 'bg-ark-panel text-ark-gray hover:text-ark-white'
-                            }`}
-                            title="NPC 이름을 이 캐릭터에 매핑"
-                          >
-                            {isEditingAlias ? '별칭 닫기' : `별칭${aliases.length > 0 ? `(${aliases.length})` : ''}`}
-                          </button>
-                          <button
-                            onClick={() => handleSelectForTest(char.char_id)}
-                            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                              testCharId === char.char_id
-                                ? 'bg-cyan-500/30 text-cyan-400'
-                                : 'bg-ark-panel text-ark-gray hover:text-ark-white'
-                            }`}
-                          >
-                            테스트
-                          </button>
-                          {/* 준비된 캐릭터도 Fine-tune 가능 (finetuned가 아닌 경우) */}
-                          {getModelType(char.char_id) !== 'finetuned' && (
-                            <button
-                              onClick={() => handleFinetuneCharacter(char.char_id)}
-                              disabled={isTrainingActive}
-                              className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 disabled:opacity-50"
-                              title="실제 모델 학습 (시간 소요)"
-                            >
-                              학습
-                            </button>
+                        {/* 별칭 표시 */}
+                        {aliases.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-2">
+                            {aliases.map((alias) => (
+                              <span
+                                key={alias}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] bg-amber-500/40 text-amber-200 rounded"
+                                title={`별칭: ${alias}`}
+                              >
+                                {alias}
+                                {isEditingAlias && (
+                                  <button
+                                    onClick={() => handleRemoveAlias(alias)}
+                                    className="hover:text-red-300"
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* 별칭 편집 UI */}
+                        {isEditingAlias && (
+                          <div className="mb-2 space-y-1">
+                            <div className="flex gap-1">
+                              <input
+                                type="text"
+                                value={newAliasInput}
+                                onChange={(e) => setNewAliasInput(e.target.value)}
+                                placeholder="별칭 추가..."
+                                className="ark-input text-[10px] py-0.5 px-1.5 flex-1 bg-black/50"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleAddAlias(char.char_id)
+                                }}
+                              />
+                              <button
+                                onClick={() => handleAddAlias(char.char_id)}
+                                disabled={!newAliasInput.trim()}
+                                className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/40 text-amber-200 hover:bg-amber-500/60 disabled:opacity-50"
+                              >
+                                추가
+                              </button>
+                            </div>
+                            {aliasError && editingAliasCharId === char.char_id && (
+                              <p className="text-[9px] text-red-300">{aliasError}</p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* 상태 */}
+                        <div className="flex items-center gap-1 mb-2">
+                          {isReady ? (
+                            getModelType(char.char_id) === 'finetuned' ? (
+                              <span className="text-xs text-purple-300 flex items-center gap-1">
+                                <svg viewBox="0 0 24 24" className="w-3 h-3" fill="currentColor">
+                                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                                </svg>
+                                학습됨
+                              </span>
+                            ) : (
+                              <span className="text-xs text-green-300 flex items-center gap-1">
+                                <svg viewBox="0 0 24 24" className="w-3 h-3" fill="currentColor">
+                                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                                </svg>
+                                준비됨
+                              </span>
+                            )
+                          ) : isTraining ? (
+                            <div className="flex flex-col gap-1 w-full">
+                              <div className="flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-ark-orange ark-pulse" />
+                                <span className="text-xs text-ark-orange">
+                                  {currentTrainingJob?.mode === 'finetune' ? '학습 중' : '준비 중'}
+                                  {currentTrainingJob?.progress != null && ` ${Math.round(currentTrainingJob.progress * 100)}%`}
+                                </span>
+                              </div>
+                              {currentTrainingJob?.progress != null && (
+                                <div className="w-full h-1 bg-white/20 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-ark-orange transition-all duration-300"
+                                    style={{ width: `${Math.round(currentTrainingJob.progress * 100)}%` }}
+                                  />
+                                </div>
+                              )}
+                              {currentTrainingJob?.message && (
+                                <span className="text-[10px] text-white/50 truncate" title={currentTrainingJob.message}>
+                                  {currentTrainingJob.message}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-white/40">준비 필요</span>
                           )}
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => handlePrepareCharacter(char.char_id)}
-                            disabled={isTrainingActive}
-                            className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-50"
-                          >
-                            준비
-                          </button>
-                          <button
-                            disabled={true}
-                            className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400/40 cursor-not-allowed"
-                            title="먼저 '준비'를 완료해야 학습할 수 있습니다"
-                          >
-                            학습
-                          </button>
-                          <button
-                            onClick={() => handleToggleFemaleDefault(char.char_id)}
-                            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                              isFemaleDefault
-                                ? 'bg-pink-500/30 text-pink-400'
-                                : 'bg-ark-panel text-ark-gray hover:text-ark-white'
-                            }`}
-                          >
-                            {isFemaleDefault ? '여성 해제' : '여성'}
-                          </button>
-                          <button
-                            onClick={() => handleToggleMaleDefault(char.char_id)}
-                            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                              isMaleDefault
-                                ? 'bg-blue-500/30 text-blue-400'
-                                : 'bg-ark-panel text-ark-gray hover:text-ark-white'
-                            }`}
-                          >
-                            {isMaleDefault ? '남성 해제' : '남성'}
-                          </button>
-                          <button
-                            onClick={() => handleToggleNarrator(char.char_id)}
-                            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                              isNarrator
-                                ? 'bg-purple-500/30 text-purple-400'
-                                : 'bg-ark-panel text-ark-gray hover:text-ark-white'
-                            }`}
-                          >
-                            {isNarrator ? '나레이션 해제' : '나레이션'}
-                          </button>
-                          <button
-                            onClick={() => handleToggleAliasEdit(char.char_id)}
-                            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                              isEditingAlias
-                                ? 'bg-amber-500/30 text-amber-400'
-                                : 'bg-ark-panel text-ark-gray hover:text-ark-white'
-                            }`}
-                            title="NPC 이름을 이 캐릭터에 매핑"
-                          >
-                            {isEditingAlias ? '별칭 닫기' : `별칭${aliases.length > 0 ? `(${aliases.length})` : ''}`}
-                          </button>
-                        </>
-                      )}
+                        </div>
+
+                        {/* 액션 버튼 */}
+                        <div className="flex flex-wrap gap-1">
+                          {isReady ? (
+                            <>
+                              <button
+                                onClick={() => handleToggleFemaleDefault(char.char_id)}
+                                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                                  isFemaleDefault
+                                    ? 'bg-pink-500/50 text-pink-200'
+                                    : 'bg-white/10 text-white/70 hover:bg-white/20'
+                                }`}
+                              >
+                                {isFemaleDefault ? '여성 해제' : '여성'}
+                              </button>
+                              <button
+                                onClick={() => handleToggleMaleDefault(char.char_id)}
+                                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                                  isMaleDefault
+                                    ? 'bg-blue-500/50 text-blue-200'
+                                    : 'bg-white/10 text-white/70 hover:bg-white/20'
+                                }`}
+                              >
+                                {isMaleDefault ? '남성 해제' : '남성'}
+                              </button>
+                              <button
+                                onClick={() => handleToggleNarrator(char.char_id)}
+                                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                                  isNarrator
+                                    ? 'bg-purple-500/50 text-purple-200'
+                                    : 'bg-white/10 text-white/70 hover:bg-white/20'
+                                }`}
+                              >
+                                {isNarrator ? '나레이션 해제' : '나레이션'}
+                              </button>
+                              <button
+                                onClick={() => handleToggleAliasEdit(char.char_id)}
+                                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                                  isEditingAlias
+                                    ? 'bg-amber-500/50 text-amber-200'
+                                    : 'bg-white/10 text-white/70 hover:bg-white/20'
+                                }`}
+                                title="NPC 이름을 이 캐릭터에 매핑"
+                              >
+                                {isEditingAlias ? '별칭 닫기' : `별칭${aliases.length > 0 ? `(${aliases.length})` : ''}`}
+                              </button>
+                              <button
+                                onClick={() => handleSelectForTest(char.char_id)}
+                                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                                  testCharId === char.char_id
+                                    ? 'bg-cyan-500/50 text-cyan-200'
+                                    : 'bg-white/10 text-white/70 hover:bg-white/20'
+                                }`}
+                              >
+                                테스트
+                              </button>
+                              {getModelType(char.char_id) !== 'finetuned' && (
+                                <button
+                                  onClick={() => handleFinetuneCharacter(char.char_id)}
+                                  disabled={isTrainingActive}
+                                  className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/40 text-purple-200 hover:bg-purple-500/60 disabled:opacity-50"
+                                  title="실제 모델 학습 (시간 소요)"
+                                >
+                                  학습
+                                </button>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => handlePrepareCharacter(char.char_id)}
+                                disabled={isTrainingActive}
+                                className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/40 text-green-200 hover:bg-green-500/60 disabled:opacity-50"
+                              >
+                                준비
+                              </button>
+                              <button
+                                disabled={true}
+                                className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300/40 cursor-not-allowed"
+                                title="먼저 '준비'를 완료해야 학습할 수 있습니다"
+                              >
+                                학습
+                              </button>
+                              <button
+                                onClick={() => handleToggleFemaleDefault(char.char_id)}
+                                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                                  isFemaleDefault
+                                    ? 'bg-pink-500/50 text-pink-200'
+                                    : 'bg-white/10 text-white/70 hover:bg-white/20'
+                                }`}
+                              >
+                                {isFemaleDefault ? '여성 해제' : '여성'}
+                              </button>
+                              <button
+                                onClick={() => handleToggleMaleDefault(char.char_id)}
+                                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                                  isMaleDefault
+                                    ? 'bg-blue-500/50 text-blue-200'
+                                    : 'bg-white/10 text-white/70 hover:bg-white/20'
+                                }`}
+                              >
+                                {isMaleDefault ? '남성 해제' : '남성'}
+                              </button>
+                              <button
+                                onClick={() => handleToggleNarrator(char.char_id)}
+                                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                                  isNarrator
+                                    ? 'bg-purple-500/50 text-purple-200'
+                                    : 'bg-white/10 text-white/70 hover:bg-white/20'
+                                }`}
+                              >
+                                {isNarrator ? '나레이션 해제' : '나레이션'}
+                              </button>
+                              <button
+                                onClick={() => handleToggleAliasEdit(char.char_id)}
+                                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                                  isEditingAlias
+                                    ? 'bg-amber-500/50 text-amber-200'
+                                    : 'bg-white/10 text-white/70 hover:bg-white/20'
+                                }`}
+                                title="NPC 이름을 이 캐릭터에 매핑"
+                              >
+                                {isEditingAlias ? '별칭 닫기' : `별칭${aliases.length > 0 ? `(${aliases.length})` : ''}`}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )
