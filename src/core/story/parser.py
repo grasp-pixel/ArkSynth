@@ -3,6 +3,7 @@
 import re
 from pathlib import Path
 
+from ..character import CharacterIdNormalizer
 from ..models.story import CommandType, Dialogue, Episode, StoryCommand
 
 
@@ -224,22 +225,13 @@ class StoryParser:
         return None
 
     def _normalize_char_id(self, char_id: str) -> str:
-        """캐릭터 ID 정규화
+        """캐릭터 ID 정규화 (통합 모듈 사용)
 
         char_002_amiya_1#6 -> char_002_amiya
         char_130_doberm_ex -> char_130_doberm
-        char_002_amiya_1 -> char_002_amiya
         """
-        # 공백 제거
-        char_id = char_id.strip()
-        # #숫자 제거
-        char_id = re.sub(r"#\d+$", "", char_id)
-        # _숫자 제거 (끝에 있는 경우, char_숫자_name_숫자 패턴에서 마지막 숫자)
-        char_id = re.sub(r"_\d+$", "", char_id)
-        # _ex 제거
-        char_id = re.sub(r"_ex$", "", char_id)
-
-        return char_id
+        normalizer = CharacterIdNormalizer()
+        return normalizer.normalize(char_id)
 
     def parse_directory(self, directory: str | Path) -> list[Episode]:
         """디렉토리 내 모든 스토리 파일 파싱"""

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { settingsApi, extractApi, createExtractStream, gamedataApi, createGamedataUpdateStream, voiceApi, type SettingsResponse, type DependencyStatus, type FFmpegInstallGuide, type SevenZipInstallGuide, type FlatcInstallGuide, type VoiceAssetsStatus, type ExtractProgress, type GamedataStatus, type GamedataUpdateProgress } from '../services/api'
+import { settingsApi, extractApi, createExtractStream, imageExtractApi, createImageExtractStream, gamedataApi, createGamedataUpdateStream, voiceApi, type SettingsResponse, type DependencyStatus, type FFmpegInstallGuide, type SevenZipInstallGuide, type FlatcInstallGuide, type VoiceAssetsStatus, type ExtractProgress, type ImageAssetsStatus, type ImageExtractProgress, type GamedataStatus, type GamedataUpdateProgress } from '../services/api'
 import GPTSoVITSInstallDialog from './GPTSoVITSInstallDialog'
 
 interface SettingsModalProps {
@@ -20,12 +20,19 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [showGptSovitsInstall, setShowGptSovitsInstall] = useState(false)
   const [isRefreshingCharacters, setIsRefreshingCharacters] = useState(false)
 
-  // 추출 관련 상태
+  // 음성 추출 관련 상태
   const [voiceAssetsStatus, setVoiceAssetsStatus] = useState<VoiceAssetsStatus | null>(null)
   const [isExtracting, setIsExtracting] = useState(false)
   const [extractProgress, setExtractProgress] = useState<ExtractProgress | null>(null)
   const [extractError, setExtractError] = useState<string | null>(null)
   const extractStreamRef = useRef<{ close: () => void } | null>(null)
+
+  // 이미지 추출 관련 상태
+  const [imageAssetsStatus, setImageAssetsStatus] = useState<ImageAssetsStatus | null>(null)
+  const [isExtractingImages, setIsExtractingImages] = useState(false)
+  const [imageExtractProgress, setImageExtractProgress] = useState<ImageExtractProgress | null>(null)
+  const [imageExtractError, setImageExtractError] = useState<string | null>(null)
+  const imageExtractStreamRef = useRef<{ close: () => void } | null>(null)
 
   // 게임 데이터 업데이트 관련 상태
   const [gamedataStatus, setGamedataStatus] = useState<GamedataStatus | null>(null)
@@ -38,11 +45,13 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     if (isOpen) {
       loadSettings()
       checkVoiceAssets()
+      checkImageAssets()
       checkGamedataStatus()
     }
     return () => {
       // 모달 닫힐 때 스트림 정리
       extractStreamRef.current?.close()
+      imageExtractStreamRef.current?.close()
       gamedataStreamRef.current?.close()
     }
   }, [isOpen])
@@ -116,6 +125,61 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setVoiceAssetsStatus(status)
     } catch (err) {
       console.error('VoiceAssets 확인 실패:', err)
+    }
+  }
+
+  const checkImageAssets = async () => {
+    try {
+      const status = await imageExtractApi.checkImageAssets()
+      setImageAssetsStatus(status)
+    } catch (err) {
+      console.error('ImageAssets 확인 실패:', err)
+    }
+  }
+
+  const startImageExtraction = async () => {
+    if (!imageAssetsStatus?.exists || !imageAssetsStatus?.characters_exists) return
+
+    setIsExtractingImages(true)
+    setImageExtractProgress(null)
+    setImageExtractError(null)
+
+    try {
+      await imageExtractApi.startExtract()
+
+      imageExtractStreamRef.current = createImageExtractStream({
+        onProgress: (progress) => {
+          setImageExtractProgress(progress)
+        },
+        onComplete: (extracted) => {
+          setIsExtractingImages(false)
+          setImageExtractProgress({
+            stage: 'complete',
+            processed: 0,
+            total: 0,
+            extracted,
+            message: `추출 완료: ${extracted}개 이미지`
+          })
+        },
+        onError: (error) => {
+          setIsExtractingImages(false)
+          setImageExtractError(error)
+        }
+      })
+    } catch (err) {
+      setIsExtractingImages(false)
+      setImageExtractError(err instanceof Error ? err.message : '이미지 추출 시작 실패')
+    }
+  }
+
+  const cancelImageExtraction = async () => {
+    try {
+      await imageExtractApi.cancelExtract()
+      imageExtractStreamRef.current?.close()
+      setIsExtractingImages(false)
+      setImageExtractProgress(null)
+    } catch (err) {
+      console.error('이미지 추출 취소 실패:', err)
     }
   }
 
@@ -639,7 +703,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <div className="flex items-center justify-between mb-3">
                         <div>
                           <p className="text-sm text-ark-white">
-                            VoiceAssets 준비됨
+                            Assets/Voice 준비됨
                           </p>
                           <p className="text-xs text-ark-gray mt-1">
                             {Object.entries(voiceAssetsStatus.languages || {}).map(([lang, count]) => (
@@ -696,6 +760,89 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       {extractError && (
                         <div className="mt-3 p-2 bg-red-500/10 border border-red-500/30 rounded">
                           <p className="text-xs text-red-400">{extractError}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              {/* 이미지 추출 */}
+              <section>
+                <h3 className="text-sm font-medium text-ark-white mb-3">이미지 추출</h3>
+                <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
+                  {imageAssetsStatus === null ? (
+                    <p className="text-sm text-ark-gray">확인 중...</p>
+                  ) : !imageAssetsStatus.exists ? (
+                    <div>
+                      <p className="text-sm text-red-400 mb-2">{imageAssetsStatus.message}</p>
+                      <p className="text-xs text-ark-gray">{imageAssetsStatus.hint}</p>
+                    </div>
+                  ) : !imageAssetsStatus.characters_exists ? (
+                    <div>
+                      <p className="text-sm text-yellow-400 mb-2">Assets/Image/avg/characters 폴더가 없습니다</p>
+                      <p className="text-xs text-ark-gray">게임 번들의 files/bundles/avg/characters를 복사해주세요</p>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <p className="text-sm text-ark-white">
+                            Assets/Image 준비됨
+                          </p>
+                          <p className="text-xs text-ark-gray mt-1">
+                            {imageAssetsStatus.total_bundles}개 번들
+                          </p>
+                        </div>
+                        {!isExtractingImages && imageExtractProgress?.stage !== 'complete' && (
+                          <button
+                            onClick={startImageExtraction}
+                            className="ark-btn ark-btn-primary text-sm"
+                          >
+                            이미지 추출
+                          </button>
+                        )}
+                      </div>
+
+                      {/* 추출 진행률 */}
+                      {isExtractingImages && imageExtractProgress && (
+                        <div className="mt-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs text-ark-gray">
+                              {imageExtractProgress.message}
+                            </span>
+                            <button
+                              onClick={cancelImageExtraction}
+                              className="text-xs text-red-400 hover:text-red-300"
+                            >
+                              취소
+                            </button>
+                          </div>
+                          {imageExtractProgress.total > 0 && (
+                            <div className="relative h-2 bg-ark-panel rounded overflow-hidden">
+                              <div
+                                className="absolute inset-y-0 left-0 bg-ark-orange transition-all duration-300"
+                                style={{ width: `${(imageExtractProgress.processed / imageExtractProgress.total) * 100}%` }}
+                              />
+                            </div>
+                          )}
+                          <p className="text-xs text-ark-gray mt-1">
+                            {imageExtractProgress.processed} / {imageExtractProgress.total} 파일 처리됨 • {imageExtractProgress.extracted}개 추출됨
+                          </p>
+                        </div>
+                      )}
+
+                      {/* 완료 메시지 */}
+                      {imageExtractProgress?.stage === 'complete' && !isExtractingImages && (
+                        <div className="mt-3 p-2 bg-green-500/10 border border-green-500/30 rounded">
+                          <p className="text-xs text-green-400">{imageExtractProgress.message}</p>
+                        </div>
+                      )}
+
+                      {/* 에러 메시지 */}
+                      {imageExtractError && (
+                        <div className="mt-3 p-2 bg-red-500/10 border border-red-500/30 rounded">
+                          <p className="text-xs text-red-400">{imageExtractError}</p>
                         </div>
                       )}
                     </div>

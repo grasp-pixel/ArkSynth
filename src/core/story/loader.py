@@ -6,8 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
+from ..character import CharacterIdNormalizer
+from ..character.name_mapper import CharacterNameMapper
 from ..models.story import Character, Episode, StoryCategory, StoryGroup
-from .character_name_mapper import CharacterNameMapper
 from .parser import StoryParser
 
 
@@ -51,7 +52,7 @@ class StoryLoader:
 
         # 캐릭터 이름 매퍼 (화자 이름 -> 캐릭터 ID)
         self._name_mapper: CharacterNameMapper | None = None
-        self._name_mapper_cache_path = self.data_root / "cache" / "character_name_mapping.json"
+        self._name_mapper_cache_path = self.data_root / "cache" / "name_mapping_v2.json"
 
     def _build_lang_paths(self) -> dict[str, Path]:
         """언어별 경로 매핑 구축
@@ -184,28 +185,15 @@ class StoryLoader:
         return None
 
     def _normalize_char_id(self, char_id: str) -> str:
-        """캐릭터 ID 정규화
+        """캐릭터 ID 정규화 (통합 모듈 사용)
 
         예시:
-        - char_002_amiya_1#6 → char_002_amiya (오퍼레이터 인스턴스 제거)
-        - char_220_grani#5 → char_220_grani (프레임 번호 제거)
+        - char_002_amiya_1#6 → char_002_amiya
+        - char_220_grani#5 → char_220_grani
         - avg_npc_008 → avg_npc_008 (NPC ID 유지)
-        - avg_npc_010#2 → avg_npc_010 (프레임 번호만 제거)
         """
-        char_id = char_id.strip()
-
-        # #N 프레임 번호 제거 (모든 ID 유형)
-        char_id = re.sub(r"#\d+$", "", char_id)
-
-        # char_로 시작하는 오퍼레이터 ID만 인스턴스 번호 제거
-        # char_XXX_name_N 패턴에서 마지막 _N 제거 (N은 1-9 단일 숫자)
-        if char_id.startswith("char_"):
-            char_id = re.sub(r"_\d$", "", char_id)
-
-        # _ex 접미사 제거
-        char_id = re.sub(r"_ex$", "", char_id)
-
-        return char_id
+        normalizer = CharacterIdNormalizer()
+        return normalizer.normalize(char_id)
 
     def build_episode_index(self, lang: str = "ko_KR") -> dict[str, Path]:
         """에피소드 인덱스 구축
@@ -318,19 +306,23 @@ class StoryLoader:
         if self._name_mapper is not None:
             return self._name_mapper
 
-        self._name_mapper = CharacterNameMapper()
+        self._name_mapper = CharacterNameMapper(
+            data_path=self.data_root,
+            cache_path=self._name_mapper_cache_path,
+        )
 
         # 캐시 파일이 있으면 로드
         if self._name_mapper_cache_path.exists():
             try:
-                self._name_mapper.load_mapping(self._name_mapper_cache_path)
-                return self._name_mapper
+                result = self._name_mapper.load_mapping(self._name_mapper_cache_path)
+                if result is not None:
+                    return self._name_mapper
             except Exception:
                 pass
 
-        # 캐시가 없으면 스토리에서 빌드
+        # 캐시가 없거나 로드 실패하면 새로 빌드
         story_root = self.get_lang_path(lang) / "story"
-        self._name_mapper.build_mapping_from_stories(story_root)
+        self._name_mapper.build_mapping(story_root)
 
         # 캐시 저장
         try:
@@ -339,6 +331,24 @@ class StoryLoader:
             pass
 
         return self._name_mapper
+
+    def reset_name_mapper(self, rebuild: bool = True, lang: str = "ko_KR") -> None:
+        """캐릭터 이름 매퍼 캐시 리셋
+
+        Args:
+            rebuild: True면 캐시 삭제 후 즉시 재빌드, False면 삭제만
+            lang: 재빌드 시 사용할 언어
+        """
+        # 메모리 캐시 초기화
+        self._name_mapper = None
+
+        # 파일 캐시 삭제
+        if self._name_mapper_cache_path.exists():
+            self._name_mapper_cache_path.unlink()
+
+        # 재빌드 요청 시 즉시 재생성
+        if rebuild:
+            self.get_name_mapper(lang)
 
     def load_episode(self, episode_id: str, lang: str = "ko_KR") -> Episode | None:
         """에피소드 로드"""

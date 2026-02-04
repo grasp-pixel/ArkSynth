@@ -2,34 +2,30 @@
 
 NPC 이름이나 speaker_name으로 플레이어블 캐릭터 ID를 찾습니다.
 예: "카지마치 주민" -> "char_4203_kichi"
+
+이 모듈은 src.core.character 모듈과 통합되어 있습니다.
 """
 
-import json
 import logging
-from functools import lru_cache
-from pathlib import Path
+
+from ..character import OfficialDataProvider, get_official_data_provider
 
 logger = logging.getLogger(__name__)
 
-# 모듈 레벨 캐시
-_character_aliases: dict[str, str] | None = None
-_character_table: dict[str, dict] | None = None
+# 싱글톤 OfficialDataProvider 사용
+_provider: OfficialDataProvider | None = None
 
 
-def _get_data_path() -> Path:
-    """데이터 경로 반환"""
-    from ..backend.config import config
-    return Path(config.data_path)
-
-
-def _get_gamedata_path() -> Path:
-    """게임 데이터 경로 반환"""
-    from ..backend.config import config
-    return Path(config.data_path) / "gamedata" / "kr" / "gamedata"
+def _get_provider() -> OfficialDataProvider:
+    """OfficialDataProvider 인스턴스 반환"""
+    global _provider
+    if _provider is None:
+        _provider = get_official_data_provider()
+    return _provider
 
 
 def load_character_aliases(force_reload: bool = False) -> dict[str, str]:
-    """캐릭터 별칭 매핑 로드
+    """캐릭터 별칭 매핑 로드 (호환성 유지용)
 
     Args:
         force_reload: True이면 캐시 무시하고 다시 로드
@@ -37,30 +33,14 @@ def load_character_aliases(force_reload: bool = False) -> dict[str, str]:
     Returns:
         dict[str, str]: {NPC이름: char_id} 매핑
     """
-    global _character_aliases
-    if _character_aliases is not None and not force_reload:
-        return _character_aliases
-
-    aliases_path = _get_data_path() / "character_aliases.json"
-    if not aliases_path.exists():
-        logger.debug(f"캐릭터 별칭 파일 없음: {aliases_path}")
-        _character_aliases = {}
-        return _character_aliases
-
-    try:
-        with open(aliases_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            _character_aliases = data.get("aliases", {})
-            logger.debug(f"캐릭터 별칭 로드: {len(_character_aliases)}개")
-    except Exception as e:
-        logger.error(f"캐릭터 별칭 로드 실패: {e}")
-        _character_aliases = {}
-
-    return _character_aliases
+    provider = _get_provider()
+    if force_reload:
+        provider.invalidate_cache()
+    return provider._load_user_aliases()
 
 
 def load_character_table(force_reload: bool = False) -> dict[str, dict]:
-    """캐릭터 테이블 로드 (이름 -> char_id 매핑용)
+    """캐릭터 테이블 로드 (호환성 유지용)
 
     Args:
         force_reload: True이면 캐시 무시하고 다시 로드
@@ -68,32 +48,16 @@ def load_character_table(force_reload: bool = False) -> dict[str, dict]:
     Returns:
         dict[str, dict]: 캐릭터 테이블
     """
-    global _character_table
-    if _character_table is not None and not force_reload:
-        return _character_table
-
-    table_path = _get_gamedata_path() / "excel" / "character_table.json"
-    if not table_path.exists():
-        logger.debug(f"캐릭터 테이블 파일 없음: {table_path}")
-        _character_table = {}
-        return _character_table
-
-    try:
-        with open(table_path, "r", encoding="utf-8") as f:
-            _character_table = json.load(f)
-            logger.debug(f"캐릭터 테이블 로드: {len(_character_table)}개")
-    except Exception as e:
-        logger.error(f"캐릭터 테이블 로드 실패: {e}")
-        _character_table = {}
-
-    return _character_table
+    provider = _get_provider()
+    if force_reload:
+        provider.invalidate_cache()
+    return provider._load_character_table()
 
 
 def invalidate_cache() -> None:
     """캐시 무효화"""
-    global _character_aliases, _character_table
-    _character_aliases = None
-    _character_table = None
+    provider = _get_provider()
+    provider.invalidate_cache()
     logger.debug("별칭 해결 캐시 무효화")
 
 
@@ -104,8 +68,8 @@ def resolve_voice_char_id(
     """speaker_name 또는 char_id로 음성이 있는 캐릭터 ID 찾기
 
     우선순위:
-    1. 별칭 매핑 확인 (speaker_name → char_id)
-    2. 이름 매칭 확인 (speaker_name → character_table에서 같은 이름의 오퍼레이터)
+    1. 사용자 별칭 매핑 확인 (character_aliases.json)
+    2. 공식 이름 매칭 확인 (character_table.json)
 
     Args:
         speaker_name: 화자 이름 (예: "카지마치 주민", "모모카")
@@ -117,20 +81,15 @@ def resolve_voice_char_id(
     if not speaker_name:
         return None
 
-    # 1. 별칭 매핑 확인 (NPC 이름 → 플레이어블 캐릭터 ID)
-    aliases = load_character_aliases()
-    if speaker_name in aliases:
-        alias_id = aliases[speaker_name]
-        logger.debug(f"별칭 매핑: {speaker_name} → {alias_id}")
-        return alias_id
+    provider = _get_provider()
 
-    # 2. 이름 매칭 확인 (character_table에서 같은 이름의 오퍼레이터)
-    char_table = load_character_table()
-    for cid, char_data in char_table.items():
-        # char_로 시작하는 오퍼레이터만 (npc 제외)
-        if cid.startswith("char_") and not cid.startswith("char_npc_"):
-            if char_data.get("name") == speaker_name:
-                logger.debug(f"이름 매칭: {speaker_name} → {cid}")
-                return cid
+    # OfficialDataProvider.get_char_id_by_name()은 사용자 별칭과 공식 이름을 모두 확인
+    result = provider.get_char_id_by_name(speaker_name)
+
+    if result:
+        # 플레이어블 캐릭터만 반환 (char_로 시작하고 npc가 아닌 것)
+        if result.startswith("char_") and "_npc_" not in result:
+            logger.debug(f"음성 캐릭터 매핑: {speaker_name} → {result}")
+            return result
 
     return None

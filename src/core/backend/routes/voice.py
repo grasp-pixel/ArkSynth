@@ -1,13 +1,12 @@
 """음성 자산 관련 라우터"""
 
-import asyncio
 import json
 import logging
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from ..config import config
@@ -17,6 +16,7 @@ from ...voice.dialogue_stats import DialogueStatsManager
 from ...voice.alias_resolver import invalidate_cache as invalidate_alias_cache
 from ...voice.gender_mapper import GenderMapper
 from ...voice.character_images import CharacterImageProvider
+from .stories import reset_story_loader
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +160,9 @@ async def refresh_character_data():
 
     # charword 로더 캐시 리셋
     reset_charword_loader()
+
+    # 캐릭터 이름 매핑 캐시 리셋 및 재빌드
+    reset_story_loader(rebuild_name_mapper=True, lang=config.game_language)
 
     # 대사 통계 재계산 (항상 rebuild 호출)
     if _stats_manager is None:
@@ -377,7 +380,7 @@ def get_gender_mapper() -> GenderMapper:
 def get_image_provider() -> CharacterImageProvider:
     global _image_provider
     if _image_provider is None:
-        _image_provider = CharacterImageProvider(config.gamedata_path)
+        _image_provider = CharacterImageProvider()
     return _image_provider
 
 
@@ -405,213 +408,64 @@ async def get_character_gender(char_id: str):
     }
 
 
-@router.get("/characters/{char_id}/images")
-async def get_character_images(char_id: str):
-    """캐릭터 이미지 URL 조회"""
+@router.get("/images")
+async def list_character_images():
+    """캐릭터 이미지 목록 (로컬 추출 이미지)"""
     image_provider = get_image_provider()
-    images = image_provider.get_images(char_id)
+    char_ids = image_provider.get_char_ids()
 
-    return {
-        "char_id": char_id,
-        "avatar_url": images.avatar_url,
-        "portrait_url": images.portrait_url,
-    }
-
-
-@router.get("/avatars")
-async def list_character_avatars():
-    """캐시된 얼굴 아바타 URL 목록 (로컬 API URL)"""
-    image_provider = get_image_provider()
-    cached_ids = image_provider.get_cached_avatars()
-
-    # 캐시된 이미지만 로컬 API URL로 반환
-    avatars = {
-        char_id: f"/api/voice/avatars/{char_id}"
-        for char_id in cached_ids
+    # 로컬 API URL로 반환
+    images = {
+        char_id: f"/api/voice/images/{char_id}"
+        for char_id in char_ids
     }
 
     return {
-        "total": len(image_provider.get_all_char_ids()),
-        "cached": len(avatars),
-        "avatars": avatars,
+        "total": image_provider.get_image_count(),
+        "folders": image_provider.get_folder_count(),
+        "characters": len(char_ids),
+        "images": images,
     }
+
+
+@router.get("/images/status")
+async def get_image_status():
+    """이미지 상태 조회"""
+    image_provider = get_image_provider()
+
+    return {
+        "total_images": image_provider.get_image_count(),
+        "total_folders": image_provider.get_folder_count(),
+        "path": str(image_provider.extracted_path),
+    }
+
+
+@router.get("/images/{char_id}")
+async def get_character_image(char_id: str):
+    """캐릭터 이미지 제공"""
+    image_provider = get_image_provider()
+    file_path = image_provider.get_image(char_id)
+
+    if not file_path:
+        raise HTTPException(status_code=404, detail=f"이미지 없음: {char_id}")
+
+    return FileResponse(
+        file_path,
+        media_type="image/png",
+        filename=f"{char_id}.png",
+    )
+
+
+# === 하위 호환성 (portraits → images) ===
 
 
 @router.get("/portraits")
 async def list_character_portraits():
-    """캐시된 스탠딩 이미지 URL 목록 (로컬 API URL)"""
-    image_provider = get_image_provider()
-    cached_ids = image_provider.get_cached_portraits()
-
-    # 캐시된 이미지만 로컬 API URL로 반환
-    portraits = {
-        char_id: f"/api/voice/portraits/{char_id}"
-        for char_id in cached_ids
-    }
-
-    return {
-        "total": len(image_provider.get_all_char_ids()),
-        "cached": len(portraits),
-        "portraits": portraits,
-    }
-
-
-@router.get("/avatars/cache-status")
-async def get_avatar_cache_status():
-    """이미지 캐시 상태 조회"""
-    image_provider = get_image_provider()
-    total = len(image_provider.get_all_char_ids())
-
-    return {
-        "total": total,
-        "avatars": {
-            "cached": image_provider.get_cached_avatar_count(),
-            "path": str(image_provider.avatar_cache_path),
-        },
-        "portraits": {
-            "cached": image_provider.get_cached_portrait_count(),
-            "path": str(image_provider.portrait_cache_path),
-        },
-        # 하위 호환성
-        "cached": image_provider.get_cached_portrait_count(),
-        "cache_path": str(image_provider.portrait_cache_path),
-    }
-
-
-@router.get("/avatars/{char_id}")
-async def get_avatar_image(char_id: str):
-    """캐릭터 얼굴 아바타 이미지 제공"""
-    image_provider = get_image_provider()
-    file_path = image_provider.get_avatar_file_path(char_id)
-
-    if not file_path:
-        raise HTTPException(status_code=404, detail=f"캐시된 아바타 없음: {char_id}")
-
-    return FileResponse(
-        file_path,
-        media_type="image/png",
-        filename=f"{char_id}.png",
-    )
+    """스탠딩 이미지 목록 (하위 호환성)"""
+    return await list_character_images()
 
 
 @router.get("/portraits/{char_id}")
 async def get_portrait_image(char_id: str):
-    """캐릭터 스탠딩 이미지 제공"""
-    image_provider = get_image_provider()
-    file_path = image_provider.get_portrait_file_path(char_id)
-
-    if not file_path:
-        raise HTTPException(status_code=404, detail=f"캐시된 스탠딩 이미지 없음: {char_id}")
-
-    return FileResponse(
-        file_path,
-        media_type="image/png",
-        filename=f"{char_id}.png",
-    )
-
-
-@router.post("/images/download")
-async def start_image_download(
-    char_ids: list[str] | None = None,
-    image_type: str = "both",
-):
-    """이미지 다운로드 (SSE 스트림)
-
-    Args:
-        char_ids: 다운로드할 캐릭터 ID 목록 (None이면 전체)
-        image_type: "avatar" (얼굴), "portrait" (스탠딩), "both" (둘 다)
-
-    Returns:
-        SSE 스트림으로 진행률 전송
-    """
-    image_provider = get_image_provider()
-
-    async def event_generator():
-        try:
-            all_ids = image_provider.get_all_char_ids()
-            target_ids = char_ids if char_ids else all_ids
-
-            # 다운로드할 (char_id, type) 쌍 생성
-            tasks: list[tuple[str, str]] = []
-            if image_type in ("avatar", "both"):
-                for cid in target_ids:
-                    if not image_provider.is_avatar_cached(cid):
-                        tasks.append((cid, "avatar"))
-            if image_type in ("portrait", "both"):
-                for cid in target_ids:
-                    if not image_provider.is_portrait_cached(cid):
-                        tasks.append((cid, "portrait"))
-
-            total = len(tasks)
-            if total == 0:
-                yield f"data: {json.dumps({'status': 'completed', 'total': 0, 'completed': 0})}\n\n"
-                return
-
-            yield f"data: {json.dumps({'status': 'starting', 'total': total, 'completed': 0})}\n\n"
-
-            completed = 0
-            for char_id, img_type in tasks:
-                yield f"data: {json.dumps({'status': 'downloading', 'total': total, 'completed': completed, 'current': f'{char_id}:{img_type}'})}\n\n"
-
-                success = await image_provider.download_image(char_id, img_type)
-                completed += 1
-
-                if not success:
-                    logger.warning(f"{img_type} 다운로드 실패: {char_id}")
-
-                # 10개마다 한 번씩 진행률 전송
-                if completed % 10 == 0 or completed == total:
-                    yield f"data: {json.dumps({'status': 'downloading', 'total': total, 'completed': completed})}\n\n"
-
-                await asyncio.sleep(0.05)
-
-            yield f"data: {json.dumps({'status': 'completed', 'total': total, 'completed': completed})}\n\n"
-
-        except Exception as e:
-            logger.error(f"이미지 다운로드 오류: {e}")
-            yield f"data: {json.dumps({'status': 'error', 'error': str(e)})}\n\n"
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
-
-
-# 하위 호환성
-@router.post("/avatars/download")
-async def start_avatar_download_legacy(char_ids: list[str] | None = None):
-    """아바타 이미지 다운로드 (하위 호환성 - portrait만)"""
-    return await start_image_download(char_ids, "portrait")
-
-
-@router.delete("/avatars/cache")
-async def clear_avatar_cache():
-    """아바타 캐시 삭제 (portrait만)"""
-    image_provider = get_image_provider()
-    deleted = image_provider.clear_cache("portrait")
-
-    return {
-        "deleted": deleted,
-        "message": f"{deleted}개의 캐시된 이미지가 삭제되었습니다.",
-    }
-
-
-@router.delete("/images/cache")
-async def clear_image_cache(image_type: str = "both"):
-    """이미지 캐시 삭제
-
-    Args:
-        image_type: "avatar", "portrait", "both"
-    """
-    image_provider = get_image_provider()
-    deleted = image_provider.clear_cache(image_type)
-
-    return {
-        "deleted": deleted,
-        "message": f"{deleted}개의 캐시된 이미지가 삭제되었습니다.",
-    }
+    """캐릭터 스탠딩 이미지 제공 (하위 호환성)"""
+    return await get_character_image(char_id)

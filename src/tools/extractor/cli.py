@@ -19,15 +19,18 @@ def main(argv: list[str] | None = None) -> int:
 Examples:
   python -m tools.extractor
   python -m tools.extractor --lang voice_kr
-  python -m tools.extractor --input ./VoiceAssets --output ./extracted
+  python -m tools.extractor --input ./Assets/Voice --output ./extracted
+
+Bundle locations (게임 클라이언트):
+  - files/bundles/audio/sound_beta_2/voice_kr -> Assets/Voice/voice_kr
         """,
     )
 
     parser.add_argument(
         "--input", "-i",
         type=Path,
-        default=Path("VoiceAssets"),
-        help="Input directory containing voice folders (default: VoiceAssets)",
+        default=Path("Assets/Voice"),
+        help="Input directory containing voice folders (default: Assets/Voice)",
     )
 
     parser.add_argument(

@@ -590,12 +590,12 @@ async def start_voice_extraction(request: ExtractRequest):
     if _extract_task and not _extract_task.done():
         raise HTTPException(status_code=409, detail="이미 추출이 진행 중입니다")
 
-    # VoiceAssets 경로 확인
-    voice_assets_dir = Path("VoiceAssets")
+    # Assets/Voice 경로 확인
+    voice_assets_dir = Path("Assets/Voice")
     if not voice_assets_dir.exists():
         raise HTTPException(
             status_code=404,
-            detail="VoiceAssets 폴더가 없습니다. 게임 리소스를 먼저 복사해주세요."
+            detail="Assets/Voice 폴더가 없습니다. 게임 리소스를 먼저 복사해주세요."
         )
 
     # 진행률 큐 생성
@@ -743,14 +743,14 @@ async def cancel_voice_extraction():
 
 @router.get("/extract/check-source")
 async def check_voice_assets():
-    """VoiceAssets 폴더 상태 확인"""
-    voice_assets_dir = Path("VoiceAssets")
+    """Assets/Voice 폴더 상태 확인"""
+    voice_assets_dir = Path("Assets/Voice")
 
     if not voice_assets_dir.exists():
         return {
             "exists": False,
-            "message": "VoiceAssets 폴더가 없습니다",
-            "hint": "게임 클라이언트의 assets/AB/Windows/voice 폴더를 VoiceAssets로 복사해주세요"
+            "message": "Assets/Voice 폴더가 없습니다",
+            "hint": "게임 클라이언트의 files/bundles/audio/sound_beta_2/voice_kr 등을 Assets/Voice/voice_kr 등으로 복사해주세요"
         }
 
     languages = {}
@@ -766,6 +766,227 @@ async def check_voice_assets():
         "languages": languages,
         "total_bundles": sum(languages.values())
     }
+
+
+# ============================================================================
+# 이미지 추출 관련 엔드포인트
+# ============================================================================
+
+# 이미지 추출 작업 상태
+_image_extract_task: Optional[asyncio.Task] = None
+_image_extract_progress_queue: Optional[asyncio.Queue] = None
+_image_extract_cancel_flag = False
+
+
+class ImageExtractProgress(BaseModel):
+    """이미지 추출 진행 상태"""
+    stage: str  # scanning, extracting, complete, error
+    current_file: Optional[str] = None
+    processed: int = 0
+    total: int = 0
+    extracted: int = 0
+    message: str = ""
+    error: Optional[str] = None
+
+
+@router.get("/extract/images/check-source")
+async def check_image_assets():
+    """Assets/Image 폴더 상태 확인"""
+    image_assets_dir = Path("Assets/Image")
+
+    if not image_assets_dir.exists():
+        return {
+            "exists": False,
+            "message": "Assets/Image 폴더가 없습니다",
+            "hint": "게임 클라이언트의 files/bundles/avg/characters 번들을 Assets/Image/avg/characters로 복사해주세요"
+        }
+
+    # avg/characters 폴더 확인
+    characters_dir = image_assets_dir / "avg" / "characters"
+    if not characters_dir.exists():
+        return {
+            "exists": True,
+            "path": str(image_assets_dir.absolute()),
+            "characters_exists": False,
+            "total_bundles": 0
+        }
+
+    ab_count = len(list(characters_dir.glob("*.ab")))
+
+    return {
+        "exists": True,
+        "path": str(image_assets_dir.absolute()),
+        "characters_exists": True,
+        "total_bundles": ab_count
+    }
+
+
+@router.get("/extract/images/status")
+async def get_image_extract_status():
+    """이미지 추출 작업 상태 확인"""
+    global _image_extract_task
+
+    if _image_extract_task is None:
+        return {"status": "idle", "message": "대기 중"}
+
+    if _image_extract_task.done():
+        try:
+            result = _image_extract_task.result()
+            return {"status": "complete", "result": result}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+
+    return {"status": "running", "message": "추출 진행 중"}
+
+
+@router.post("/extract/images/start")
+async def start_image_extraction():
+    """이미지 추출 시작"""
+    global _image_extract_task, _image_extract_progress_queue, _image_extract_cancel_flag
+
+    # 이미 추출 중인지 확인
+    if _image_extract_task and not _image_extract_task.done():
+        raise HTTPException(status_code=409, detail="이미 추출이 진행 중입니다")
+
+    # Assets/Image 경로 확인
+    image_assets_dir = Path("Assets/Image")
+    characters_dir = image_assets_dir / "avg" / "characters"
+
+    if not characters_dir.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Assets/Image/avg/characters 폴더가 없습니다."
+        )
+
+    # 진행률 큐 생성
+    _image_extract_progress_queue = asyncio.Queue()
+    _image_extract_cancel_flag = False
+
+    async def extract_task():
+        from src.tools.extractor.image import extract_images_from_bundle
+
+        output_dir = Path("extracted/images/characters")
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        stats = {"processed": 0, "extracted": 0, "failed": 0}
+
+        try:
+            # 스캔 단계
+            await _image_extract_progress_queue.put(ImageExtractProgress(
+                stage="scanning",
+                message="번들 파일 스캔 중..."
+            ))
+
+            ab_files = list(characters_dir.glob("*.ab"))
+            total = len(ab_files)
+
+            for i, ab_path in enumerate(ab_files, 1):
+                if _image_extract_cancel_flag:
+                    break
+
+                # 진행률 전송
+                await _image_extract_progress_queue.put(ImageExtractProgress(
+                    stage="extracting",
+                    current_file=ab_path.name,
+                    processed=i,
+                    total=total,
+                    extracted=stats["extracted"],
+                    message=f"{ab_path.name} 처리 중..."
+                ))
+
+                try:
+                    # 동기 함수를 별도 스레드에서 실행
+                    extracted = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        extract_images_from_bundle,
+                        ab_path,
+                        output_dir,
+                        "png"
+                    )
+                    stats["processed"] += 1
+                    stats["extracted"] += len(extracted)
+                except Exception:
+                    stats["failed"] += 1
+
+            # 완료
+            await _image_extract_progress_queue.put(ImageExtractProgress(
+                stage="complete",
+                processed=stats["processed"],
+                total=total,
+                extracted=stats["extracted"],
+                message=f"추출 완료: {stats['extracted']}개 이미지"
+            ))
+
+            return stats
+
+        except Exception as e:
+            await _image_extract_progress_queue.put(ImageExtractProgress(
+                stage="error",
+                error=str(e),
+                message="추출 실패"
+            ))
+            raise
+
+    _image_extract_task = asyncio.create_task(extract_task())
+
+    return {"status": "started", "message": "이미지 추출이 시작되었습니다"}
+
+
+@router.get("/extract/images/stream")
+async def stream_image_extract_progress():
+    """이미지 추출 진행률 SSE 스트림"""
+    global _image_extract_progress_queue
+
+    if _image_extract_progress_queue is None:
+        raise HTTPException(status_code=404, detail="진행 중인 추출이 없습니다")
+
+    async def event_generator():
+        try:
+            while True:
+                try:
+                    progress = await asyncio.wait_for(
+                        _image_extract_progress_queue.get(),
+                        timeout=30.0
+                    )
+
+                    data = progress.model_dump() if hasattr(progress, 'model_dump') else progress.__dict__
+                    yield f"event: progress\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+                    if progress.stage in ("complete", "error"):
+                        if progress.stage == "complete":
+                            yield f"event: complete\ndata: {json.dumps({'success': True, 'extracted': progress.extracted})}\n\n"
+                        else:
+                            yield f"event: error\ndata: {json.dumps({'error': progress.error})}\n\n"
+                        break
+
+                except asyncio.TimeoutError:
+                    yield f"event: ping\ndata: {json.dumps({'status': 'alive'})}\n\n"
+
+        except asyncio.CancelledError:
+            pass
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
+@router.post("/extract/images/cancel")
+async def cancel_image_extraction():
+    """이미지 추출 취소"""
+    global _image_extract_task, _image_extract_cancel_flag
+
+    if _image_extract_task is None or _image_extract_task.done():
+        raise HTTPException(status_code=404, detail="진행 중인 추출이 없습니다")
+
+    _image_extract_cancel_flag = True
+
+    return {"status": "cancelling", "message": "추출 취소 요청됨"}
 
 
 # ============================================================================

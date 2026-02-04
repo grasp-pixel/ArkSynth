@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useAppStore, AUTO_VOICE_FEMALE, AUTO_VOICE_MALE, simpleHash } from '../stores/appStore'
-import { voiceApi, type GroupCharacterInfo } from '../services/api'
+import { voiceApi, type GroupCharacterInfo, API_BASE } from '../services/api'
 
 interface VoiceMappingModalProps {
   isOpen: boolean
@@ -19,24 +19,30 @@ export default function VoiceMappingModal({ isOpen, onClose }: VoiceMappingModal
     getSpeakerVoice,
   } = useAppStore()
 
-  // 성별/아바타 데이터
+  // 성별/이미지 데이터
   const [genders, setGenders] = useState<Record<string, string>>({})
-  const [avatars, setAvatars] = useState<Record<string, string>>({})
+  const [images, setImages] = useState<Record<string, string>>({})
   const [isLoadingMeta, setIsLoadingMeta] = useState(false)
 
-  // 성별/아바타 데이터 로드
+  // 성별/이미지 데이터 로드
   useEffect(() => {
-    if (isOpen) {
-      setIsLoadingMeta(true)
-      Promise.all([
-        voiceApi.listGenders().catch(() => ({ genders: {} })),
-        voiceApi.listAvatars().catch(() => ({ avatars: {} })),
-      ]).then(([genderRes, avatarRes]) => {
-        setGenders(genderRes.genders)
-        setAvatars(avatarRes.avatars)
-        setIsLoadingMeta(false)
-      })
-    }
+    if (!isOpen) return
+
+    setIsLoadingMeta(true)
+    Promise.all([
+      voiceApi.listGenders().catch(() => ({ genders: {} })),
+      voiceApi.listImages().catch(() => ({ images: {} })),
+    ]).then(([genderRes, imageRes]) => {
+      setGenders(genderRes.genders)
+
+      // 상대 URL에 API_BASE 붙이기
+      const imagesWithBase: Record<string, string> = {}
+      for (const [charId, url] of Object.entries(imageRes.images)) {
+        imagesWithBase[charId] = `${API_BASE}${url}`
+      }
+      setImages(imagesWithBase)
+      setIsLoadingMeta(false)
+    })
   }, [isOpen])
 
   // 음성 없는 캐릭터 (매핑 대상)
@@ -78,7 +84,7 @@ export default function VoiceMappingModal({ isOpen, onClose }: VoiceMappingModal
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="bg-ark-panel border border-ark-border rounded-lg shadow-xl w-[600px] max-h-[80vh] flex flex-col"
+        className="bg-ark-panel border border-ark-border rounded-lg shadow-xl w-[520px] max-h-[80vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* 헤더 */}
@@ -110,7 +116,7 @@ export default function VoiceMappingModal({ isOpen, onClose }: VoiceMappingModal
         </div>
 
         {/* 본문 */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-3">
           {isLoadingMeta ? (
             <div className="text-center text-ark-gray py-8 ark-pulse">
               메타데이터 로딩 중...
@@ -123,13 +129,13 @@ export default function VoiceMappingModal({ isOpen, onClose }: VoiceMappingModal
               <p className="text-ark-white">모든 캐릭터가 음성을 보유하고 있습니다</p>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {voicelessCharacters.map((char, idx) => (
                 <CharacterMappingRow
                   key={`${char.char_id ?? 'n'}-${char.name}-${idx}`}
                   char={char}
                   genders={genders}
-                  avatars={avatars}
+                  images={images}
                   availableVoices={availableVoices}
                   voiceCharacters={voiceCharacters}
                   speakerVoiceMap={speakerVoiceMap}
@@ -165,7 +171,7 @@ export default function VoiceMappingModal({ isOpen, onClose }: VoiceMappingModal
 interface CharacterMappingRowProps {
   char: GroupCharacterInfo
   genders: Record<string, string>
-  avatars: Record<string, string>
+  images: Record<string, string>
   availableVoices: { char_id: string; name: string }[]
   voiceCharacters: { char_id: string; name: string }[]
   speakerVoiceMap: Record<string, string>
@@ -179,7 +185,7 @@ interface CharacterMappingRowProps {
 function CharacterMappingRow({
   char,
   genders,
-  avatars,
+  images,
   availableVoices,
   voiceCharacters,
   speakerVoiceMap,
@@ -194,9 +200,9 @@ function CharacterMappingRow({
   const autoVoice = getSpeakerVoice(mappingKey, char.name)
   const autoVoiceName = autoVoice ? voiceCharacters.find(v => v.char_id === autoVoice)?.name : null
 
-  // 해당 캐릭터의 성별/아바타
+  // 해당 캐릭터의 성별/이미지
   const charGender = char.char_id ? genders[char.char_id] : null
-  const charAvatar = char.char_id ? avatars[char.char_id] : null
+  const charImage = char.char_id ? images[char.char_id] : null
 
   // 자동 여성/남성 선택 시 실제 선택될 캐릭터
   const hash = simpleHash(mappingKey)
@@ -213,117 +219,67 @@ function CharacterMappingRow({
     ? voiceCharacters.find(v => v.char_id === autoMaleVoice)?.name
     : null
 
-  // 선택된 음성의 아바타
-  const selectedAvatar = currentMapping ? avatars[currentMapping] : null
-
   return (
-    <div className="flex items-center gap-3 p-3 rounded bg-ark-black/40 hover:bg-ark-black/60 transition-colors">
-      {/* 캐릭터 아바타 */}
-      <div className="w-10 h-10 rounded-full bg-ark-black/50 overflow-hidden flex-shrink-0 border border-ark-border">
-        {charAvatar ? (
+    <div className="grid grid-cols-[36px_1fr_160px] gap-3 items-center py-2 px-3 rounded bg-ark-black/40 hover:bg-ark-black/60 transition-colors">
+      {/* 캐릭터 이미지 */}
+      <div className="w-9 h-9 rounded-full bg-ark-black/50 overflow-hidden border border-ark-border">
+        {charImage ? (
           <img
-            src={charAvatar}
+            src={charImage}
             alt={char.name}
             className="w-full h-full object-cover"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none'
-            }}
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-ark-gray text-xs">
-            ?
-          </div>
+          <div className="w-full h-full flex items-center justify-center text-ark-gray text-xs">?</div>
         )}
       </div>
 
       {/* 캐릭터 정보 */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-ark-white truncate" title={char.name}>
-            {char.name}
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="text-sm text-ark-white truncate" title={char.name}>
+          {char.name}
+        </span>
+        {charGender && (
+          <span className={`text-[10px] px-1 rounded whitespace-nowrap ${
+            charGender === 'female' ? 'bg-pink-500/20 text-pink-400' : 'bg-blue-500/20 text-blue-400'
+          }`}>
+            {charGender === 'female' ? '♀' : '♂'}
           </span>
-          {charGender && (
-            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-              charGender === 'female'
-                ? 'bg-pink-500/20 text-pink-400'
-                : 'bg-blue-500/20 text-blue-400'
-            }`}>
-              {charGender === 'female' ? '여' : '남'}
-            </span>
-          )}
-          {!char.char_id && (
-            <span className="text-[10px] text-ark-gray/50">(이름)</span>
-          )}
-        </div>
-        <div className="text-xs text-ark-gray">
-          {char.dialogue_count}대사
-        </div>
-      </div>
-
-      {/* 화살표 */}
-      <span className="text-ark-gray text-sm">→</span>
-
-      {/* 매핑된 음성 아바타 미리보기 */}
-      <div className="w-8 h-8 rounded-full bg-ark-black/50 overflow-hidden flex-shrink-0 border border-ark-orange/30">
-        {selectedAvatar ? (
-          <img
-            src={selectedAvatar}
-            alt=""
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none'
-            }}
-          />
-        ) : autoVoice && avatars[autoVoice] ? (
-          <img
-            src={avatars[autoVoice]}
-            alt=""
-            className="w-full h-full object-cover opacity-50"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none'
-            }}
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-ark-gray text-[10px]">
-            자동
-          </div>
         )}
+        {!char.char_id && (
+          <span className="text-[10px] text-ark-gray/50 whitespace-nowrap">(이름)</span>
+        )}
+        <span className="text-[10px] text-ark-gray whitespace-nowrap">{char.dialogue_count}대사</span>
       </div>
 
       {/* 음성 선택 드롭다운 */}
       <select
         value={currentMapping ?? ''}
         onChange={(e) => setSpeakerVoice(mappingKey, e.target.value || null)}
-        className="ark-input text-xs w-44 flex-shrink-0"
+        className="ark-input text-xs py-1.5 px-2 w-full"
       >
-        {/* 1. 자동 (기본) */}
         <option value="">
-          자동 {autoVoiceName ? `(${autoVoiceName})` : ''}
+          자동{autoVoiceName ? ` (${autoVoiceName})` : ''}
         </option>
-
-        {/* 2. 자동 (여성/남성) */}
         {defaultFemaleVoices.length > 0 && (
           <option value={AUTO_VOICE_FEMALE}>
-            자동 (여성{autoFemaleName ? ` - ${autoFemaleName}` : ''})
+            여성{autoFemaleName ? ` (${autoFemaleName})` : ''}
           </option>
         )}
         {defaultMaleVoices.length > 0 && (
           <option value={AUTO_VOICE_MALE}>
-            자동 (남성{autoMaleName ? ` - ${autoMaleName}` : ''})
+            남성{autoMaleName ? ` (${autoMaleName})` : ''}
           </option>
         )}
-
-        {/* 3. 구분선 */}
-        <option disabled>──────────</option>
-
-        {/* 4. 그 외 후보들 (준비된 캐릭터 + 기본 음성 캐릭터) */}
+        <option disabled>────────</option>
         {availableVoices.map(v => {
           const isPrepared = trainedCharIds.has(v.char_id)
           const gender = genders[v.char_id]
           const genderLabel = gender === 'female' ? '♀' : gender === 'male' ? '♂' : ''
           return (
             <option key={v.char_id} value={v.char_id}>
-              {v.name} {genderLabel} {!isPrepared ? '(기본)' : ''}
+              {v.name}{genderLabel ? ` ${genderLabel}` : ''}{!isPrepared ? ' (기본)' : ''}
             </option>
           )
         })}

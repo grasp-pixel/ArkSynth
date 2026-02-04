@@ -355,163 +355,46 @@ export const voiceApi = {
     return res.data
   },
 
-  // 캐릭터 이미지 URL 조회
-  getCharacterImages: async (charId: string) => {
-    const res = await api.get<{ char_id: string; avatar_url: string | null; portrait_url: string | null }>(
-      `/api/voice/characters/${encodeURIComponent(charId)}/images`
-    )
-    return res.data
-  },
-
-  // 캐시된 얼굴 아바타 URL 목록 (로컬 API URL)
-  listAvatars: async () => {
-    const res = await api.get<{ total: number; cached: number; avatars: Record<string, string> }>('/api/voice/avatars')
-    return res.data
-  },
-
-  // 캐시된 스탠딩 이미지 URL 목록 (로컬 API URL)
-  listPortraits: async () => {
-    const res = await api.get<{ total: number; cached: number; portraits: Record<string, string> }>('/api/voice/portraits')
-    return res.data
-  },
-
-  // === 이미지 캐싱 API ===
-
-  // 이미지 캐시 상태 조회
-  getAvatarCacheStatus: async () => {
+  // 캐릭터 이미지 목록 (로컬 추출 이미지)
+  listImages: async () => {
     const res = await api.get<{
       total: number
-      avatars: { cached: number; path: string }
-      portraits: { cached: number; path: string }
-      cached: number  // 하위 호환성
-      cache_path: string  // 하위 호환성
-    }>('/api/voice/avatars/cache-status')
+      folders: number
+      characters: number
+      images: Record<string, string>
+    }>('/api/voice/images')
     return res.data
   },
 
-  // 캐시된 얼굴 아바타 이미지 URL (로컬)
-  getCachedAvatarUrl: (charId: string) => {
-    return `${API_BASE}/api/voice/avatars/${encodeURIComponent(charId)}`
+  // 이미지 상태 조회
+  getImageStatus: async () => {
+    const res = await api.get<{
+      total_images: number
+      total_folders: number
+      path: string
+    }>('/api/voice/images/status')
+    return res.data
   },
 
-  // 캐시된 스탠딩 이미지 URL (로컬)
+  // 캐릭터 이미지 URL (로컬)
+  getImageUrl: (charId: string) => {
+    return `${API_BASE}/api/voice/images/${encodeURIComponent(charId)}`
+  },
+
+  // 하위 호환성
+  listPortraits: async () => {
+    const res = await api.get<{
+      total: number
+      folders: number
+      characters: number
+      images: Record<string, string>
+    }>('/api/voice/portraits')
+    return res.data
+  },
+
   getCachedPortraitUrl: (charId: string) => {
     return `${API_BASE}/api/voice/portraits/${encodeURIComponent(charId)}`
   },
-
-  // 아바타 캐시 삭제
-  clearAvatarCache: async () => {
-    const res = await api.delete<{ deleted: number; message: string }>('/api/voice/avatars/cache')
-    return res.data
-  },
-
-  // 이미지 캐시 삭제 (avatar/portrait/both)
-  clearImageCache: async (imageType: 'avatar' | 'portrait' | 'both' = 'both') => {
-    const res = await api.delete<{ deleted: number; message: string }>(
-      `/api/voice/images/cache?image_type=${imageType}`
-    )
-    return res.data
-  },
-}
-
-// 이미지 다운로드 진행률 타입
-export interface AvatarDownloadProgress {
-  status: 'starting' | 'downloading' | 'completed' | 'error'
-  total: number
-  completed: number
-  current?: string
-  error?: string
-}
-
-// 이미지 다운로드 SSE 스트림 (avatar + portrait)
-export function createImageDownloadStream(
-  options: {
-    charIds?: string[]
-    imageType?: 'avatar' | 'portrait' | 'both'
-    onProgress?: (progress: AvatarDownloadProgress) => void
-    onComplete?: (total: number) => void
-    onError?: (error: string) => void
-  } = {}
-): { close: () => void } {
-  const { charIds, imageType = 'both', onProgress, onComplete, onError } = options
-
-  const controller = new AbortController()
-
-  const fetchStream = async () => {
-    try {
-      const url = new URL(`${API_BASE}/api/voice/images/download`)
-      url.searchParams.set('image_type', imageType)
-
-      const res = await fetch(url.toString(), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: charIds ? JSON.stringify(charIds) : null,
-        signal: controller.signal,
-      })
-
-      const reader = res.body?.getReader()
-      if (!reader) {
-        onError?.('스트림 읽기 실패')
-        return
-      }
-
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-
-        const lines = buffer.split('\n\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6)) as AvatarDownloadProgress
-              onProgress?.(data)
-
-              if (data.status === 'completed') {
-                onComplete?.(data.completed)
-              } else if (data.status === 'error') {
-                onError?.(data.error || '다운로드 실패')
-              }
-            } catch {
-              // JSON 파싱 실패 무시
-            }
-          }
-        }
-      }
-    } catch (err) {
-      if (err instanceof Error && err.name !== 'AbortError') {
-        onError?.(err.message)
-      }
-    }
-  }
-
-  fetchStream()
-
-  return {
-    close: () => controller.abort()
-  }
-}
-
-// 하위 호환성
-export function createAvatarDownloadStream(
-  charIds?: string[],
-  options: {
-    onProgress?: (progress: AvatarDownloadProgress) => void
-    onComplete?: (total: number) => void
-    onError?: (error: string) => void
-  } = {}
-): { close: () => void } {
-  return createImageDownloadStream({
-    charIds,
-    imageType: 'both',  // 둘 다 다운로드
-    ...options,
-  })
 }
 
 // OCR 관련 타입
@@ -1662,6 +1545,105 @@ export function createGamedataUpdateStream(
   return {
     close: () => {
       console.log('[SSE] 게임 데이터 업데이트 스트림 종료')
+      eventSource.close()
+    }
+  }
+}
+
+// === 이미지 추출 API ===
+
+export interface ImageExtractProgress {
+  stage: 'scanning' | 'extracting' | 'complete' | 'error'
+  current_file?: string
+  processed: number
+  total: number
+  extracted: number
+  message: string
+  error?: string
+}
+
+export interface ImageAssetsStatus {
+  exists: boolean
+  path?: string
+  characters_exists?: boolean
+  total_bundles?: number
+  message?: string
+  hint?: string
+}
+
+export const imageExtractApi = {
+  // ImageAssets 상태 확인
+  checkImageAssets: async () => {
+    const res = await api.get<ImageAssetsStatus>('/api/settings/extract/images/check-source')
+    return res.data
+  },
+
+  // 추출 상태 확인
+  getStatus: async () => {
+    const res = await api.get<{ status: string; message?: string; result?: Record<string, unknown> }>(
+      '/api/settings/extract/images/status'
+    )
+    return res.data
+  },
+
+  // 추출 시작
+  startExtract: async () => {
+    const res = await api.post<{ status: string; message: string }>(
+      '/api/settings/extract/images/start'
+    )
+    return res.data
+  },
+
+  // 추출 취소
+  cancelExtract: async () => {
+    const res = await api.post<{ status: string; message: string }>(
+      '/api/settings/extract/images/cancel'
+    )
+    return res.data
+  },
+}
+
+// 이미지 추출 진행률 SSE 스트림
+export function createImageExtractStream(
+  options: {
+    onProgress?: (progress: ImageExtractProgress) => void
+    onComplete?: (extracted: number) => void
+    onError?: (error: string) => void
+  } = {}
+): { close: () => void } {
+  const { onProgress, onComplete, onError } = options
+
+  const eventSource = new EventSource(`${API_BASE}/api/settings/extract/images/stream`)
+
+  eventSource.addEventListener('progress', (event) => {
+    const progress = JSON.parse(event.data) as ImageExtractProgress
+    onProgress?.(progress)
+  })
+
+  eventSource.addEventListener('complete', (event) => {
+    const data = JSON.parse(event.data) as { success: boolean; extracted: number }
+    onComplete?.(data.extracted)
+    eventSource.close()
+  })
+
+  eventSource.addEventListener('error', (event) => {
+    if (event instanceof MessageEvent) {
+      const data = JSON.parse(event.data)
+      onError?.(data.error || '추출 실패')
+    }
+    eventSource.close()
+  })
+
+  eventSource.addEventListener('ping', () => {
+    // keep-alive
+  })
+
+  eventSource.onerror = () => {
+    // 연결 오류
+  }
+
+  return {
+    close: () => {
       eventSource.close()
     }
   }

@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useAppStore } from '../stores/appStore'
-import { ttsApi, voiceApi, createAvatarDownloadStream, type AvatarDownloadProgress, API_BASE } from '../services/api'
+import { ttsApi, voiceApi, API_BASE } from '../services/api'
 
 type SortBy = 'dialogues' | 'files' | 'name' | 'id'
 
@@ -59,27 +59,21 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
 
   // 성별/이미지 데이터
   const [genders, setGenders] = useState<Record<string, string>>({})
-  const [avatars, setAvatars] = useState<Record<string, string>>({})  // 얼굴 아바타
-  const [portraits, setPortraits] = useState<Record<string, string>>({})  // 스탠딩 이미지
+  const [images, setImages] = useState<Record<string, string>>({})  // 캐릭터 이미지
 
-  // 이미지 캐시 상태
-  const [imageCacheStatus, setImageCacheStatus] = useState<{
-    total: number
-    avatars: { cached: number }
-    portraits: { cached: number }
+  // 이미지 상태
+  const [imageStatus, setImageStatus] = useState<{
+    total_images: number
+    total_folders: number
   } | null>(null)
-  const [isDownloadingImages, setIsDownloadingImages] = useState(false)
-  const [imageDownloadProgress, setImageDownloadProgress] = useState<AvatarDownloadProgress | null>(null)
-  const imageDownloadRef = useRef<{ close: () => void } | null>(null)
 
-  // 이미지 캐시 상태 로드 함수
-  const loadImageCacheStatus = async () => {
+  // 이미지 상태 로드 함수
+  const loadImageStatus = async () => {
     try {
-      const status = await voiceApi.getAvatarCacheStatus()
-      setImageCacheStatus({
-        total: status.total,
-        avatars: status.avatars,
-        portraits: status.portraits,
+      const status = await voiceApi.getImageStatus()
+      setImageStatus({
+        total_images: status.total_images,
+        total_folders: status.total_folders,
       })
     } catch {
       // 무시
@@ -88,21 +82,13 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
 
   // 이미지 목록 로드 함수
   const loadImages = async () => {
-    const [avatarRes, portraitRes] = await Promise.all([
-      voiceApi.listAvatars().catch(() => ({ avatars: {} })),
-      voiceApi.listPortraits().catch(() => ({ portraits: {} })),
-    ])
+    const imageRes = await voiceApi.listImages().catch(() => ({ images: {} }))
     // 상대 URL에 API_BASE 붙이기
-    const avatarsWithBase: Record<string, string> = {}
-    for (const [charId, url] of Object.entries(avatarRes.avatars)) {
-      avatarsWithBase[charId] = `${API_BASE}${url}`
+    const imagesWithBase: Record<string, string> = {}
+    for (const [charId, url] of Object.entries(imageRes.images)) {
+      imagesWithBase[charId] = `${API_BASE}${url}`
     }
-    const portraitsWithBase: Record<string, string> = {}
-    for (const [charId, url] of Object.entries(portraitRes.portraits)) {
-      portraitsWithBase[charId] = `${API_BASE}${url}`
-    }
-    setAvatars(avatarsWithBase)
-    setPortraits(portraitsWithBase)
+    setImages(imagesWithBase)
   }
 
   // 모달 열릴 때 데이터 로드
@@ -111,7 +97,7 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
       loadVoiceCharacters()
       loadTrainedModels()
       loadCharacterAliases()
-      loadImageCacheStatus()
+      loadImageStatus()
       loadImages()
 
       // 성별 데이터 로드
@@ -129,11 +115,6 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
       setEditingAliasCharId(null)
       setNewAliasInput('')
       setAliasError(null)
-      // 이미지 다운로드 스트림 정리
-      if (imageDownloadRef.current) {
-        imageDownloadRef.current.close()
-        imageDownloadRef.current = null
-      }
     }
   }, [isOpen, loadVoiceCharacters, loadTrainedModels, loadCharacterAliases])
 
@@ -332,47 +313,6 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
     }
   }
 
-  // 이미지 다운로드 시작 (avatar + portrait 둘 다)
-  const handleStartImageDownload = () => {
-    if (isDownloadingImages) return
-
-    setIsDownloadingImages(true)
-    setImageDownloadProgress({ status: 'starting', total: 0, completed: 0 })
-
-    imageDownloadRef.current = createAvatarDownloadStream(undefined, {
-      onProgress: (progress) => {
-        setImageDownloadProgress(progress)
-      },
-      onComplete: () => {
-        setIsDownloadingImages(false)
-        setImageDownloadProgress(null)
-        loadImageCacheStatus()
-        loadImages()
-      },
-      onError: (error) => {
-        console.error('[Image] 다운로드 실패:', error)
-        setIsDownloadingImages(false)
-        setImageDownloadProgress({ status: 'error', total: 0, completed: 0, error })
-      },
-    })
-  }
-
-  // 이미지 캐시 삭제
-  const handleClearImageCache = async () => {
-    try {
-      await voiceApi.clearImageCache('both')
-      setImageCacheStatus(prev => prev ? {
-        ...prev,
-        avatars: { cached: 0 },
-        portraits: { cached: 0 },
-      } : null)
-      setAvatars({})
-      setPortraits({})
-    } catch (error) {
-      console.error('[Image] 캐시 삭제 실패:', error)
-    }
-  }
-
   if (!isOpen) return null
 
   return (
@@ -543,47 +483,8 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
                 <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
               </svg>
               <span>
-                얼굴: {imageCacheStatus ? `${imageCacheStatus.avatars.cached}/${imageCacheStatus.total}` : '...'}
+                이미지: {imageStatus ? `${imageStatus.total_images}개 (${imageStatus.total_folders}폴더)` : '...'}
               </span>
-              <span>
-                스탠딩: {imageCacheStatus ? `${imageCacheStatus.portraits.cached}/${imageCacheStatus.total}` : '...'}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              {isDownloadingImages ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-24 h-2 bg-ark-border rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-ark-orange transition-all"
-                      style={{
-                        width: imageDownloadProgress?.total
-                          ? `${(imageDownloadProgress.completed / imageDownloadProgress.total) * 100}%`
-                          : '0%'
-                      }}
-                    />
-                  </div>
-                  <span className="text-[10px] text-ark-gray">
-                    {imageDownloadProgress?.completed || 0}/{imageDownloadProgress?.total || 0}
-                  </span>
-                </div>
-              ) : (
-                <>
-                  <button
-                    onClick={handleStartImageDownload}
-                    className="text-[10px] px-2 py-1 rounded bg-ark-orange/20 text-ark-orange hover:bg-ark-orange/30"
-                  >
-                    다운로드
-                  </button>
-                  {imageCacheStatus && (imageCacheStatus.avatars.cached > 0 || imageCacheStatus.portraits.cached > 0) && (
-                    <button
-                      onClick={handleClearImageCache}
-                      className="text-[10px] px-2 py-1 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20"
-                    >
-                      캐시 삭제
-                    </button>
-                  )}
-                </>
-              )}
             </div>
           </div>
         </div>
@@ -608,8 +509,7 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
                 const isEditingAlias = editingAliasCharId === char.char_id
 
                 const charGender = genders[char.char_id]
-                const charAvatar = avatars[char.char_id]  // 얼굴 (원형 초상화용)
-                const charPortrait = portraits[char.char_id]  // 스탠딩 (배경용)
+                const charImage = images[char.char_id]
 
                 return (
                   <div
@@ -623,11 +523,11 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
                     {/* 기본 배경 */}
                     <div className={`absolute inset-0 ${isReady ? 'bg-green-500/10' : 'bg-ark-black/50'}`} />
 
-                    {/* 스탠딩 이미지 (우측에, mask로 페이드) */}
-                    {charPortrait && (
+                    {/* 캐릭터 이미지 (우측에, mask로 페이드) */}
+                    {charImage && (
                       <div className="absolute -right-4 top-0 bottom-0 w-1/2 pointer-events-none">
                         <img
-                          src={charPortrait}
+                          src={charImage}
                           alt=""
                           className="w-full h-full object-cover object-top"
                           style={{
@@ -643,13 +543,13 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
 
                     {/* 컨텐츠 */}
                     <div className="relative z-10 p-3 h-full flex flex-col">
-                      {/* 헤더: 아바타 + 이름 + 뱃지 */}
+                      {/* 헤더: 이미지 + 이름 + 뱃지 */}
                       <div className="flex items-start gap-2 mb-2">
-                        {/* 원형 아바타 (얼굴 이미지) */}
+                        {/* 원형 이미지 */}
                         <div className="w-12 h-12 rounded-full bg-ark-black/70 overflow-hidden flex-shrink-0 border-2 border-white/20">
-                          {charAvatar ? (
+                          {charImage ? (
                             <img
-                              src={charAvatar}
+                              src={charImage}
                               alt={char.name}
                               className="w-full h-full object-cover"
                               onError={(e) => {

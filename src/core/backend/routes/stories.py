@@ -31,6 +31,18 @@ def get_voice_mapper() -> CharacterVoiceMapper:
     return _voice_mapper
 
 
+def reset_story_loader(rebuild_name_mapper: bool = True, lang: str = "ko_KR") -> None:
+    """스토리 로더 캐시 리셋 (캐릭터 이름 매핑 포함)
+
+    Args:
+        rebuild_name_mapper: True면 이름 매퍼 캐시 즉시 재빌드
+        lang: 재빌드 시 사용할 언어
+    """
+    global _loader
+    if _loader is not None:
+        _loader.reset_name_mapper(rebuild=rebuild_name_mapper, lang=lang)
+
+
 # ========== 응답 모델 ==========
 
 
