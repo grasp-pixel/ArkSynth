@@ -62,6 +62,11 @@ class AudioPreprocessor:
 
     긴 오디오를 문장 단위로 분할하고, charword_table의 텍스트와 정렬합니다.
     GPT-SoVITS 학습에 적합한 3-10초 세그먼트를 생성합니다.
+
+    분할 방식:
+    - Whisper 단어 타임스탬프 기반
+    - 문장부호에서 word.end + margin으로 분할
+    - 마지막 세그먼트는 오디오 끝까지 확장
     """
 
     # 문장 분할 기준 문장부호
@@ -76,6 +81,8 @@ class AudioPreprocessor:
         min_duration: float = 3.0,
         max_duration: float = 10.0,
         target_sample_rate: int = 32000,
+        # 분할 설정
+        end_margin_ms: int = 500,  # 세그먼트 끝 여유 (word.end + margin)
     ):
         """
         Args:
@@ -86,6 +93,7 @@ class AudioPreprocessor:
             min_duration: 최소 세그먼트 길이 (초)
             max_duration: 최대 세그먼트 길이 (초)
             target_sample_rate: 출력 샘플레이트 (GPT-SoVITS는 32kHz)
+            end_margin_ms: 세그먼트 끝 여유 시간 (ms) - word.end + margin에서 분할
         """
         self.model_size = model_size
         self.language = language
@@ -94,6 +102,9 @@ class AudioPreprocessor:
         self.min_duration = min_duration
         self.max_duration = max_duration
         self.target_sample_rate = target_sample_rate
+
+        # 분할 설정
+        self.end_margin_ms = end_margin_ms
 
         self._model = None
 
@@ -247,7 +258,10 @@ class AudioPreprocessor:
     ) -> list[tuple[float, float, str]]:
         """분할 지점 찾기
 
-        문장부호에서 분할하고, 각 구간의 텍스트를 반환합니다.
+        문장부호에서 분할하고, word.end + margin에서 자릅니다.
+
+        Args:
+            segments: Whisper 세그먼트 목록
 
         Returns:
             [(start, end, text), ...] 분할 정보
@@ -268,7 +282,7 @@ class AudioPreprocessor:
         current_start = all_words[0].start
         current_text = ""
 
-        for word in all_words:
+        for i, word in enumerate(all_words):
             current_text += word.word
 
             # 문장 끝 감지 (문장부호가 포함된 단어)
@@ -285,8 +299,16 @@ class AudioPreprocessor:
                 should_split = True
 
             if should_split:
-                split_points.append((current_start, word.end, current_text.strip()))
-                current_start = word.end
+                # 분할점: 현재 단어 끝 + margin (발음 잔향 포함)
+                end_margin_sec = self.end_margin_ms / 1000
+                split_time = word.end + end_margin_sec
+
+                logger.debug(
+                    f"분할: {word.end:.2f}s → {split_time:.2f}s (+{self.end_margin_ms}ms)"
+                )
+
+                split_points.append((current_start, split_time, current_text.strip()))
+                current_start = split_time
                 current_text = ""
 
         # 남은 부분 처리
@@ -314,6 +336,7 @@ class AudioPreprocessor:
         start: float,
         end: float,
         output_path: Path,
+        audio_duration: float | None = None,
     ) -> bool:
         """FFmpeg로 오디오 세그먼트 추출
 
@@ -321,10 +344,27 @@ class AudioPreprocessor:
         - 32kHz 샘플레이트
         - 모노 채널
         - WAV 형식
+
+        분할점은 VAD(무음 감지)로 결정되므로 추가 패딩/오프셋 불필요.
+        무음 구간 중심에서 분할하면 자연스럽게 앞뒤 무음이 포함됨.
+
+        Args:
+            audio_path: 원본 오디오 파일
+            start: 시작 시간 (초)
+            end: 종료 시간 (초)
+            output_path: 출력 파일 경로
+            audio_duration: 전체 오디오 길이 (클램핑용)
         """
-        duration = end - start
+        # 오디오 길이로 클램핑
+        actual_end = end
+        if audio_duration is not None:
+            actual_end = min(end, audio_duration)
+
+        duration = actual_end - start
         if duration <= 0:
             return False
+
+        logger.debug(f"세그먼트 추출: {start:.2f}-{actual_end:.2f}s ({duration:.2f}s)")
 
         cmd = [
             "ffmpeg",
@@ -398,9 +438,10 @@ class AudioPreprocessor:
         """긴 오디오를 문장 단위로 분할
 
         1. Whisper로 전사 및 타임스탬프 추출
-        2. 문장부호 기준 분할점 찾기
+        2. 문장부호에서 word.end + margin으로 분할점 결정
         3. FFmpeg로 세그먼트 추출
-        4. 각 WAV 파일 옆에 .txt 파일 저장
+        4. 마지막 세그먼트는 오디오 끝까지 확장
+        5. 각 WAV 파일 옆에 .txt 파일 저장
 
         Args:
             audio_path: 원본 오디오 경로
@@ -412,6 +453,9 @@ class AudioPreprocessor:
             생성된 AudioSegment 목록
         """
         output_dir.mkdir(parents=True, exist_ok=True)
+
+        # 오디오 길이 확인 (클램핑용)
+        audio_duration = self._get_audio_duration(audio_path)
 
         # Whisper 전사
         segments = self.transcribe_audio(audio_path)
@@ -426,11 +470,18 @@ class AudioPreprocessor:
         similarity, _ = self.align_texts(whisper_text, expected_text)
         logger.debug(f"텍스트 유사도: {similarity:.2f}")
 
-        # 분할점 찾기
+        # 분할점 찾기 (word.end + margin)
         split_points = self._find_split_points(segments)
         if not split_points:
             logger.warning(f"분할점을 찾을 수 없음: {audio_path.name}")
             return []
+
+        # 마지막 세그먼트의 끝을 오디오 전체 길이로 확장 (발음 잔향 포함)
+        if audio_duration and split_points:
+            last_start, last_end, last_text = split_points[-1]
+            if last_end < audio_duration:
+                split_points[-1] = (last_start, audio_duration, last_text)
+                logger.debug(f"마지막 세그먼트 확장: {last_end:.2f}s → {audio_duration:.2f}s")
 
         # 세그먼트 추출
         results: list[AudioSegment] = []
@@ -440,7 +491,11 @@ class AudioPreprocessor:
             output_path = output_dir / f"{voice_id}_{i:02d}.wav"
             text_path = output_dir / f"{voice_id}_{i:02d}.txt"
 
-            if not self._extract_segment(audio_path, start, end, output_path):
+            # 세그먼트 추출 (VAD로 결정된 분할점 그대로 사용)
+            if not self._extract_segment(
+                audio_path, start, end, output_path,
+                audio_duration=audio_duration,
+            ):
                 continue
 
             # 세그먼트 텍스트 결정
@@ -454,12 +509,15 @@ class AudioPreprocessor:
             # 텍스트 파일 저장 (WAV 옆에)
             text_path.write_text(seg_text, encoding="utf-8")
 
-            duration = end - start
+            # 세그먼트 길이 계산
+            actual_end = min(end, audio_duration) if audio_duration else end
+            segment_duration = actual_end - start
+
             results.append(
                 AudioSegment(
                     audio_path=output_path,
                     text=seg_text,
-                    duration=duration,
+                    duration=segment_duration,
                     original_voice_id=voice_id,
                     segment_index=i,
                 )
@@ -511,7 +569,10 @@ class AudioPreprocessor:
             output_path = output_dir / f"{voice_id}.wav"
             text_path = output_dir / f"{voice_id}.txt"
 
-            if self._extract_segment(audio_path, 0, duration, output_path):
+            if self._extract_segment(
+                audio_path, 0, duration, output_path,
+                audio_duration=duration,
+            ):
                 # 텍스트 파일 저장 (WAV 옆에)
                 text_path.write_text(expected_text, encoding="utf-8")
                 return [

@@ -732,6 +732,7 @@ def run_sovits_training(gpt_sovits_path: Path, exp_name: str, opt_dir: Path,
         json.dump(s2_config, f, ensure_ascii=False, indent=2)
 
     emit_progress("sovits_training", 0.40, f"SoVITS 학습 시작 (에포크: {epochs})")
+    logger.info(f"[SoVITS] 학습 시작 - 에포크: {epochs}, 배치: {batch_size}, 버전: {version}")
 
     env = os.environ.copy()
     # PYTHONPATH 설정 (GPT_SoVITS 모듈 + 루트의 tools/utils 모듈)
@@ -766,11 +767,16 @@ runpy.run_path(r'{abs_train_script}', run_name='__main__')
         current_epoch = 0
         last_lines = []  # 마지막 출력 라인들 (에러 진단용)
         max_lines = 20
+        line_count = 0
+        last_progress_time = 0
+        import time as time_module
 
         for line in iter(process.stdout.readline, ""):
             line = line.strip()
             if not line:
                 continue
+
+            line_count += 1
 
             # 에러 진단용 마지막 라인 저장
             last_lines.append(line)
@@ -779,6 +785,7 @@ runpy.run_path(r'{abs_train_script}', run_name='__main__')
 
             # 에포크 진행 파싱 (다양한 형식 지원)
             epoch_parsed = False
+            step_parsed = False
 
             # 형식 1: "Epoch 1/8" 또는 "Epoch 1: 100%"
             if "Epoch" in line:
@@ -807,10 +814,45 @@ runpy.run_path(r'{abs_train_script}', run_name='__main__')
                 except Exception as e:
                     logger.warning(f"[SoVITS] 에포크 파싱 실패: {e}")
 
-            # 중요 로그 출력 (에포크, 손실, 에러 등)
-            if epoch_parsed or "loss" in line.lower() or "error" in line.lower() or "step" in line.lower():
+            # Step 파싱 (에포크 없이 스텝만 출력하는 경우)
+            elif "step" in line.lower() or "steps" in line.lower():
+                try:
+                    import re
+                    match = re.search(r"(\d+)\s*/\s*(\d+)\s*(?:step|steps)", line.lower())
+                    if match:
+                        current_step = int(match.group(1))
+                        total_steps = int(match.group(2))
+                        step_parsed = True
+                        # 스텝 기반 진행률 (40% ~ 60%)
+                        step_progress = current_step / total_steps if total_steps > 0 else 0
+                        progress = 0.40 + step_progress * 0.20
+                        # 10% 단위로만 업데이트
+                        if int(step_progress * 10) != int(last_progress_time):
+                            last_progress_time = int(step_progress * 10)
+                            emit_progress("sovits_training", progress,
+                                          f"SoVITS 학습 중: 스텝 {current_step}/{total_steps}")
+                except Exception:
+                    pass
+
+            # 5초마다 heartbeat 진행 업데이트 (학습 중임을 알림)
+            current_time = time_module.time()
+            if line_count % 50 == 0 and not epoch_parsed and not step_parsed:
+                emit_progress("sovits_training", 0.40 + (current_epoch / epochs) * 0.20 if current_epoch > 0 else 0.41,
+                              f"SoVITS 학습 진행 중... (라인 {line_count})")
+
+            # 중요 로그만 출력 (과다 로그 방지)
+            is_important = (
+                epoch_parsed or
+                "error" in line.lower() or
+                "warning" in line.lower() or
+                "saved" in line.lower() or
+                "checkpoint" in line.lower() or
+                line.startswith("INFO:__main__:")
+            )
+            if is_important:
                 logger.info(f"[SoVITS] {line}")
-            else:
+            elif line_count <= 10 or line_count % 100 == 0:
+                # 처음 10줄과 100줄마다만 출력
                 logger.debug(f"[SoVITS] {line}")
 
         process.wait()
@@ -952,11 +994,16 @@ runpy.run_path(r'{abs_train_script}', run_name='__main__')
         current_epoch = 0
         last_lines = []  # 마지막 출력 라인들 (에러 진단용)
         max_lines = 20
+        line_count = 0
+        last_step_progress = -1  # 스텝 진행률 추적 (10% 단위)
+        import time as time_module
 
         for line in iter(process.stdout.readline, ""):
             line = line.strip()
             if not line:
                 continue
+
+            line_count += 1
 
             # 에러 진단용 마지막 라인 저장
             last_lines.append(line)
@@ -965,6 +1012,7 @@ runpy.run_path(r'{abs_train_script}', run_name='__main__')
 
             # 에포크 진행 파싱 (다양한 형식 지원)
             epoch_parsed = False
+            step_parsed = False
 
             if "Epoch" in line:
                 try:
@@ -992,10 +1040,46 @@ runpy.run_path(r'{abs_train_script}', run_name='__main__')
                 except Exception as e:
                     logger.warning(f"[GPT] 에포크 파싱 실패: {e}")
 
-            # 중요 로그 출력
-            if epoch_parsed or "loss" in line.lower() or "error" in line.lower() or "step" in line.lower():
+            # Step 파싱 (에포크 없이 스텝만 출력하는 경우)
+            elif "step" in line.lower() or "steps" in line.lower():
+                try:
+                    import re
+                    match = re.search(r"(\d+)\s*/\s*(\d+)\s*(?:step|steps)", line.lower())
+                    if match:
+                        current_step = int(match.group(1))
+                        total_steps = int(match.group(2))
+                        step_parsed = True
+                        # 스텝 기반 진행률 (60% ~ 95%)
+                        step_progress = current_step / total_steps if total_steps > 0 else 0
+                        progress = 0.60 + step_progress * 0.35
+                        # 10% 단위로만 업데이트 (과다 로그 방지)
+                        current_step_progress = int(step_progress * 10)
+                        if current_step_progress != last_step_progress:
+                            last_step_progress = current_step_progress
+                            emit_progress("gpt_training", progress,
+                                          f"GPT 학습 중: 스텝 {current_step}/{total_steps}")
+                except Exception:
+                    pass
+
+            # 50줄마다 heartbeat 진행 업데이트 (학습 중임을 알림)
+            if line_count % 50 == 0 and not epoch_parsed and not step_parsed:
+                base_progress = 0.60 + (current_epoch / epochs) * 0.35 if current_epoch > 0 else 0.61
+                emit_progress("gpt_training", base_progress,
+                              f"GPT 학습 진행 중... (라인 {line_count})")
+
+            # 중요 로그만 출력 (과다 로그 방지)
+            is_important = (
+                epoch_parsed or
+                "error" in line.lower() or
+                "warning" in line.lower() or
+                "saved" in line.lower() or
+                "checkpoint" in line.lower() or
+                line.startswith("INFO:__main__:")
+            )
+            if is_important:
                 logger.info(f"[GPT] {line}")
-            else:
+            elif line_count <= 10 or line_count % 100 == 0:
+                # 처음 10줄과 100줄마다만 출력
                 logger.debug(f"[GPT] {line}")
 
         process.wait()

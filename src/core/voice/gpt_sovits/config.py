@@ -124,9 +124,9 @@ class GPTSoVITSConfig:
     # TTS 추론 설정 (GPT-SoVITS 권장 기본값)
     # 이 값들은 백엔드에서 사용되며, 프론트엔드에서는 기본값만 사용
     speed_factor: float = 1.0  # 음성 속도 (0.5~2.0, 1.0=기본)
-    top_k: int = 5  # 샘플링 다양성 (1~20, 높을수록 조기 EOS 방지)
+    top_k: int = 15  # 샘플링 다양성 (1~20, 높을수록 조기 EOS 방지, 5는 너무 낮음)
     top_p: float = 1.0  # Nucleus sampling (0.1~1.0)
-    temperature: float = 1.0  # 음성 랜덤성 (0.1~2.0, 1.0=자연스러움)
+    temperature: float = 0.8  # 음성 랜덤성 (0.1~2.0, 낮을수록 안정적)
 
     # 언어 설정 (한국어 우선)
     default_language: str = "ko"

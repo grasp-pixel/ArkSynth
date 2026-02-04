@@ -527,10 +527,30 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
                           </span>
                         )
                       ) : isTraining ? (
-                        <span className="text-xs text-ark-orange flex items-center gap-1 ark-pulse">
-                          <span className="w-2 h-2 rounded-full bg-ark-orange" />
-                          {currentTrainingJob?.mode === 'finetune' ? '학습 중...' : '준비 중...'}
-                        </span>
+                        <div className="flex flex-col gap-1 w-full">
+                          <div className="flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-ark-orange ark-pulse" />
+                            <span className="text-xs text-ark-orange">
+                              {currentTrainingJob?.mode === 'finetune' ? '학습 중' : '준비 중'}
+                              {currentTrainingJob?.progress != null && ` ${Math.round(currentTrainingJob.progress * 100)}%`}
+                            </span>
+                          </div>
+                          {/* 진행률 바 */}
+                          {currentTrainingJob?.progress != null && (
+                            <div className="w-full h-1 bg-ark-border rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-ark-orange transition-all duration-300"
+                                style={{ width: `${Math.round(currentTrainingJob.progress * 100)}%` }}
+                              />
+                            </div>
+                          )}
+                          {/* 단계 메시지 */}
+                          {currentTrainingJob?.message && (
+                            <span className="text-[10px] text-ark-gray/70 truncate" title={currentTrainingJob.message}>
+                              {currentTrainingJob.message}
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-xs text-ark-gray/50">준비 필요</span>
                       )}

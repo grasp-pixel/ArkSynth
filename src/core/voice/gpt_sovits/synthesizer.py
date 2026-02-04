@@ -167,9 +167,9 @@ class GPTSoVITSSynthesizer:
         output_path: Path | None = None,
         language: str = "ko",
         speed_factor: float = 1.0,
-        top_k: int = 5,
+        top_k: int = 15,
         top_p: float = 1.0,
-        temperature: float = 1.0,
+        temperature: float = 0.8,  # 낮은 온도로 안정성 향상
     ) -> SynthesisResult | None:
         """텍스트를 음성으로 합성
 

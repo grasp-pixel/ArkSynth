@@ -516,9 +516,9 @@ class GPTSoVITSAPIClient:
         char_id: str,
         language: str = "ko",
         speed_factor: float = 1.0,
-        top_k: int = 5,
+        top_k: int = 15,
         top_p: float = 1.0,
-        temperature: float = 1.0,
+        temperature: float = 0.8,  # 낮은 온도로 안정성 향상
     ) -> Optional[bytes]:
         """텍스트를 음성으로 합성
 
@@ -654,9 +654,9 @@ class GPTSoVITSAPIClient:
         char_id: str,
         language: str = "ko",
         speed_factor: float = 1.0,
-        top_k: int = 5,
+        top_k: int = 15,
         top_p: float = 1.0,
-        temperature: float = 1.0,
+        temperature: float = 0.8,  # 낮은 온도로 안정성 향상
         ref_audio_path: Path | None = None,
         ref_text: str | None = None,
     ) -> Optional[bytes]:
@@ -676,6 +676,14 @@ class GPTSoVITSAPIClient:
         Returns:
             WAV 오디오 데이터 또는 None
         """
+        # 텍스트 전처리: 조기 EOS 방지를 위한 패딩
+        # 문장 끝에 마침표가 없으면 추가하고, 공백 패딩 추가
+        text = text.strip()
+        if text and not text[-1] in ".。!！?？…~～":
+            text = text + "."
+        # 끝에 공백 패딩 추가 (모델이 문장 끝을 더 명확히 인식)
+        text = text + "  "
+
         # 참조 오디오가 전달되지 않으면 자동 선택
         if ref_audio_path is None or ref_text is None:
             ref_audio_path, ref_text = self._select_reference_audio(char_id, len(text))
@@ -700,6 +708,10 @@ class GPTSoVITSAPIClient:
         }
         api_lang = lang_map.get(language, language)
 
+        # text_split_method: cut0=분할없음, cut5=문장부호 분할
+        # 짧은 텍스트는 분할하지 않음 (조기 EOS 방지)
+        split_method = "cut0" if len(text) < 80 else "cut5"
+
         params = {
             "text": text,
             "text_lang": api_lang,
@@ -710,8 +722,10 @@ class GPTSoVITSAPIClient:
             "top_k": top_k,
             "top_p": top_p,
             "temperature": temperature,
-            "text_split_method": "cut5",  # GPT-SoVITS 내부 분할 (어조 유지)
+            "repetition_penalty": 1.35,  # T2S 모델 반복 페널티 (기본값)
+            "text_split_method": split_method,
             "speed_factor": speed_factor,
+            "batch_size": 1,  # 안정적인 출력을 위해 배치 크기 1
         }
 
         import time
@@ -761,9 +775,9 @@ class GPTSoVITSAPIClient:
         output_path: Path,
         language: str = "ko",
         speed_factor: float = 1.0,
-        top_k: int = 5,
+        top_k: int = 15,
         top_p: float = 1.0,
-        temperature: float = 1.0,
+        temperature: float = 0.8,  # 낮은 온도로 안정성 향상
     ) -> bool:
         """텍스트를 음성으로 합성하여 파일로 저장
 
