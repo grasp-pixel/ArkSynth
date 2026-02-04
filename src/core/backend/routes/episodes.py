@@ -172,18 +172,28 @@ def _find_operator_id_by_name(
     """speaker_name으로 오퍼레이터 ID 찾기
 
     캐릭터 테이블에서 이름이 일치하는 플레이어블 캐릭터를 찾습니다.
+    정확히 일치 우선, 부분 일치(이름이 검색어로 시작)도 지원.
     예: "하이디" → char_4045_heidi
+        "비나" → char_1019_siege2 (비나 빅토리아)
     """
     if not speaker_name:
         return None
 
     characters = loader.load_characters(lang)
+    prefix_match: str | None = None  # 부분 일치 후보
+
     for char_id, char in characters.items():
         # char_로 시작하는 오퍼레이터만 (npc 제외)
         if char_id.startswith("char_") and not char_id.startswith("char_npc_"):
-            if char.name_ko == speaker_name:
+            name = char.name_ko or ""
+            # 정확히 일치 → 즉시 반환
+            if name == speaker_name:
                 return char_id
-    return None
+            # 부분 일치: 이름이 검색어로 시작 (예: "비나 빅토리아".startswith("비나"))
+            if name.startswith(speaker_name + " ") and not prefix_match:
+                prefix_match = char_id
+
+    return prefix_match
 
 
 def _is_mystery_name(name: str) -> bool:
@@ -240,26 +250,28 @@ async def get_episode_characters(episode_id: str, lang: str | None = None):
             narration_count += 1
             continue
 
-        # 키 결정: speaker_id의 캐릭터 이름과 speaker_name 비교
+        # 키 결정: speaker_id 기반 (파서가 focus 기반으로 정확한 화자 제공)
         char_name_from_id = get_char_name(speaker_id) if speaker_id else None
 
         if speaker_id and char_name_from_id:
-            # speaker_id가 있고 캐릭터 이름을 찾았을 때
-            if char_name_from_id == speaker_name or _is_mystery_name(speaker_name):
-                # 같은 캐릭터 또는 "???" 같은 미스터리 이름 → speaker_id 기준
-                key = speaker_id
-            else:
-                # 다른 캐릭터가 말함 (예: 스카디 화면에 켈시가 말함) → speaker_name 기준
-                key = f"name:{speaker_name}"
+            # speaker_id가 있고 캐릭터 테이블에서 찾음 → speaker_id 기준
+            # (축약명, 별명, 코드네임, 이명 등 다양한 이름이 같은 인물을 가리킬 수 있음)
+            key = speaker_id
         elif speaker_id:
             # speaker_id는 있지만 캐릭터 테이블에 없음 (NPC 등)
             key = speaker_id
         else:
-            # speaker_id 없음 → speaker_name 기준
-            key = f"name:{speaker_name}"
+            # speaker_id 없음 → speaker_name으로 캐릭터 검색 시도
+            found_char_id = _find_operator_id_by_name(loader, speaker_name, lang)
+            if found_char_id:
+                # 캐릭터 테이블에서 이름으로 찾음 → 해당 char_id 기준
+                key = found_char_id
+            else:
+                # 찾지 못함 → speaker_name 기준
+                key = f"name:{speaker_name}"
 
         if key not in speaker_stats:
-            # char_id 결정: speaker_id가 있으면 정규화, 없으면 None
+            # char_id 결정
             if key.startswith("name:"):
                 char_id = None  # speaker_name만 있는 경우 char_id 없음
             else:
