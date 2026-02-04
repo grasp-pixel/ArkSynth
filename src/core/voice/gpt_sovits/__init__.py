@@ -6,6 +6,7 @@ from .trainer import GPTSoVITSTrainer
 from .training_manager import TrainingManager, TrainingJob, TrainingStatus
 from .synthesizer import GPTSoVITSSynthesizer, SynthesisResult, get_synthesizer
 from .installer import GPTSoVITSInstaller, InstallProgress, get_installer, reset_installer
+from .audio_preprocessor import AudioPreprocessor, AudioSegment
 
 __all__ = [
     "GPTSoVITSConfig",
@@ -21,4 +22,6 @@ __all__ = [
     "InstallProgress",
     "get_installer",
     "reset_installer",
+    "AudioPreprocessor",
+    "AudioSegment",
 ]

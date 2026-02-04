@@ -3,10 +3,8 @@ import { useAppStore, AUTO_VOICE_FEMALE, AUTO_VOICE_MALE, simpleHash } from '../
 
 export default function VoiceSetupPanel() {
   const {
-    groupCharacters,
     episodeCharacters,
     episodeNarrationCount,
-    isLoadingCharacters,
     isLoadingEpisodeCharacters,
     voiceCharacters,
     loadVoiceCharacters,
@@ -42,6 +40,9 @@ export default function VoiceSetupPanel() {
     defaultFemaleVoices,
     defaultMaleVoices,
     getSpeakerVoice,
+    // 모델 타입 조회
+    trainedModels,
+    canFinetune,
   } = useAppStore()
 
   useEffect(() => {
@@ -84,17 +85,25 @@ export default function VoiceSetupPanel() {
     })
   }, [episodeCharacters, trainedCharIds])
 
-  // 미학습 기본 캐릭터 수
-  const untrainedDefaultCount = useMemo(() => {
-    return [...defaultFemaleVoices, ...defaultMaleVoices].filter(id => !trainedCharIds.has(id)).length
-  }, [defaultFemaleVoices, defaultMaleVoices, trainedCharIds])
-
-  // 전체 준비 대상 수 (에피소드 캐릭터 + 기본 캐릭터, 중복 제거)
+  // 전체 준비 대상 수 (에피소드 캐릭터 + 기본 음성 캐릭터)
   const totalTrainableCount = useMemo(() => {
     const episodeIds = trainableCharacters.map(c => c.voice_char_id || c.char_id).filter((id): id is string => id !== null)
+    // 기본 음성 캐릭터 중 미준비 캐릭터 추가
     const defaultIds = [...defaultFemaleVoices, ...defaultMaleVoices].filter(id => !trainedCharIds.has(id))
+    // 중복 제거 후 카운트
     return new Set([...episodeIds, ...defaultIds]).size
-  }, [trainableCharacters, defaultFemaleVoices, defaultMaleVoices, trainedCharIds])
+  }, [trainableCharacters, trainedCharIds, defaultFemaleVoices, defaultMaleVoices])
+
+  // Fine-tune 가능한 캐릭터 수 (준비됨 + 전처리 완료 + finetuned 아님)
+  // episodeCharacters에서 직접 계산 (trainableCharacters는 미학습만 포함하므로)
+  const totalFinetuneableCount = useMemo(() => {
+    const episodeIds = episodeCharacters
+      .filter(c => c.has_voice)
+      .map(c => c.voice_char_id || c.char_id)
+      .filter((id): id is string => id !== null)
+    // canFinetune이 true인 캐릭터만 (prepared + 전처리 완료)
+    return [...new Set(episodeIds)].filter(id => canFinetune(id)).length
+  }, [episodeCharacters, canFinetune, trainedModels])
 
   // 음성 없는 캐릭터 (수동 매핑 대상) - 에피소드 캐릭터 목록 기준
   // char_id가 null이어도 name이 있으면 매핑 가능
@@ -138,22 +147,38 @@ export default function VoiceSetupPanel() {
     }
   }
 
-  // 일괄 학습 시작 (voice_char_id 사용 + 기본 캐릭터 포함)
+  // 일괄 준비 시작 (에피소드 캐릭터 + 기본 음성 캐릭터)
   const handleStartBatchTraining = async () => {
     // voice_char_id가 있으면 사용, 없으면 char_id 사용
     const charIdsFromEpisode = trainableCharacters
       .map(c => c.voice_char_id || c.char_id)
       .filter((id): id is string => id !== null)
 
-    // 기본 캐릭터 중 미학습 캐릭터 추가
+    // 기본 음성 캐릭터 중 미준비 캐릭터 추가
     const defaultCharIds = [...defaultFemaleVoices, ...defaultMaleVoices]
       .filter(id => !trainedCharIds.has(id))
 
     // 중복 제거 후 합치기
-    const allCharIds = [...new Set([...defaultCharIds, ...charIdsFromEpisode])]
+    const uniqueCharIds = [...new Set([...charIdsFromEpisode, ...defaultCharIds])]
 
-    if (allCharIds.length > 0) {
-      await startBatchTraining(allCharIds)
+    if (uniqueCharIds.length > 0) {
+      await startBatchTraining(uniqueCharIds, 'prepare')
+    }
+  }
+
+  // 일괄 학습 시작 (Fine-tuning, 준비됨 + 전처리 완료된 캐릭터)
+  const handleStartBatchFinetuning = async () => {
+    // episodeCharacters에서 finetune 가능한 캐릭터 추출
+    const charIdsFromEpisode = episodeCharacters
+      .filter(c => c.has_voice)
+      .map(c => c.voice_char_id || c.char_id)
+      .filter((id): id is string => id !== null)
+
+    // 중복 제거 후 canFinetune이 true인 캐릭터만
+    const uniqueCharIds = [...new Set(charIdsFromEpisode)].filter(id => canFinetune(id))
+
+    if (uniqueCharIds.length > 0) {
+      await startBatchTraining(uniqueCharIds, 'finetune')
     }
   }
 
@@ -355,9 +380,6 @@ export default function VoiceSetupPanel() {
               <div className="flex items-center justify-between text-xs">
                 <span className="text-ark-gray">
                   {totalTrainableCount}개 캐릭터 준비 가능
-                  {untrainedDefaultCount > 0 && (
-                    <span className="text-ark-orange ml-1">(기본 {untrainedDefaultCount})</span>
-                  )}
                 </span>
               </div>
               <button
@@ -366,8 +388,16 @@ export default function VoiceSetupPanel() {
               >
                 음성 일괄 준비
               </button>
+              <button
+                onClick={handleStartBatchFinetuning}
+                className="w-full ark-btn text-sm text-purple-400 hover:text-purple-300 border-purple-400/30 mt-2"
+                disabled={!gptSovitsStatus?.api_running}
+                title={!gptSovitsStatus?.api_running ? 'GPT-SoVITS 연결 필요' : '실제 모델 학습 (시간 소요)'}
+              >
+                음성 일괄 학습 (Fine-tune)
+              </button>
               <p className="text-xs text-ark-gray/50 text-center">
-                * 참조 오디오 자동 선택 (Zero-shot)
+                * 준비: Zero-shot / 학습: 모델 Fine-tuning
               </p>
             </div>
           ) : characterStats.withVoice > 0 ? (
@@ -379,6 +409,22 @@ export default function VoiceSetupPanel() {
                 </svg>
                 <span className="text-sm">모든 캐릭터 준비 완료</span>
               </div>
+              {/* Fine-tune 가능한 캐릭터가 있으면 학습 버튼 표시 */}
+              {totalFinetuneableCount > 0 && (
+                <>
+                  <div className="text-xs text-ark-gray">
+                    {totalFinetuneableCount}개 캐릭터 학습 가능
+                  </div>
+                  <button
+                    onClick={handleStartBatchFinetuning}
+                    className="w-full ark-btn text-sm text-purple-400 hover:text-purple-300 border-purple-400/30"
+                    disabled={!gptSovitsStatus?.api_running}
+                    title={!gptSovitsStatus?.api_running ? 'GPT-SoVITS 연결 필요' : '실제 모델 학습 (시간 소요)'}
+                  >
+                    음성 일괄 학습 (Fine-tune)
+                  </button>
+                </>
+              )}
               <p className="text-xs text-ark-gray/70">
                 * 초기화는 캐릭터 관리에서 가능합니다
               </p>
@@ -392,8 +438,7 @@ export default function VoiceSetupPanel() {
         </div>
 
         {/* 음성 매핑 (현재 에피소드 - 음성 없는 캐릭터) */}
-        {availableVoices.length > 0 && (
-          <div className="p-4 border-b border-ark-border">
+        <div className="p-4 border-b border-ark-border">
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-sm font-medium text-ark-gray">음성 매핑</h4>
               <span className="text-xs text-ark-gray">
@@ -403,9 +448,12 @@ export default function VoiceSetupPanel() {
             {isLoadingEpisodeCharacters ? (
               <div className="text-center text-ark-gray py-4 ark-pulse">로딩 중...</div>
             ) : voicelessCharacters.length === 0 ? (
-              <p className="text-xs text-ark-gray/70">
-                * 음성 매핑이 필요한 캐릭터가 없습니다
-              </p>
+              <div className="flex items-center gap-2 text-green-400">
+                <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                </svg>
+                <span className="text-sm">모든 캐릭터가 음성을 보유하고 있습니다</span>
+              </div>
             ) : (
               <>
                 <p className="text-xs text-ark-gray/70 mb-3">
@@ -483,7 +531,6 @@ export default function VoiceSetupPanel() {
               </p>
             )}
           </div>
-        )}
 
         {/* 재생 설정 */}
         <div className="p-4 border-b border-ark-border">

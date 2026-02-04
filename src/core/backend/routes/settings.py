@@ -42,6 +42,11 @@ class SettingsResponse(BaseModel):
     voice_language: str
     gpt_sovits_language: str
 
+    # Whisper 전처리 설정
+    whisper_model_size: str
+    whisper_compute_type: str
+    use_whisper_preprocessing: bool
+
     # 의존성 상태
     dependencies: list[DependencyStatus]
 
@@ -227,6 +232,9 @@ async def get_settings():
         game_language=config.game_language,
         voice_language=config.voice_language,
         gpt_sovits_language=config.gpt_sovits_language,
+        whisper_model_size=gpt_config.whisper_model_size,
+        whisper_compute_type=gpt_config.whisper_compute_type,
+        use_whisper_preprocessing=gpt_config.use_whisper_preprocessing,
         dependencies=dependencies,
     )
 

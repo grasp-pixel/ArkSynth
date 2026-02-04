@@ -28,6 +28,9 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
     currentTrainingJob,
     loadTrainedModels,
     clearAllTrainedModels,
+    getModelType,
+    getSegmentCount,
+    canFinetune,
     // 별칭 관련
     characterAliases,
     loadCharacterAliases,
@@ -142,9 +145,14 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
     }
   }
 
-  // 개별 캐릭터 준비
+  // 개별 캐릭터 준비 (Zero-shot)
   const handlePrepareCharacter = async (charId: string) => {
-    await startBatchTraining([charId])
+    await startBatchTraining([charId], 'prepare')
+  }
+
+  // 개별 캐릭터 학습 (Fine-tuning)
+  const handleFinetuneCharacter = async (charId: string) => {
+    await startBatchTraining([charId], 'finetune')
   }
 
   // 음성 테스트
@@ -439,6 +447,12 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
                         <span>음성 파일</span>
                         <span className="text-ark-white">{char.file_count}개</span>
                       </div>
+                      {isReady && (
+                        <div className="flex justify-between text-green-400/80">
+                          <span>전처리 세그먼트</span>
+                          <span>{getSegmentCount(char.char_id)}개</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* 별칭 표시 */}
@@ -495,16 +509,25 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
                     {/* 상태 */}
                     <div className="flex items-center gap-1 mb-2">
                       {isReady ? (
-                        <span className="text-xs text-green-400 flex items-center gap-1">
-                          <svg viewBox="0 0 24 24" className="w-3 h-3" fill="currentColor">
-                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-                          </svg>
-                          준비됨
-                        </span>
+                        getModelType(char.char_id) === 'finetuned' ? (
+                          <span className="text-xs text-purple-400 flex items-center gap-1">
+                            <svg viewBox="0 0 24 24" className="w-3 h-3" fill="currentColor">
+                              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                            </svg>
+                            학습됨
+                          </span>
+                        ) : (
+                          <span className="text-xs text-green-400 flex items-center gap-1">
+                            <svg viewBox="0 0 24 24" className="w-3 h-3" fill="currentColor">
+                              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                            </svg>
+                            준비됨
+                          </span>
+                        )
                       ) : isTraining ? (
                         <span className="text-xs text-ark-orange flex items-center gap-1 ark-pulse">
                           <span className="w-2 h-2 rounded-full bg-ark-orange" />
-                          준비 중...
+                          {currentTrainingJob?.mode === 'finetune' ? '학습 중...' : '준비 중...'}
                         </span>
                       ) : (
                         <span className="text-xs text-ark-gray/50">준비 필요</span>
@@ -566,15 +589,63 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
                           >
                             테스트
                           </button>
+                          {/* 준비된 캐릭터도 Fine-tune 가능 (finetuned가 아닌 경우) */}
+                          {getModelType(char.char_id) !== 'finetuned' && (
+                            <button
+                              onClick={() => handleFinetuneCharacter(char.char_id)}
+                              disabled={isTrainingActive}
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 disabled:opacity-50"
+                              title="실제 모델 학습 (시간 소요)"
+                            >
+                              학습
+                            </button>
+                          )}
                         </>
                       ) : (
                         <>
                           <button
                             onClick={() => handlePrepareCharacter(char.char_id)}
                             disabled={isTrainingActive}
-                            className="text-[10px] px-1.5 py-0.5 rounded bg-ark-panel text-ark-gray hover:text-ark-white disabled:opacity-50"
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-50"
                           >
                             준비
+                          </button>
+                          <button
+                            disabled={true}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400/40 cursor-not-allowed"
+                            title="먼저 '준비'를 완료해야 학습할 수 있습니다"
+                          >
+                            학습
+                          </button>
+                          <button
+                            onClick={() => handleToggleFemaleDefault(char.char_id)}
+                            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                              isFemaleDefault
+                                ? 'bg-pink-500/30 text-pink-400'
+                                : 'bg-ark-panel text-ark-gray hover:text-ark-white'
+                            }`}
+                          >
+                            {isFemaleDefault ? '여성 해제' : '여성'}
+                          </button>
+                          <button
+                            onClick={() => handleToggleMaleDefault(char.char_id)}
+                            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                              isMaleDefault
+                                ? 'bg-blue-500/30 text-blue-400'
+                                : 'bg-ark-panel text-ark-gray hover:text-ark-white'
+                            }`}
+                          >
+                            {isMaleDefault ? '남성 해제' : '남성'}
+                          </button>
+                          <button
+                            onClick={() => handleToggleNarrator(char.char_id)}
+                            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                              isNarrator
+                                ? 'bg-purple-500/30 text-purple-400'
+                                : 'bg-ark-panel text-ark-gray hover:text-ark-white'
+                            }`}
+                          >
+                            {isNarrator ? '나레이션 해제' : '나레이션'}
                           </button>
                           <button
                             onClick={() => handleToggleAliasEdit(char.char_id)}

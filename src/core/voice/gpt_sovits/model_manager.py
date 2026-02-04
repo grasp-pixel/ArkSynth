@@ -51,7 +51,20 @@ class GPTSoVITSModelManager:
         return sovits_path.exists() and gpt_path.exists()
 
     def is_zero_shot_ready(self, char_id: str) -> bool:
-        """Zero-shot 합성 준비 여부 (참조 오디오만 필요)"""
+        """Zero-shot 합성 준비 여부 (참조 오디오만 필요)
+
+        새 구조: preprocessed/ 폴더에 WAV + TXT 파일이 있으면 준비 완료
+        레거시 구조: ref.wav + ref.txt 파일이 있으면 준비 완료
+        """
+        # 새 구조: preprocessed 폴더 확인
+        preprocessed_dir = self.config.get_preprocessed_audio_path(char_id)
+        if preprocessed_dir.exists():
+            wav_files = list(preprocessed_dir.glob("*.wav"))
+            txt_files = list(preprocessed_dir.glob("*.txt"))
+            if wav_files and txt_files:
+                return True
+
+        # 레거시 구조: ref.wav + ref.txt 확인
         ref_audio = self.config.get_ref_audio_path(char_id)
         ref_text = self.config.get_ref_text_path(char_id)
         return ref_audio.exists() and ref_text.exists()
@@ -61,6 +74,20 @@ class GPTSoVITSModelManager:
         sovits_path = self.config.get_sovits_model_path(char_id)
         gpt_path = self.config.get_gpt_model_path(char_id)
         return sovits_path.exists() and gpt_path.exists()
+
+    def get_model_type(self, char_id: str) -> str:
+        """모델 타입 조회
+
+        Returns:
+            "none": 준비되지 않음
+            "prepared": Zero-shot 준비됨 (참조 오디오만)
+            "finetuned": Fine-tuning 완료 (sovits.pth + gpt.ckpt)
+        """
+        if self.has_trained_model(char_id):
+            return "finetuned"
+        elif self.is_zero_shot_ready(char_id):
+            return "prepared"
+        return "none"
 
     def get_trained_characters(self) -> list[str]:
         """준비 완료된 캐릭터 ID 목록 (학습 또는 zero-shot)"""
@@ -111,9 +138,16 @@ class GPTSoVITSModelManager:
                 models.append(info)
             else:
                 # config.json이 없어도 is_trained()가 True면 기본 정보 생성
-                # (이전에 TTS 자동 준비로 ref.wav만 생성된 경우)
                 model_dir = self.config.get_model_path(char_id)
-                ref_count = len(list(model_dir.glob("ref*.wav"))) if model_dir.exists() else 0
+
+                # 참조 오디오 개수 계산 (새 구조 우선, 레거시 폴백)
+                ref_count = 0
+                preprocessed_dir = self.config.get_preprocessed_audio_path(char_id)
+                if preprocessed_dir.exists():
+                    ref_count = len(list(preprocessed_dir.glob("*.wav")))
+                if ref_count == 0 and model_dir.exists():
+                    ref_count = len(list(model_dir.glob("ref*.wav")))
+
                 models.append(ModelInfo(
                     char_id=char_id,
                     char_name=char_id,  # 기본값으로 char_id 사용

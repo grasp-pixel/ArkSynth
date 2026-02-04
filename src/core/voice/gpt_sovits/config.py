@@ -51,6 +51,33 @@ def _get_default_gpt_sovits_path() -> Path:
     return INTEGRATED_PACKAGE_PATH
 
 
+def _get_project_root() -> Path:
+    """프로젝트 루트 디렉토리 찾기 (pyproject.toml 기준)"""
+    # config.py 위치에서 시작
+    current = Path(__file__).parent
+    for _ in range(10):  # 최대 10단계까지 탐색
+        if (current / "pyproject.toml").exists():
+            return current
+        parent = current.parent
+        if parent == current:  # 루트 도달
+            break
+        current = parent
+    # 찾지 못하면 CWD 사용
+    return Path.cwd()
+
+
+# 프로젝트 루트 캐시
+_PROJECT_ROOT: Path | None = None
+
+
+def get_project_root() -> Path:
+    """프로젝트 루트 반환 (캐시됨)"""
+    global _PROJECT_ROOT
+    if _PROJECT_ROOT is None:
+        _PROJECT_ROOT = _get_project_root()
+    return _PROJECT_ROOT
+
+
 @dataclass
 class GPTSoVITSConfig:
     """GPT-SoVITS 학습 및 추론 설정"""
@@ -69,9 +96,23 @@ class GPTSoVITSConfig:
         default_factory=lambda: Path("models/gpt_sovits/pretrained")
     )
 
+    def __post_init__(self):
+        """상대 경로를 프로젝트 루트 기준 절대 경로로 변환"""
+        root = get_project_root()
+
+        # 상대 경로인 경우 프로젝트 루트 기준으로 절대 경로 변환
+        if not self.gpt_sovits_path.is_absolute():
+            self.gpt_sovits_path = (root / self.gpt_sovits_path).resolve()
+        if not self.models_path.is_absolute():
+            self.models_path = (root / self.models_path).resolve()
+        if not self.extracted_path.is_absolute():
+            self.extracted_path = (root / self.extracted_path).resolve()
+        if not self.pretrained_path.is_absolute():
+            self.pretrained_path = (root / self.pretrained_path).resolve()
+
     # 학습 설정
-    epochs_sovits: int = 8  # SoVITS 학습 에포크
-    epochs_gpt: int = 15  # GPT 학습 에포크
+    epochs_sovits: int = 20  # SoVITS 학습 에포크 (8→20, 품질 개선)
+    epochs_gpt: int = 30  # GPT 학습 에포크 (15→30, 텍스트-음성 매핑 학습)
     batch_size: int = 4
     learning_rate: float = 0.0001
 
@@ -92,8 +133,13 @@ class GPTSoVITSConfig:
 
     # 참조 오디오 설정
     min_ref_audio_length: float = 3.0  # 최소 참조 오디오 길이 (초)
-    max_ref_audio_length: float = 20.0  # 최대 참조 오디오 길이 (초)
+    max_ref_audio_length: float = 10.0  # 최대 참조 오디오 길이 (초) - 너무 긴 오디오는 품질 저하
     ref_audio_count: int = 5  # 학습에 사용할 참조 오디오 개수
+
+    # Whisper 전처리 설정 (학습 데이터 준비용)
+    whisper_model_size: str = "large-v3-turbo"  # Whisper 모델 크기
+    whisper_compute_type: str = "float16"  # 연산 타입 (float16, int8, float32)
+    use_whisper_preprocessing: bool = True  # Whisper 기반 전처리 사용 여부
 
     @property
     def api_url(self) -> str:
@@ -155,9 +201,47 @@ class GPTSoVITSConfig:
         return self.get_model_path(char_id) / "config.json"
 
     def get_ref_audio_path(self, char_id: str) -> Path:
-        """참조 오디오 경로"""
+        """참조 오디오 경로 (DEPRECATED - 레거시 호환용)
+
+        Note: 새 구조에서는 preprocessed/ 폴더에 참조 오디오가 저장됩니다.
+        info.json의 ref_audios를 확인하여 "preprocessed/..." 경로를 사용하세요.
+        """
         return self.get_model_path(char_id) / "ref.wav"
 
     def get_ref_text_path(self, char_id: str) -> Path:
-        """참조 오디오 텍스트 경로"""
+        """참조 오디오 텍스트 경로 (DEPRECATED - 레거시 호환용)
+
+        Note: 새 구조에서는 각 WAV 파일 옆에 동일한 이름의 .txt 파일이 저장됩니다.
+        """
         return self.get_model_path(char_id) / "ref.txt"
+
+    def get_training_data_path(self, char_id: str) -> Path:
+        """Fine-tuning 학습 데이터 경로"""
+        return self.get_model_path(char_id) / "training_data"
+
+    def get_sliced_audio_path(self, char_id: str) -> Path:
+        """슬라이싱된 오디오 경로 (레거시, get_preprocessed_audio_path 사용 권장)"""
+        return self.get_training_data_path(char_id) / "sliced"
+
+    def get_preprocessed_audio_path(self, char_id: str) -> Path:
+        """Whisper 전처리된 오디오 경로
+
+        음성 준비 단계에서 분할된 WAV 파일들이 저장됩니다.
+        학습 시에도 이 경로의 파일들을 재사용합니다.
+        """
+        return self.get_model_path(char_id) / "preprocessed"
+
+    def get_preprocessed_segments_path(self, char_id: str) -> Path:
+        """전처리된 세그먼트 정보 파일 경로 (DEPRECATED)
+
+        Note: segments.json은 더 이상 사용되지 않습니다.
+        각 WAV 파일 옆에 동일한 이름의 .txt 파일이 텍스트를 저장합니다.
+        예: CN_001_00.wav → CN_001_00.txt
+
+        이 메서드는 레거시 호환성을 위해 유지됩니다.
+        """
+        return self.get_preprocessed_audio_path(char_id) / "segments.json"
+
+    def get_training_list_path(self, char_id: str) -> Path:
+        """학습용 .list 파일 경로"""
+        return self.get_training_data_path(char_id) / "train.list"

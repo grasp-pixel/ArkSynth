@@ -558,6 +558,7 @@ export interface TrainingJob {
   job_id: string
   char_id: string
   char_name: string
+  mode: TrainingMode
   status: 'pending' | 'preprocessing' | 'training' | 'completed' | 'failed' | 'cancelled'
   progress: number
   current_epoch: number
@@ -582,7 +583,15 @@ export interface TrainedModel {
   char_name: string
   trained_at: string
   language: string
+  model_type: 'none' | 'prepared' | 'finetuned'
+  epochs_sovits: number
+  epochs_gpt: number
+  is_preprocessed: boolean  // 전처리 완료 여부
+  segment_count: number     // 전처리된 세그먼트 수
+  can_finetune: boolean     // finetune 가능 여부 (prepared이고 전처리 완료됨)
 }
+
+export type TrainingMode = 'prepare' | 'finetune'
 
 export const trainingApi = {
   // 전체 학습 상태 요약
@@ -608,17 +617,31 @@ export const trainingApi = {
   },
 
   // 단일 캐릭터 학습 시작
-  startTraining: async (charId: string) => {
-    const res = await api.post<{ job: TrainingJob }>(`/api/training/start/${charId}`)
+  startTraining: async (charId: string, mode: TrainingMode = 'prepare') => {
+    const res = await api.post<{ job: TrainingJob }>(
+      `/api/training/start/${charId}`,
+      { mode }
+    )
     return res.data
   },
 
   // 일괄 학습 시작
-  startBatchTraining: async (charIds?: string[]) => {
+  startBatchTraining: async (charIds?: string[], mode: TrainingMode = 'prepare') => {
     const res = await api.post<{ jobs: TrainingJob[]; total: number; message?: string }>(
       '/api/training/start-batch',
-      { char_ids: charIds || null }
+      { char_ids: charIds || null, mode }
     )
+    return res.data
+  },
+
+  // 모델 타입 조회
+  getModelType: async (charId: string) => {
+    const res = await api.get<{
+      char_id: string
+      model_type: 'none' | 'prepared' | 'finetuned'
+      is_preprocessed: boolean
+      can_finetune: boolean
+    }>(`/api/training/models/${charId}/type`)
     return res.data
   },
 
@@ -926,6 +949,10 @@ export interface SettingsResponse {
   game_language: string
   voice_language: string
   gpt_sovits_language: string
+  // Whisper 전처리 설정
+  whisper_model_size: string
+  whisper_compute_type: string
+  use_whisper_preprocessing: boolean
   dependencies: DependencyStatus[]
 }
 
@@ -971,7 +998,7 @@ export interface GptSovitsInstallInfo {
 }
 
 export interface InstallProgress {
-  stage: 'downloading' | 'extracting' | 'verifying' | 'complete' | 'error'
+  stage: 'downloading_python' | 'downloading' | 'extracting' | 'verifying' | 'complete' | 'error'
   progress: number
   message: string
   error?: string
@@ -1061,6 +1088,20 @@ export const settingsApi = {
     const res = await api.post<{ status: string; message: string }>(
       '/api/settings/gpt-sovits/cleanup'
     )
+    return res.data
+  },
+
+  // GPU 세마포어 상태 조회
+  getGpuSemaphore: async () => {
+    const res = await api.get<{ enabled: boolean; description: string }>('/api/settings/gpu-semaphore')
+    return res.data
+  },
+
+  // GPU 세마포어 설정
+  setGpuSemaphore: async (enabled: boolean) => {
+    const res = await api.post<{ enabled: boolean; message: string }>('/api/settings/gpu-semaphore', null, {
+      params: { enabled }
+    })
     return res.data
   },
 }

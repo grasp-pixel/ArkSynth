@@ -34,6 +34,7 @@ class TrainingJob:
     job_id: str
     char_id: str
     char_name: str
+    mode: str = "prepare"  # "prepare" (Zero-shot) 또는 "finetune" (실제 학습)
     status: TrainingStatus = TrainingStatus.PENDING
     progress: float = 0.0
     current_epoch: int = 0
@@ -49,6 +50,7 @@ class TrainingJob:
             "job_id": self.job_id,
             "char_id": self.char_id,
             "char_name": self.char_name,
+            "mode": self.mode,
             "status": self.status.value,
             "progress": self.progress,
             "current_epoch": self.current_epoch,
@@ -167,6 +169,7 @@ class TrainingManager:
                     char_id=job.char_id,
                     char_name=job.char_name,
                     audio_files=audio_files,
+                    mode=job.mode,
                     on_progress=on_progress,
                 )
 
@@ -196,61 +199,89 @@ class TrainingManager:
                     self._current_job = None
 
     def _get_audio_files(self, char_id: str) -> list[Path]:
-        """캐릭터 오디오 파일 목록"""
-        audio_dir = self.config.extracted_path / char_id
+        """캐릭터 오디오 파일 목록 (extracted/{lang_folder}/{char_id}/ 구조)"""
+        # 언어별 폴더 매핑
+        lang_folder_map = {
+            "ko": "voice_kr",
+            "ja": "voice",
+            "zh": "voice_cn",
+            "en": "voice_en",
+        }
+        lang_folder = lang_folder_map.get(self.config.default_language, "voice")
+        # 절대 경로 사용 (CWD 무관하게 동작)
+        audio_dir = (self.config.extracted_path / lang_folder / char_id).absolute()
+
+        # 폴백: 언어별 폴더가 없으면 기본 voice 폴더 시도
         if not audio_dir.exists():
-            return []
+            audio_dir = (self.config.extracted_path / "voice" / char_id).absolute()
+            if not audio_dir.exists():
+                logger.warning(f"오디오 디렉토리 없음: {audio_dir}")
+                return []
 
         files = []
         for ext in ["*.mp3", "*.wav", "*.ogg"]:
             files.extend(audio_dir.glob(ext))
 
-        return sorted(files)
+        # 절대 경로로 반환
+        return sorted([f.absolute() for f in files])
 
     async def queue_training(
-        self, char_id: str, char_name: str
+        self, char_id: str, char_name: str, mode: str = "prepare"
     ) -> TrainingJob:
         """학습 작업 큐에 추가
 
         Args:
             char_id: 캐릭터 ID
             char_name: 캐릭터 이름
+            mode: "prepare" (Zero-shot) 또는 "finetune" (실제 학습)
 
         Returns:
             생성된 TrainingJob
         """
+        # finetune 모드는 에포크가 더 많음
+        if mode == "finetune":
+            total_epochs = self.config.epochs_sovits + self.config.epochs_gpt
+        else:
+            total_epochs = 1  # Zero-shot 준비는 단일 단계
+
         job = TrainingJob(
             job_id=str(uuid.uuid4())[:8],
             char_id=char_id,
             char_name=char_name,
-            total_epochs=self.config.epochs_sovits + self.config.epochs_gpt,
+            mode=mode,
+            total_epochs=total_epochs,
         )
 
         self._jobs[job.job_id] = job
         await self._queue.put(job)
 
-        logger.info(f"Training queued: {char_id} ({char_name})")
+        mode_label = "학습" if mode == "finetune" else "준비"
+        logger.info(f"{mode_label} 큐 추가: {char_id} ({char_name}) [mode={mode}]")
         return job
 
     async def queue_batch_training(
-        self, characters: list[tuple[str, str]]
+        self, characters: list[tuple[str, str]], mode: str = "prepare"
     ) -> list[TrainingJob]:
         """여러 캐릭터 일괄 학습 큐 추가
 
         Args:
             characters: (char_id, char_name) 튜플 목록
+            mode: "prepare" (Zero-shot) 또는 "finetune" (실제 학습)
 
         Returns:
             생성된 TrainingJob 목록
         """
         jobs = []
         for char_id, char_name in characters:
-            # 이미 학습된 캐릭터는 건너뛰기
-            if self.model_manager.is_trained(char_id):
+            # 이미 완료된 캐릭터는 건너뛰기
+            if mode == "prepare" and self.model_manager.is_trained(char_id):
+                logger.info(f"이미 준비됨, 건너뛰기: {char_id}")
+                continue
+            if mode == "finetune" and self.model_manager.has_trained_model(char_id):
                 logger.info(f"이미 학습됨, 건너뛰기: {char_id}")
                 continue
 
-            job = await self.queue_training(char_id, char_name)
+            job = await self.queue_training(char_id, char_name, mode=mode)
             jobs.append(job)
 
         return jobs

@@ -28,7 +28,6 @@ import {
   type TrainedModel,
   type RenderProgress,
   type VoiceCharacter,
-  type CharacterAliases,
 } from '../services/api'
 
 type CaptureMode = 'monitor' | 'window'
@@ -209,12 +208,15 @@ interface AppState {
   // 음성 모델 학습
   loadTrainingStatus: () => Promise<void>
   loadTrainedModels: () => Promise<void>
-  startBatchTraining: (charIds?: string[]) => Promise<void>
+  startBatchTraining: (charIds?: string[], mode?: 'prepare' | 'finetune') => Promise<void>
   cancelTraining: (jobId: string) => Promise<void>
   clearAllTrainedModels: () => Promise<void>
   subscribeToTrainingProgress: () => void
   unsubscribeFromTrainingProgress: () => void
   isCharacterTrained: (charId: string) => boolean
+  getModelType: (charId: string) => 'none' | 'prepared' | 'finetuned'
+  canFinetune: (charId: string) => boolean
+  getSegmentCount: (charId: string) => number
 
   // 렌더링
   loadRenderStatus: () => Promise<void>
@@ -1643,8 +1645,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   // 일괄 학습 시작
-  startBatchTraining: async (charIds?: string[]) => {
-    console.log('[Training] startBatchTraining 호출, charIds:', charIds)
+  startBatchTraining: async (charIds?: string[], mode: 'prepare' | 'finetune' = 'prepare') => {
+    const modeLabel = mode === 'finetune' ? '학습' : '준비'
+    console.log(`[Training] startBatchTraining 호출, charIds: ${charIds}, mode: ${mode}`)
     try {
       set({ trainingError: null })
 
@@ -1656,22 +1659,22 @@ export const useAppStore = create<AppState>((set, get) => ({
       await new Promise(resolve => setTimeout(resolve, 100))
 
       console.log('[Training] API 호출 시작')
-      const data = await trainingApi.startBatchTraining(charIds)
+      const data = await trainingApi.startBatchTraining(charIds, mode)
       console.log('[Training] API 응답:', data)
 
       if (data.jobs.length > 0) {
-        console.log('[Training] jobs 수:', data.jobs.length)
+        console.log(`[Training] ${modeLabel} jobs 수:`, data.jobs.length)
         set({
           trainingQueue: data.jobs,
           isTrainingActive: true,
         })
       } else {
-        console.log('[Training] jobs가 비어있음')
+        console.log(`[Training] ${modeLabel}할 캐릭터가 없음`)
         // jobs가 없으면 SSE 연결 해제
         get().unsubscribeFromTrainingProgress()
       }
     } catch (error) {
-      console.error('[Training] 준비 시작 실패:', error)
+      console.error(`[Training] ${modeLabel} 시작 실패:`, error)
       set({ trainingError: '준비 시작 실패' })
       // 오류 시 SSE 연결 해제
       get().unsubscribeFromTrainingProgress()
@@ -1764,6 +1767,31 @@ export const useAppStore = create<AppState>((set, get) => ({
   // 캐릭터 학습 완료 여부 확인
   isCharacterTrained: (charId: string) => {
     return get().trainedCharIds.has(charId)
+  },
+
+  // 모델 타입 조회 (none, prepared, finetuned)
+  getModelType: (charId: string) => {
+    const model = get().trainedModels.find(m => m.char_id === charId)
+    if (!model) return 'none'
+    return model.model_type || (model.epochs_sovits > 0 ? 'finetuned' : 'prepared')
+  },
+
+  // finetune 가능 여부 (prepared 상태이고 전처리 완료됨)
+  canFinetune: (charId: string) => {
+    const model = get().trainedModels.find(m => m.char_id === charId)
+    if (!model) return false
+    // can_finetune 필드가 있으면 사용, 없으면 기존 로직 (하위 호환성)
+    if (typeof model.can_finetune === 'boolean') {
+      return model.can_finetune
+    }
+    // 하위 호환: prepared 상태이면 finetune 가능으로 간주 (기존 동작)
+    return model.model_type === 'prepared'
+  },
+
+  // 전처리된 세그먼트 수 조회
+  getSegmentCount: (charId: string) => {
+    const model = get().trainedModels.find(m => m.char_id === charId)
+    return model?.segment_count ?? 0
   },
 
   // === 렌더링 ===

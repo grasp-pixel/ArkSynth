@@ -744,6 +744,30 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </div>
               </section>
+
+              {/* Whisper 전처리 설정 */}
+              <section>
+                <h3 className="text-sm font-medium text-ark-white mb-3">Whisper 전처리</h3>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="p-3 bg-ark-black/50 rounded border border-ark-border">
+                    <p className="text-xs text-ark-gray mb-1">모델</p>
+                    <p className="text-sm text-ark-white">{settings.whisper_model_size}</p>
+                  </div>
+                  <div className="p-3 bg-ark-black/50 rounded border border-ark-border">
+                    <p className="text-xs text-ark-gray mb-1">연산 타입</p>
+                    <p className="text-sm text-ark-white">{settings.whisper_compute_type}</p>
+                  </div>
+                  <div className="p-3 bg-ark-black/50 rounded border border-ark-border">
+                    <p className="text-xs text-ark-gray mb-1">사용</p>
+                    <p className={`text-sm ${settings.use_whisper_preprocessing ? 'text-green-400' : 'text-red-400'}`}>
+                      {settings.use_whisper_preprocessing ? '활성화' : '비활성화'}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-xs text-ark-gray/70 mt-2">
+                  * 음성 준비 시 Faster-Whisper로 긴 오디오를 분할합니다
+                </p>
+              </section>
             </>
           )}
         </div>
