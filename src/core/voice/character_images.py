@@ -42,13 +42,30 @@ def get_char_name_from_id(char_id: str) -> str:
     return lower_id
 
 
+def get_num_name_pattern(char_id: str) -> str | None:
+    """캐릭터 ID에서 숫자_이름 패턴 추출 (파일 검색용)
+
+    예시:
+    - char_4202_haruka → 4202_haruka
+    - avg_002_amiya → 002_amiya
+    """
+    lower_id = char_id.lower()
+
+    # char_XXX_name 또는 avg_XXX_name에서 XXX_name 추출
+    if match := re.match(r'(?:char|avg|avgnew)_(\d+_[a-z]+\d*)', lower_id):
+        return match.group(1)
+
+    return None
+
+
 def find_local_image(char_id: str, extracted_path: Path = EXTRACTED_IMAGES_PATH) -> Path | None:
     """로컬 추출 이미지 찾기
 
     검색 우선순위:
     1. char_id로 시작하는 파일 (_1 우선)
-    2. 캐릭터 이름이 포함된 파일 (_1 우선)
-    3. 폴더 내 아무 이미지
+    2. 숫자_이름 패턴이 포함된 파일 (예: 4202_haruka)
+    3. 캐릭터 이름이 포함된 파일 (_1 우선)
+    4. 폴더 내 아무 이미지
 
     Args:
         char_id: 캐릭터 ID (예: char_002_amiya, avg_npc_023)
@@ -74,6 +91,7 @@ def find_local_image(char_id: str, extracted_path: Path = EXTRACTED_IMAGES_PATH)
 
     lower_char_id = char_id.lower()
     lower_folder_name = folder_name.lower()
+    num_name_pattern = get_num_name_pattern(char_id)  # 예: "4202_haruka"
 
     # 1단계: char_id로 시작하는 파일 찾기 (대소문자 무시)
     exact_matches = []
@@ -89,7 +107,22 @@ def find_local_image(char_id: str, extracted_path: Path = EXTRACTED_IMAGES_PATH)
         exact_matches.sort(key=lambda p: p.stem.lower())
         return exact_matches[0]
 
-    # 2단계: 캐릭터 이름이 포함된 파일 찾기
+    # 2단계: 숫자_이름 패턴이 포함된 파일 찾기 (예: avg_4202_haruka_1)
+    if num_name_pattern:
+        pattern_matches = []
+        for img_file in all_images:
+            lower_name = img_file.stem.lower()
+            if num_name_pattern in lower_name:
+                # _1$1 우선
+                if "_1$1" in lower_name or "_1.png" in img_file.name.lower():
+                    return img_file
+                pattern_matches.append(img_file)
+
+        if pattern_matches:
+            pattern_matches.sort(key=lambda p: p.stem.lower())
+            return pattern_matches[0]
+
+    # 3단계: 캐릭터 이름이 포함된 파일 찾기
     name_matches = []
     for img_file in all_images:
         lower_name = img_file.stem.lower()
@@ -103,7 +136,7 @@ def find_local_image(char_id: str, extracted_path: Path = EXTRACTED_IMAGES_PATH)
         name_matches.sort(key=lambda p: p.stem.lower())
         return name_matches[0]
 
-    # 3단계: 폴더 내 아무 이미지 (정렬 후 첫 번째)
+    # 4단계: 폴더 내 아무 이미지 (정렬 후 첫 번째)
     all_images.sort(key=lambda p: p.stem.lower())
     return all_images[0]
 
