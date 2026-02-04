@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from ..config import config
 from ...story.loader import StoryLoader
 from ...voice.character_mapping import CharacterVoiceMapper
-from ...voice.alias_resolver import load_character_aliases, resolve_voice_char_id
+from ...voice.alias_resolver import resolve_voice_char_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -34,6 +34,12 @@ def get_voice_mapper() -> CharacterVoiceMapper:
             extracted_path=config.extracted_path,
         )
     return _voice_mapper
+
+
+def reset_episode_loader() -> None:
+    """에피소드 로더 인스턴스 리셋"""
+    global _loader
+    _loader = None
 
 
 class EpisodeSummary(BaseModel):
@@ -191,14 +197,19 @@ def _find_operator_id_by_name(
 ) -> str | None:
     """speaker_name으로 오퍼레이터 ID 찾기
 
-    NPC ID(char_npc_XXX)로는 음성이 없지만, 같은 이름의 오퍼레이터가
-    나중에 출시된 경우를 처리. 예: "하이디" → char_4045_heidi
-
-    1. 별칭 매핑 확인 (모모카 → char_4202_haruka)
-    2. 이름 매칭 확인 (하이디 → char_4045_heidi)
+    캐릭터 테이블에서 이름이 일치하는 플레이어블 캐릭터를 찾습니다.
+    예: "하이디" → char_4045_heidi
     """
-    # 공통 모듈의 resolve_voice_char_id 사용
-    return resolve_voice_char_id(speaker_name=speaker_name)
+    if not speaker_name:
+        return None
+
+    characters = loader.load_characters(lang)
+    for char_id, char in characters.items():
+        # char_로 시작하는 오퍼레이터만 (npc 제외)
+        if char_id.startswith("char_") and not char_id.startswith("char_npc_"):
+            if char.name_ko == speaker_name:
+                return char_id
+    return None
 
 
 def _is_mystery_name(name: str) -> bool:
@@ -229,14 +240,12 @@ async def get_episode_characters(episode_id: str, lang: str | None = None):
         raise HTTPException(status_code=404, detail=f"Episode not found: {episode_id}")
 
     # 캐릭터 집계 로직:
-    # 1. speaker_id의 캐릭터 이름과 speaker_name이 일치하면 → speaker_id 기준 (같은 캐릭터)
-    # 2. speaker_id의 캐릭터 이름과 speaker_name이 다르면 → speaker_name 기준 (다른 캐릭터가 말함)
-    # 이렇게 해야 "???" → "미후네" 케이스와 "스카디 화면에 켈시가 말함" 케이스 모두 처리 가능
+    # 1. speaker_id (스프라이트 ID)를 기준으로 집계
+    # 2. speaker_id가 없으면 speaker_name으로 구분
+    # 파서가 focus 기반으로 정확한 speaker_id를 제공하므로 복잡한 로직 불필요
     speaker_stats: dict[str, dict] = {}
     narration_count = 0
 
-    # CharacterNameMapper로 speaker_name → char_id 매핑
-    name_mapper = loader.get_name_mapper()
     characters_table = loader.load_characters(lang)
 
     def get_char_name(char_id: str) -> str | None:
@@ -276,9 +285,9 @@ async def get_episode_characters(episode_id: str, lang: str | None = None):
             key = f"name:{speaker_name}"
 
         if key not in speaker_stats:
-            # char_id 결정
+            # char_id 결정: speaker_id가 있으면 정규화, 없으면 None
             if key.startswith("name:"):
-                char_id = name_mapper.get_char_id(speaker_name)
+                char_id = None  # speaker_name만 있는 경우 char_id 없음
             else:
                 char_id = loader._normalize_char_id(key)
 

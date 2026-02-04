@@ -22,14 +22,15 @@ class StoryParser:
     COMMAND_PATTERN = re.compile(r"\[(\w+)(?:\(([^)]*)\))?\]")
     # 대사 파싱 정규식: [name="이름"] 대사 또는 [name="이름"]대사
     DIALOGUE_PATTERN = re.compile(r'\[name="([^"]*)"\]\s*(.*)')
-    # 파라미터 파싱 정규식
-    PARAM_PATTERN = re.compile(r'(\w+)=(?:"([^"]*)"|([^,\s)]+))')
+    # 파라미터 파싱 정규식 (key = value 형식의 공백 허용)
+    PARAM_PATTERN = re.compile(r'(\w+)\s*=\s*(?:"([^"]*)"|([^,\s)]+))')
 
     # 커맨드 타입 매핑
     COMMAND_TYPE_MAP = {
         "HEADER": CommandType.HEADER,
         "Background": CommandType.BACKGROUND,
         "Character": CommandType.CHARACTER,
+        "charslot": CommandType.CHARACTER,  # 캐릭터 슬롯 (스토리 파일에서 주로 사용)
         "name": CommandType.DIALOGUE,
         "Delay": CommandType.DELAY,
         "Blocker": CommandType.BLOCKER,
@@ -45,7 +46,11 @@ class StoryParser:
     }
 
     def __init__(self):
-        self._current_characters: list[str] = []  # 현재 화면의 캐릭터 ID들
+        self._current_characters: list[str] = []  # 현재 화면의 캐릭터 ID들 (Character 커맨드용)
+        self._current_focus: int = 1  # 현재 화자 (1=name, 2=name2)
+        # charslot 커맨드용 슬롯별 캐릭터 관리
+        self._char_slots: dict[str, str] = {}  # slot -> char_id ("l", "r", "m")
+        self._focused_slot: str | None = None  # 현재 포커스된 슬롯
 
     def parse_file(self, filepath: str | Path) -> Episode:
         """스토리 파일을 파싱하여 Episode 객체 반환
@@ -70,6 +75,9 @@ class StoryParser:
         title = ""
 
         self._current_characters = []
+        self._current_focus = 1
+        self._char_slots = {}
+        self._focused_slot = None
         dialogue_index = 0
 
         for line_num, line in enumerate(lines, 1):
@@ -83,14 +91,17 @@ class StoryParser:
                 speaker_name = dialogue_match.group(1)
                 text = dialogue_match.group(2).strip()
 
-                # 스피커 ID 추측 (현재 캐릭터 목록에서)
-                speaker_id = self._guess_speaker_id(speaker_name)
+                # 스피커 ID 결정 (focus에 따라 현재 화자 선택)
+                raw_speaker_id = self._get_speaking_character()
 
-                if speaker_id:
-                    # char_002_amiya_1#6 -> char_002_amiya 형태로 정규화
-                    normalized_id = self._normalize_char_id(speaker_id)
-                    characters.add(normalized_id)
-                elif speaker_name:
+                # 스프라이트 ID 정규화 (avg_npc_1897_1#1$1 -> avg_npc_1897)
+                if raw_speaker_id:
+                    speaker_id = self._normalize_char_id(raw_speaker_id)
+                    characters.add(speaker_id)
+                else:
+                    speaker_id = None
+
+                if not speaker_id and speaker_name:
                     # 캐릭터 ID가 없어도 화자 이름이 있으면 캐릭터로 취급
                     # NPC, 일반인 등도 캐릭터로 인식
                     characters.add(speaker_name)
@@ -201,28 +212,79 @@ class StoryParser:
         return params
 
     def _update_current_characters(self, params: dict[str, str]) -> None:
-        """현재 화면의 캐릭터 목록 업데이트"""
-        self._current_characters = []
+        """현재 화면의 캐릭터 목록 및 focus 업데이트
 
-        # name, name2 파라미터에서 캐릭터 ID 추출
+        두 가지 형식 지원:
+        1. Character: [Character(name="...", name2="...", focus=1)]
+        2. charslot: [charslot(slot="l", name="...", focus="l")]
+        """
+        # charslot 형식 감지 (slot 파라미터가 있으면 charslot)
+        if "slot" in params:
+            slot = params.get("slot", "").strip()
+            char_name = params.get("name", "").strip()
+            focus = params.get("focus", "").strip()
+
+            # 파라미터 없이 [charslot]만 있으면 모든 슬롯 클리어
+            if not slot and not char_name:
+                self._char_slots.clear()
+                self._focused_slot = None
+                return
+
+            # 슬롯에 캐릭터 할당
+            if slot:
+                if char_name:
+                    self._char_slots[slot] = char_name
+                    # focus가 명시되지 않으면 새로 설정된 캐릭터가 화자
+                    if not focus:
+                        self._focused_slot = slot
+                elif slot in self._char_slots:
+                    del self._char_slots[slot]
+
+            # focus가 명시적으로 지정된 경우
+            if focus:
+                if focus != "n":
+                    self._focused_slot = focus
+                else:
+                    self._focused_slot = None
+
+            return
+
+        # Character 형식 (기존 로직)
+        self._current_characters = []
+        self._current_focus = 1
+
         for key in ["name", "name2", "name3"]:
             if key in params and params[key]:
                 self._current_characters.append(params[key])
 
-    def _guess_speaker_id(self, speaker_name: str) -> str | None:
-        """스피커 이름으로 캐릭터 ID 추측
+        if "focus" in params:
+            try:
+                self._current_focus = int(params["focus"])
+            except ValueError:
+                self._current_focus = 1
 
-        현재 화면에 표시된 캐릭터 목록에서 매칭 시도
+    def _get_speaking_character(self) -> str | None:
+        """focus에 따라 현재 화자 캐릭터(스프라이트) ID 반환
+
+        charslot 형식: focus="l"/"r"/"m" -> 해당 슬롯의 캐릭터
+        Character 형식: focus=1/2 -> name/name2
         """
-        if not speaker_name or not self._current_characters:
+        # charslot 형식 우선 (슬롯 데이터가 있으면)
+        if self._char_slots:
+            if self._focused_slot and self._focused_slot in self._char_slots:
+                return self._char_slots[self._focused_slot]
+            # focus가 없으면 None (화자 불명)
             return None
 
-        # 첫 번째 캐릭터를 기본값으로 사용 (단순 휴리스틱)
-        # 실제로는 캐릭터 이름 매핑 테이블을 사용해야 함
-        if self._current_characters:
-            return self._current_characters[0]
+        # Character 형식 (기존 로직)
+        if not self._current_characters:
+            return None
 
-        return None
+        index = self._current_focus - 1
+        if 0 <= index < len(self._current_characters):
+            return self._current_characters[index]
+
+        return self._current_characters[0]
 
     def _normalize_char_id(self, char_id: str) -> str:
         """캐릭터 ID 정규화 (통합 모듈 사용)

@@ -798,26 +798,36 @@ async def check_image_assets():
         return {
             "exists": False,
             "message": "Assets/Image 폴더가 없습니다",
-            "hint": "게임 클라이언트의 files/bundles/avg/characters 번들을 Assets/Image/avg/characters로 복사해주세요"
+            "hint": "게임 클라이언트의 번들을 Assets/Image/avg/characters, Assets/Image/chararts로 복사해주세요"
         }
 
     # avg/characters 폴더 확인
     characters_dir = image_assets_dir / "avg" / "characters"
-    if not characters_dir.exists():
+    characters_count = len(list(characters_dir.glob("*.ab"))) if characters_dir.exists() else 0
+
+    # chararts 폴더 확인
+    chararts_dir = image_assets_dir / "chararts"
+    chararts_count = len(list(chararts_dir.glob("*.ab"))) if chararts_dir.exists() else 0
+
+    total_bundles = characters_count + chararts_count
+
+    if total_bundles == 0:
         return {
             "exists": True,
             "path": str(image_assets_dir.absolute()),
             "characters_exists": False,
+            "chararts_exists": False,
             "total_bundles": 0
         }
-
-    ab_count = len(list(characters_dir.glob("*.ab")))
 
     return {
         "exists": True,
         "path": str(image_assets_dir.absolute()),
-        "characters_exists": True,
-        "total_bundles": ab_count
+        "characters_exists": characters_count > 0,
+        "characters_bundles": characters_count,
+        "chararts_exists": chararts_count > 0,
+        "chararts_bundles": chararts_count,
+        "total_bundles": total_bundles
     }
 
 
@@ -841,7 +851,7 @@ async def get_image_extract_status():
 
 @router.post("/extract/images/start")
 async def start_image_extraction():
-    """이미지 추출 시작"""
+    """이미지 추출 시작 (avg/characters + chararts)"""
     global _image_extract_task, _image_extract_progress_queue, _image_extract_cancel_flag
 
     # 이미 추출 중인지 확인
@@ -851,11 +861,13 @@ async def start_image_extraction():
     # Assets/Image 경로 확인
     image_assets_dir = Path("Assets/Image")
     characters_dir = image_assets_dir / "avg" / "characters"
+    chararts_dir = image_assets_dir / "chararts"
 
-    if not characters_dir.exists():
+    # 최소 하나의 소스 폴더가 있어야 함
+    if not characters_dir.exists() and not chararts_dir.exists():
         raise HTTPException(
             status_code=404,
-            detail="Assets/Image/avg/characters 폴더가 없습니다."
+            detail="Assets/Image/avg/characters 또는 Assets/Image/chararts 폴더가 없습니다."
         )
 
     # 진행률 큐 생성
@@ -864,9 +876,6 @@ async def start_image_extraction():
 
     async def extract_task():
         from src.tools.extractor.image import extract_images_from_bundle
-
-        output_dir = Path("extracted/images/characters")
-        output_dir.mkdir(parents=True, exist_ok=True)
 
         stats = {"processed": 0, "extracted": 0, "failed": 0}
 
@@ -877,36 +886,61 @@ async def start_image_extraction():
                 message="번들 파일 스캔 중..."
             ))
 
-            ab_files = list(characters_dir.glob("*.ab"))
-            total = len(ab_files)
+            # 추출 작업 목록 생성: (소스 폴더, 출력 폴더, 번들 파일들)
+            extract_jobs: list[tuple[Path, Path, list[Path]]] = []
 
-            for i, ab_path in enumerate(ab_files, 1):
-                if _image_extract_cancel_flag:
-                    break
+            # avg/characters → extracted/images/characters
+            if characters_dir.exists():
+                ab_files = list(characters_dir.glob("*.ab"))
+                if ab_files:
+                    output_dir = Path("extracted/images/characters")
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    extract_jobs.append((characters_dir, output_dir, ab_files))
 
-                # 진행률 전송
-                await _image_extract_progress_queue.put(ImageExtractProgress(
-                    stage="extracting",
-                    current_file=ab_path.name,
-                    processed=i,
-                    total=total,
-                    extracted=stats["extracted"],
-                    message=f"{ab_path.name} 처리 중..."
-                ))
+            # chararts → extracted/images/chararts
+            if chararts_dir.exists():
+                ab_files = list(chararts_dir.glob("*.ab"))
+                if ab_files:
+                    output_dir = Path("extracted/images/chararts")
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    extract_jobs.append((chararts_dir, output_dir, ab_files))
 
-                try:
-                    # 동기 함수를 별도 스레드에서 실행
-                    extracted = await asyncio.get_event_loop().run_in_executor(
-                        None,
-                        extract_images_from_bundle,
-                        ab_path,
-                        output_dir,
-                        "png"
-                    )
-                    stats["processed"] += 1
-                    stats["extracted"] += len(extracted)
-                except Exception:
-                    stats["failed"] += 1
+            # 전체 파일 수 계산
+            total = sum(len(job[2]) for job in extract_jobs)
+            current = 0
+
+            for source_dir, output_dir, ab_files in extract_jobs:
+                source_name = source_dir.name  # "characters" or "chararts"
+
+                for ab_path in ab_files:
+                    if _image_extract_cancel_flag:
+                        break
+
+                    current += 1
+
+                    # 진행률 전송
+                    await _image_extract_progress_queue.put(ImageExtractProgress(
+                        stage="extracting",
+                        current_file=f"[{source_name}] {ab_path.name}",
+                        processed=current,
+                        total=total,
+                        extracted=stats["extracted"],
+                        message=f"[{source_name}] {ab_path.name} 처리 중..."
+                    ))
+
+                    try:
+                        # 동기 함수를 별도 스레드에서 실행
+                        extracted = await asyncio.get_event_loop().run_in_executor(
+                            None,
+                            extract_images_from_bundle,
+                            ab_path,
+                            output_dir,
+                            "png"
+                        )
+                        stats["processed"] += 1
+                        stats["extracted"] += len(extracted)
+                    except Exception:
+                        stats["failed"] += 1
 
             # 완료
             await _image_extract_progress_queue.put(ImageExtractProgress(
@@ -929,7 +963,7 @@ async def start_image_extraction():
 
     _image_extract_task = asyncio.create_task(extract_task())
 
-    return {"status": "started", "message": "이미지 추출이 시작되었습니다"}
+    return {"status": "started", "message": "이미지 추출이 시작되었습니다 (characters + chararts)"}
 
 
 @router.get("/extract/images/stream")

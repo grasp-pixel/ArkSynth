@@ -395,6 +395,35 @@ export const voiceApi = {
   getCachedPortraitUrl: (charId: string) => {
     return `${API_BASE}/api/voice/portraits/${encodeURIComponent(charId)}`
   },
+
+  // === 음성 매핑 API (스프라이트 ID → 음성 캐릭터 ID) ===
+
+  // 전체 음성 매핑 목록
+  listVoiceMappings: async () => {
+    const res = await api.get<{
+      total: number
+      mappings: Record<string, string>
+      mappings_by_voice: Record<string, string[]>
+    }>('/api/voice/voice-mappings')
+    return res.data
+  },
+
+  // 음성 매핑 추가/수정
+  addVoiceMapping: async (spriteId: string, voiceCharId: string) => {
+    const res = await api.post<{ message: string; sprite_id: string; voice_char_id: string }>(
+      '/api/voice/voice-mappings',
+      { sprite_id: spriteId, voice_char_id: voiceCharId }
+    )
+    return res.data
+  },
+
+  // 음성 매핑 삭제
+  removeVoiceMapping: async (spriteId: string) => {
+    const res = await api.delete<{ message: string; sprite_id: string; voice_char_id: string }>(
+      `/api/voice/voice-mappings/${encodeURIComponent(spriteId)}`
+    )
+    return res.data
+  },
 }
 
 // OCR 관련 타입

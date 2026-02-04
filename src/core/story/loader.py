@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Iterator
 
 from ..character import CharacterIdNormalizer
-from ..character.name_mapper import CharacterNameMapper
 from ..models.story import Character, Episode, StoryCategory, StoryGroup
 from .parser import StoryParser
 
@@ -49,10 +48,6 @@ class StoryLoader:
         self._chapter_names: dict[str, dict[str, str]] = {}
         self._story_groups_cache: dict[str, dict[str, StoryGroup]] = {}
         self._story_review_raw: dict[str, dict] = {}  # 원본 JSON 캐시
-
-        # 캐릭터 이름 매퍼 (화자 이름 -> 캐릭터 ID)
-        self._name_mapper: CharacterNameMapper | None = None
-        self._name_mapper_cache_path = self.data_root / "cache" / "name_mapping_v2.json"
 
     def _build_lang_paths(self) -> dict[str, Path]:
         """언어별 경로 매핑 구축
@@ -301,55 +296,6 @@ class StoryLoader:
             return (chapter, stage, order)
         return (999, 999, 0)
 
-    def get_name_mapper(self, lang: str = "ko_KR") -> CharacterNameMapper:
-        """캐릭터 이름 매퍼 로드 (캐시에서 또는 새로 빌드)"""
-        if self._name_mapper is not None:
-            return self._name_mapper
-
-        self._name_mapper = CharacterNameMapper(
-            data_path=self.data_root,
-            cache_path=self._name_mapper_cache_path,
-        )
-
-        # 캐시 파일이 있으면 로드
-        if self._name_mapper_cache_path.exists():
-            try:
-                result = self._name_mapper.load_mapping(self._name_mapper_cache_path)
-                if result is not None:
-                    return self._name_mapper
-            except Exception:
-                pass
-
-        # 캐시가 없거나 로드 실패하면 새로 빌드
-        story_root = self.get_lang_path(lang) / "story"
-        self._name_mapper.build_mapping(story_root)
-
-        # 캐시 저장
-        try:
-            self._name_mapper.save_mapping(self._name_mapper_cache_path)
-        except Exception:
-            pass
-
-        return self._name_mapper
-
-    def reset_name_mapper(self, rebuild: bool = True, lang: str = "ko_KR") -> None:
-        """캐릭터 이름 매퍼 캐시 리셋
-
-        Args:
-            rebuild: True면 캐시 삭제 후 즉시 재빌드, False면 삭제만
-            lang: 재빌드 시 사용할 언어
-        """
-        # 메모리 캐시 초기화
-        self._name_mapper = None
-
-        # 파일 캐시 삭제
-        if self._name_mapper_cache_path.exists():
-            self._name_mapper_cache_path.unlink()
-
-        # 재빌드 요청 시 즉시 재생성
-        if rebuild:
-            self.get_name_mapper(lang)
-
     def load_episode(self, episode_id: str, lang: str = "ko_KR") -> Episode | None:
         """에피소드 로드"""
         index = self.build_episode_index(lang)
@@ -367,39 +313,31 @@ class StoryLoader:
             # 메타데이터가 있으면 항상 한국어 제목 사용 (txt 파일 헤더는 번역 안 된 경우가 많음)
             episode.title = f"{meta.story_code} {meta.story_name}"
 
-        # 대사의 speaker_id 보정 (화자 이름으로 캐릭터 ID 찾기)
-        self._enrich_dialogue_speaker_ids(episode, lang)
+        # 대사의 speaker_id 정규화 및 캐릭터 목록 집계
+        self._process_episode_characters(episode)
 
         return episode
 
-    def _enrich_dialogue_speaker_ids(self, episode: Episode, lang: str) -> None:
-        """대사의 speaker_id를 화자 이름 매핑으로 보정
+    def _process_episode_characters(self, episode: Episode) -> None:
+        """에피소드 캐릭터 목록 정규화 및 집계
 
-        파서가 speaker_id를 찾지 못한 경우 (None),
-        화자 이름(speaker_name)으로 캐릭터 ID를 찾아 설정합니다.
+        파서가 focus 기반으로 정확한 speaker_id를 제공하므로
+        여기서는 정규화와 캐릭터 목록 집계만 수행합니다.
         """
-        mapper = self.get_name_mapper(lang)
-        enriched_characters: set[str] = set()
+        characters: set[str] = set()
 
         for dialogue in episode.dialogues:
-            # speaker_id가 이미 있으면 정규화만
             if dialogue.speaker_id:
+                # speaker_id 정규화
                 normalized = self._normalize_char_id(dialogue.speaker_id)
-                enriched_characters.add(normalized)
-                continue
-
-            # speaker_name으로 캐릭터 ID 찾기
-            if dialogue.speaker_name:
-                char_id = mapper.get_char_id(dialogue.speaker_name)
-                if char_id:
-                    dialogue.speaker_id = char_id
-                    enriched_characters.add(char_id)
-                else:
-                    # 매핑 없으면 speaker_name을 캐릭터로 사용
-                    enriched_characters.add(dialogue.speaker_name)
+                dialogue.speaker_id = normalized
+                characters.add(normalized)
+            elif dialogue.speaker_name:
+                # speaker_id가 없으면 speaker_name을 캐릭터로 사용
+                characters.add(dialogue.speaker_name)
 
         # 에피소드 캐릭터 목록 업데이트
-        episode.characters = enriched_characters
+        episode.characters = characters
 
     def iter_episodes(
         self, category: str | None = None, lang: str = "ko_KR"

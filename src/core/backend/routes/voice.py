@@ -17,6 +17,7 @@ from ...voice.alias_resolver import invalidate_cache as invalidate_alias_cache
 from ...voice.gender_mapper import GenderMapper
 from ...voice.character_images import CharacterImageProvider
 from .stories import reset_story_loader
+from .episodes import reset_episode_loader
 
 logger = logging.getLogger(__name__)
 
@@ -161,8 +162,9 @@ async def refresh_character_data():
     # charword 로더 캐시 리셋
     reset_charword_loader()
 
-    # 캐릭터 이름 매핑 캐시 리셋 및 재빌드
-    reset_story_loader(rebuild_name_mapper=True, lang=config.game_language)
+    # 스토리 로더 리셋 (stories.py + episodes.py 모두)
+    reset_story_loader()
+    reset_episode_loader()
 
     # 대사 통계 재계산 (항상 rebuild 호출)
     if _stats_manager is None:
@@ -202,166 +204,139 @@ async def get_dialogue_stats():
     }
 
 
-# === 캐릭터 별칭 관리 ===
+# === 음성 매핑 관리 (스프라이트 ID → 음성 캐릭터 ID) ===
 
-_character_aliases_cache: dict[str, str] | None = None
-
-
-def _get_aliases_path() -> Path:
-    """별칭 파일 경로"""
-    return Path(config.data_path) / "character_aliases.json"
-
-
-def _load_aliases() -> dict[str, str]:
-    """캐릭터 별칭 로드 (캐시 사용)"""
-    global _character_aliases_cache
-    if _character_aliases_cache is not None:
-        return _character_aliases_cache
-
-    aliases_path = _get_aliases_path()
-    if not aliases_path.exists():
-        _character_aliases_cache = {}
-        return _character_aliases_cache
-
-    try:
-        with open(aliases_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            _character_aliases_cache = data.get("aliases", {})
-    except Exception as e:
-        logger.error(f"별칭 로드 실패: {e}")
-        _character_aliases_cache = {}
-
-    return _character_aliases_cache
+from ...voice.alias_resolver import (
+    get_all_voice_mappings,
+    save_voice_mapping,
+    delete_voice_mapping,
+)
 
 
-def _save_aliases(aliases: dict[str, str]) -> None:
-    """캐릭터 별칭 저장"""
-    global _character_aliases_cache
-    aliases_path = _get_aliases_path()
+class VoiceMappingInfo(BaseModel):
+    """음성 매핑 정보"""
+    sprite_id: str  # 스프라이트 ID (예: "avg_npc_109")
+    voice_char_id: str  # 음성 캐릭터 ID (예: "char_002_amiya")
 
-    data = {
-        "_comment": "NPC 이름 → 플레이어블 캐릭터 ID 매핑. 같은 인물이지만 이름이 다른 경우 사용",
-        "_usage": "캐릭터 관리 UI에서 편집하거나 직접 수정",
-        "aliases": aliases,
+
+class AddVoiceMappingRequest(BaseModel):
+    """음성 매핑 추가 요청"""
+    sprite_id: str
+    voice_char_id: str
+
+
+@router.get("/voice-mappings")
+async def list_voice_mappings():
+    """음성 매핑 목록 조회
+
+    Returns:
+        mappings: 스프라이트 ID → 음성 캐릭터 ID 매핑
+        mappings_by_voice: 음성 캐릭터별 스프라이트 ID 목록
+    """
+    mappings = get_all_voice_mappings()
+
+    # 음성 캐릭터별 스프라이트 그룹화
+    mappings_by_voice: dict[str, list[str]] = {}
+    for sprite_id, voice_char_id in mappings.items():
+        if voice_char_id not in mappings_by_voice:
+            mappings_by_voice[voice_char_id] = []
+        mappings_by_voice[voice_char_id].append(sprite_id)
+
+    return {
+        "total": len(mappings),
+        "mappings": mappings,
+        "mappings_by_voice": mappings_by_voice,
     }
 
-    try:
-        aliases_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(aliases_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        _character_aliases_cache = aliases
-        logger.info(f"별칭 저장 완료: {len(aliases)}개")
-    except Exception as e:
-        logger.error(f"별칭 저장 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"별칭 저장 실패: {str(e)}")
+
+@router.get("/voice-mappings/{voice_char_id}")
+async def get_voice_mapping_by_char(voice_char_id: str):
+    """특정 음성 캐릭터에 매핑된 스프라이트 목록 조회"""
+    mappings = get_all_voice_mappings()
+
+    sprite_ids = [sid for sid, vid in mappings.items() if vid == voice_char_id]
+
+    return {
+        "voice_char_id": voice_char_id,
+        "sprite_ids": sprite_ids,
+    }
 
 
-def _invalidate_aliases_cache() -> None:
-    """별칭 캐시 무효화"""
-    global _character_aliases_cache
-    _character_aliases_cache = None
+@router.post("/voice-mappings")
+async def add_voice_mapping(request: AddVoiceMappingRequest):
+    """음성 매핑 추가
 
-    # 공통 모듈의 캐시도 무효화
-    invalidate_alias_cache()
+    Args:
+        sprite_id: 스프라이트 ID (예: "avg_npc_109")
+        voice_char_id: 음성 캐릭터 ID (예: "char_002_amiya")
+    """
+    mappings = get_all_voice_mappings()
+
+    # 이미 존재하는 매핑인지 확인
+    if request.sprite_id in mappings:
+        existing = mappings[request.sprite_id]
+        if existing == request.voice_char_id:
+            return {"message": "이미 등록된 매핑입니다", "sprite_id": request.sprite_id}
+        # 기존 매핑 업데이트
+        logger.info(f"음성 매핑 업데이트: {request.sprite_id}: {existing} → {request.voice_char_id}")
+
+    success = save_voice_mapping(request.sprite_id, request.voice_char_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="음성 매핑 저장 실패")
+
+    return {
+        "message": "음성 매핑이 추가되었습니다",
+        "sprite_id": request.sprite_id,
+        "voice_char_id": request.voice_char_id,
+    }
 
 
-class AliasInfo(BaseModel):
-    """별칭 정보"""
-    alias: str  # NPC 이름 (예: "모모카")
-    char_id: str  # 플레이어블 캐릭터 ID (예: "char_4202_haruka")
+@router.delete("/voice-mappings/{sprite_id}")
+async def remove_voice_mapping(sprite_id: str):
+    """음성 매핑 삭제"""
+    mappings = get_all_voice_mappings()
+
+    if sprite_id not in mappings:
+        raise HTTPException(status_code=404, detail=f"매핑을 찾을 수 없습니다: {sprite_id}")
+
+    voice_char_id = mappings[sprite_id]
+    success = delete_voice_mapping(sprite_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="음성 매핑 삭제 실패")
+
+    return {
+        "message": "음성 매핑이 삭제되었습니다",
+        "sprite_id": sprite_id,
+        "voice_char_id": voice_char_id,
+    }
 
 
-class AddAliasRequest(BaseModel):
-    """별칭 추가 요청"""
-    alias: str
-    char_id: str
+# === 하위 호환성: 기존 /aliases 엔드포인트 유지 (deprecated) ===
+# 새로운 시스템은 스프라이트 ID 기반이므로 화자 이름 기반 별칭은 더 이상 사용하지 않음
+# 프론트엔드 호환성을 위해 빈 데이터 반환
 
 
 @router.get("/aliases")
 async def list_aliases():
-    """캐릭터 별칭 목록 조회
+    """[Deprecated] 화자 이름 별칭 목록 - 스프라이트 ID 기반 시스템으로 대체됨
 
-    Returns:
-        aliases: NPC 이름 → 캐릭터 ID 매핑
-        aliases_by_char: 캐릭터 ID별 별칭 목록
+    새로운 시스템에서는 화자 이름 기반 매핑이 없으므로 빈 데이터를 반환합니다.
+    음성 매핑은 /voice-mappings 엔드포인트를 사용하세요.
     """
-    aliases = _load_aliases()
-
-    # 캐릭터별 별칭 그룹화
-    aliases_by_char: dict[str, list[str]] = {}
-    for alias, char_id in aliases.items():
-        if char_id not in aliases_by_char:
-            aliases_by_char[char_id] = []
-        aliases_by_char[char_id].append(alias)
-
     return {
-        "total": len(aliases),
-        "aliases": aliases,
-        "aliases_by_char": aliases_by_char,
-    }
-
-
-@router.get("/aliases/{char_id}")
-async def get_character_aliases(char_id: str):
-    """특정 캐릭터의 별칭 목록 조회"""
-    aliases = _load_aliases()
-
-    char_aliases = [alias for alias, cid in aliases.items() if cid == char_id]
-
-    return {
-        "char_id": char_id,
-        "aliases": char_aliases,
+        "total": 0,
+        "aliases": {},
+        "aliases_by_char": {},
     }
 
 
 @router.post("/aliases")
-async def add_alias(request: AddAliasRequest):
-    """별칭 추가
-
-    Args:
-        alias: NPC 이름 (예: "모모카")
-        char_id: 플레이어블 캐릭터 ID (예: "char_4202_haruka")
-    """
-    aliases = _load_aliases().copy()
-
-    # 이미 존재하는 별칭인지 확인
-    if request.alias in aliases:
-        existing = aliases[request.alias]
-        if existing == request.char_id:
-            return {"message": "이미 등록된 별칭입니다", "alias": request.alias}
-        raise HTTPException(
-            status_code=400,
-            detail=f"'{request.alias}'은(는) 이미 '{existing}'에 매핑되어 있습니다",
-        )
-
-    aliases[request.alias] = request.char_id
-    _save_aliases(aliases)
-    _invalidate_aliases_cache()
-
-    return {
-        "message": "별칭이 추가되었습니다",
-        "alias": request.alias,
-        "char_id": request.char_id,
-    }
-
-
-@router.delete("/aliases/{alias}")
-async def remove_alias(alias: str):
-    """별칭 삭제"""
-    aliases = _load_aliases().copy()
-
-    if alias not in aliases:
-        raise HTTPException(status_code=404, detail=f"별칭을 찾을 수 없습니다: {alias}")
-
-    char_id = aliases.pop(alias)
-    _save_aliases(aliases)
-    _invalidate_aliases_cache()
-
-    return {
-        "message": "별칭이 삭제되었습니다",
-        "alias": alias,
-        "char_id": char_id,
-    }
+async def add_alias_legacy(alias: str, char_id: str):
+    """[Deprecated] 화자 이름 별칭 추가 - 더 이상 지원하지 않음"""
+    raise HTTPException(
+        status_code=410,
+        detail="화자 이름 기반 별칭은 더 이상 지원하지 않습니다. 스프라이트 ID 기반 /voice-mappings를 사용하세요."
+    )
 
 
 # === 캐릭터 성별/이미지 ===

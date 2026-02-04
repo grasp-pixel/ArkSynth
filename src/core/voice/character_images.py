@@ -1,6 +1,8 @@
 """캐릭터 이미지 제공
 
-로컬 추출 이미지만 사용 (extracted/images/characters/)
+로컬 추출 이미지만 사용:
+- extracted/images/chararts/ (캐릭터 초상화, 우선)
+- extracted/images/characters/ (AVG 스토리 스탠딩, 폴백)
 """
 
 import logging
@@ -11,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 # 로컬 추출 이미지 경로
 EXTRACTED_IMAGES_PATH = Path("extracted/images/characters")
+EXTRACTED_CHARARTS_PATH = Path("extracted/images/chararts")
 
 
 def get_char_name_from_id(char_id: str) -> str:
@@ -111,6 +114,76 @@ def _search_in_folder(folder: Path, char_id: str, folder_name: str) -> Path | No
     # 첫 번째 파일
     all_images.sort(key=lambda p: p.stem.lower())
     return all_images[0] if all_images else None
+
+
+def find_chararts_image(char_id: str, chararts_path: Path = EXTRACTED_CHARARTS_PATH) -> Path | None:
+    """chararts 폴더에서 캐릭터 초상화 찾기
+
+    chararts 구조:
+    - extracted/images/chararts/{name}/char_XXX_name.png (파츠 분리, 사용 X)
+    - extracted/images/chararts/{name}/char_XXX_name_1.png (완성 이미지, 사용 O)
+    - extracted/images/chararts/{name}/char_XXX_name_1b.png (저화질, 사용 X)
+
+    Args:
+        char_id: 캐릭터 ID (예: char_002_amiya)
+        chararts_path: chararts 경로
+
+    Returns:
+        이미지 파일 경로 또는 None
+    """
+    if not chararts_path.exists():
+        return None
+
+    # 폴더명 추출 (char_002_amiya → amiya)
+    folder_name = get_char_name_from_id(char_id)
+    char_folder = chararts_path / folder_name
+
+    if not char_folder.exists():
+        return None
+
+    # 폴더 내 PNG 파일들
+    all_images = list(char_folder.glob("*.png"))
+    if not all_images:
+        return None
+
+    lower_char_id = char_id.lower()
+
+    # 완성 이미지 찾기: _1 또는 _2로 끝나는 파일 (b 제외)
+    # 우선순위: char_id_1 > char_id_2 > 아무 _1 > 아무 _2
+    best_match: Path | None = None
+    best_priority = 999
+
+    for img_file in all_images:
+        stem = img_file.stem.lower()
+
+        # b로 끝나면 저화질이므로 제외 (예: char_311_mudrok_1b)
+        if stem.endswith('b'):
+            continue
+
+        # 숫자 없는 파일은 파츠 분리 이미지이므로 제외
+        # char_311_mudrok (X) vs char_311_mudrok_1 (O)
+        if not re.search(r'_\d+$', stem):
+            continue
+
+        # char_id로 시작하는지 확인
+        if stem.startswith(lower_char_id):
+            # _1로 끝나면 최우선
+            if stem.endswith('_1'):
+                return img_file
+            # _2로 끝나면 두 번째 우선
+            if stem.endswith('_2') and best_priority > 1:
+                best_match = img_file
+                best_priority = 1
+        else:
+            # char_id가 아니어도 _1, _2 파일이면 후보
+            if stem.endswith('_1') and best_priority > 2:
+                best_match = img_file
+                best_priority = 2
+            elif stem.endswith('_2') and best_priority > 3:
+                best_match = img_file
+                best_priority = 3
+
+    return best_match
 
 
 def find_local_image(char_id: str, extracted_path: Path = EXTRACTED_IMAGES_PATH) -> Path | None:
@@ -267,20 +340,34 @@ def find_local_image(char_id: str, extracted_path: Path = EXTRACTED_IMAGES_PATH)
 
 
 class CharacterImageProvider:
-    """캐릭터 이미지 제공 (로컬 추출 이미지만 사용)"""
+    """캐릭터 이미지 제공 (로컬 추출 이미지만 사용)
+
+    검색 순서:
+    1. extracted/images/chararts (캐릭터 초상화, 우선)
+    2. extracted/images/characters (AVG 스토리 스탠딩, 폴백)
+    """
 
     def __init__(
         self,
         extracted_path: str | Path | None = None,
+        chararts_path: str | Path | None = None,
     ):
         """
         Args:
             extracted_path: 추출 이미지 경로 (기본: extracted/images/characters)
+            chararts_path: 캐릭터 초상화 경로 (기본: extracted/images/chararts)
         """
         self.extracted_path = Path(extracted_path) if extracted_path else EXTRACTED_IMAGES_PATH
+        self.chararts_path = Path(chararts_path) if chararts_path else EXTRACTED_CHARARTS_PATH
 
     def get_image(self, char_id: str) -> Path | None:
-        """캐릭터 이미지 경로 반환"""
+        """캐릭터 이미지 경로 반환 (chararts 우선, characters 폴백)"""
+        # 1. chararts에서 먼저 찾기 (초상화)
+        result = find_chararts_image(char_id, self.chararts_path)
+        if result:
+            return result
+
+        # 2. characters에서 폴백 검색 (스토리 스탠딩)
         return find_local_image(char_id, self.extracted_path)
 
     def has_image(self, char_id: str) -> bool:
@@ -288,34 +375,42 @@ class CharacterImageProvider:
         return self.get_image(char_id) is not None
 
     def get_image_count(self) -> int:
-        """총 이미지 수"""
-        if not self.extracted_path.exists():
-            return 0
-        return sum(1 for _ in self.extracted_path.glob("**/*.png"))
+        """총 이미지 수 (characters + chararts)"""
+        count = 0
+        if self.extracted_path.exists():
+            count += sum(1 for _ in self.extracted_path.glob("**/*.png"))
+        if self.chararts_path.exists():
+            count += sum(1 for _ in self.chararts_path.glob("**/*.png"))
+        return count
 
     def get_folder_count(self) -> int:
-        """캐릭터 폴더 수"""
-        if not self.extracted_path.exists():
-            return 0
-        return sum(1 for d in self.extracted_path.iterdir() if d.is_dir())
+        """캐릭터 폴더 수 (characters + chararts)"""
+        count = 0
+        if self.extracted_path.exists():
+            count += sum(1 for d in self.extracted_path.iterdir() if d.is_dir())
+        if self.chararts_path.exists():
+            count += sum(1 for d in self.chararts_path.iterdir() if d.is_dir())
+        return count
 
     def get_char_ids(self) -> set[str]:
-        """이미지가 있는 char_id 목록
+        """이미지가 있는 char_id 목록 (characters + chararts)
 
         폴더 내 파일명에서 char_id 추출
         """
-        if not self.extracted_path.exists():
-            return set()
-
         char_ids = set()
-        for char_folder in self.extracted_path.iterdir():
-            if not char_folder.is_dir():
+
+        for base_path in [self.extracted_path, self.chararts_path]:
+            if not base_path.exists():
                 continue
-            for img_file in char_folder.glob("*.png"):
-                # 파일명에서 _1, $1, #N 등 제거하여 char_id 추출
-                stem = img_file.stem
-                # char_002_amiya_1 → char_002_amiya
-                # char_108_silent_1#1 → char_108_silent_1
-                char_id = re.sub(r'[_$#]\d+$', '', stem)
-                char_ids.add(char_id)
+            for char_folder in base_path.iterdir():
+                if not char_folder.is_dir():
+                    continue
+                for img_file in char_folder.glob("*.png"):
+                    # 파일명에서 _1, $1, #N 등 제거하여 char_id 추출
+                    stem = img_file.stem
+                    # char_002_amiya_1 → char_002_amiya
+                    # char_108_silent_1#1 → char_108_silent_1
+                    char_id = re.sub(r'[_$#]\d+$', '', stem)
+                    char_ids.add(char_id)
+
         return char_ids
