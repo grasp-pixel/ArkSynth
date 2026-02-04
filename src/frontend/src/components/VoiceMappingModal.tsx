@@ -19,28 +19,17 @@ export default function VoiceMappingModal({ isOpen, onClose }: VoiceMappingModal
     getSpeakerVoice,
   } = useAppStore()
 
-  // 성별/이미지 데이터
+  // 성별 데이터
   const [genders, setGenders] = useState<Record<string, string>>({})
-  const [images, setImages] = useState<Record<string, string>>({})
   const [isLoadingMeta, setIsLoadingMeta] = useState(false)
 
-  // 성별/이미지 데이터 로드
+  // 성별 데이터 로드
   useEffect(() => {
     if (!isOpen) return
 
     setIsLoadingMeta(true)
-    Promise.all([
-      voiceApi.listGenders().catch(() => ({ genders: {} })),
-      voiceApi.listImages().catch(() => ({ images: {} })),
-    ]).then(([genderRes, imageRes]) => {
+    voiceApi.listGenders().catch(() => ({ genders: {} })).then((genderRes) => {
       setGenders(genderRes.genders)
-
-      // 상대 URL에 API_BASE 붙이기
-      const imagesWithBase: Record<string, string> = {}
-      for (const [charId, url] of Object.entries(imageRes.images)) {
-        imagesWithBase[charId] = `${API_BASE}${url}`
-      }
-      setImages(imagesWithBase)
       setIsLoadingMeta(false)
     })
   }, [isOpen])
@@ -135,7 +124,6 @@ export default function VoiceMappingModal({ isOpen, onClose }: VoiceMappingModal
                   key={`${char.char_id ?? 'n'}-${char.name}-${idx}`}
                   char={char}
                   genders={genders}
-                  images={images}
                   availableVoices={availableVoices}
                   voiceCharacters={voiceCharacters}
                   speakerVoiceMap={speakerVoiceMap}
@@ -171,7 +159,6 @@ export default function VoiceMappingModal({ isOpen, onClose }: VoiceMappingModal
 interface CharacterMappingRowProps {
   char: GroupCharacterInfo
   genders: Record<string, string>
-  images: Record<string, string>
   availableVoices: { char_id: string; name: string }[]
   voiceCharacters: { char_id: string; name: string }[]
   speakerVoiceMap: Record<string, string>
@@ -185,7 +172,6 @@ interface CharacterMappingRowProps {
 function CharacterMappingRow({
   char,
   genders,
-  images,
   availableVoices,
   voiceCharacters,
   speakerVoiceMap,
@@ -200,9 +186,9 @@ function CharacterMappingRow({
   const autoVoice = getSpeakerVoice(mappingKey, char.name)
   const autoVoiceName = autoVoice ? voiceCharacters.find(v => v.char_id === autoVoice)?.name : null
 
-  // 해당 캐릭터의 성별/이미지
+  // 해당 캐릭터의 성별/이미지 (백엔드에서 패턴 매칭 처리)
   const charGender = char.char_id ? genders[char.char_id] : null
-  const charImage = char.char_id ? images[char.char_id] : null
+  const charImage = char.char_id ? `${API_BASE}/api/voice/images/${char.char_id}` : null
 
   // 자동 여성/남성 선택 시 실제 선택될 캐릭터
   const hash = simpleHash(mappingKey)

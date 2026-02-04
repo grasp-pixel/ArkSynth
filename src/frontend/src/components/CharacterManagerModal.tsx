@@ -57,9 +57,8 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
   const [newAliasInput, setNewAliasInput] = useState('')
   const [aliasError, setAliasError] = useState<string | null>(null)
 
-  // 성별/이미지 데이터
+  // 성별 데이터
   const [genders, setGenders] = useState<Record<string, string>>({})
-  const [images, setImages] = useState<Record<string, string>>({})  // 캐릭터 이미지
 
   // 이미지 상태
   const [imageStatus, setImageStatus] = useState<{
@@ -80,16 +79,8 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
     }
   }
 
-  // 이미지 목록 로드 함수
-  const loadImages = async () => {
-    const imageRes = await voiceApi.listImages().catch(() => ({ images: {} }))
-    // 상대 URL에 API_BASE 붙이기
-    const imagesWithBase: Record<string, string> = {}
-    for (const [charId, url] of Object.entries(imageRes.images)) {
-      imagesWithBase[charId] = `${API_BASE}${url}`
-    }
-    setImages(imagesWithBase)
-  }
+  // 이미지 URL 생성 (백엔드에서 패턴 매칭 처리)
+  const getCharImageUrl = (charId: string) => `${API_BASE}/api/voice/images/${charId}`
 
   // 모달 열릴 때 데이터 로드
   useEffect(() => {
@@ -98,7 +89,6 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
       loadTrainedModels()
       loadCharacterAliases()
       loadImageStatus()
-      loadImages()
 
       // 성별 데이터 로드
       voiceApi.listGenders().catch(() => ({ genders: {} })).then((res) => {
@@ -509,7 +499,7 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
                 const isEditingAlias = editingAliasCharId === char.char_id
 
                 const charGender = genders[char.char_id]
-                const charImage = images[char.char_id]
+                const charImage = getCharImageUrl(char.char_id)
 
                 return (
                   <div
@@ -543,59 +533,40 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
 
                     {/* 컨텐츠 */}
                     <div className="relative z-10 p-3 h-full flex flex-col">
-                      {/* 헤더: 이미지 + 이름 + 뱃지 */}
-                      <div className="flex items-start gap-2 mb-2">
-                        {/* 원형 이미지 */}
-                        <div className="w-12 h-12 rounded-full bg-ark-black/70 overflow-hidden flex-shrink-0 border-2 border-white/20">
-                          {charImage ? (
-                            <img
-                              src={charImage}
-                              alt={char.name}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).style.display = 'none'
-                              }}
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-ark-gray text-sm">
-                              ?
-                            </div>
+                      {/* 헤더: 이름 + 뱃지 */}
+                      <div className="mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-base text-white font-bold truncate drop-shadow-lg" title={char.name}>
+                            {char.name}
+                          </span>
+                          {/* 성별 */}
+                          {charGender && (
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${
+                              charGender === 'female'
+                                ? 'bg-pink-500/30 text-pink-300'
+                                : 'bg-blue-500/30 text-blue-300'
+                            }`}>
+                              {charGender === 'female' ? '♀' : '♂'}
+                            </span>
                           )}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-base text-white font-bold truncate drop-shadow-lg" title={char.name}>
-                              {char.name}
+                        {/* 기본 음성 뱃지 */}
+                        <div className="flex gap-1 mt-1 flex-wrap">
+                          {isFemaleDefault && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-pink-500/40 text-pink-200">
+                              기본(여)
                             </span>
-                            {/* 성별 */}
-                            {charGender && (
-                              <span className={`text-xs px-1.5 py-0.5 rounded ${
-                                charGender === 'female'
-                                  ? 'bg-pink-500/30 text-pink-300'
-                                  : 'bg-blue-500/30 text-blue-300'
-                              }`}>
-                                {charGender === 'female' ? '♀' : '♂'}
-                              </span>
-                            )}
-                          </div>
-                          {/* 기본 음성 뱃지 */}
-                          <div className="flex gap-1 mt-1 flex-wrap">
-                            {isFemaleDefault && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-pink-500/40 text-pink-200">
-                                기본(여)
-                              </span>
-                            )}
-                            {isMaleDefault && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/40 text-blue-200">
-                                기본(남)
-                              </span>
-                            )}
-                            {isNarrator && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/40 text-purple-200">
-                                나레이션
-                              </span>
-                            )}
-                          </div>
+                          )}
+                          {isMaleDefault && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/40 text-blue-200">
+                              기본(남)
+                            </span>
+                          )}
+                          {isNarrator && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/40 text-purple-200">
+                              나레이션
+                            </span>
+                          )}
                         </div>
                       </div>
 
