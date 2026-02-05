@@ -79,7 +79,7 @@ class AudioPreprocessor:
         device: str = "cuda",
         compute_type: str = "float16",
         min_duration: float = 3.0,
-        max_duration: float = 10.0,
+        max_duration: float = 10.0,  # 기본 분할 범위: 3~10초
         target_sample_rate: int = 32000,
         # 분할 설정
         end_margin_ms: int = 500,  # 세그먼트 끝 여유 (word.end + margin)

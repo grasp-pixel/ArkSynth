@@ -121,12 +121,12 @@ class GPTSoVITSConfig:
     hop_length: int = 640
     win_length: int = 2048
 
-    # TTS 추론 설정 (GPT-SoVITS 권장 기본값)
+    # TTS 추론 설정
     # 이 값들은 백엔드에서 사용되며, 프론트엔드에서는 기본값만 사용
     speed_factor: float = 1.0  # 음성 속도 (0.5~2.0, 1.0=기본)
-    top_k: int = 10  # 샘플링 다양성 (1~20, 높을수록 조기 EOS 방지, 5는 너무 낮음)
+    top_k: int = 12  # 샘플링 다양성 (5~15 권장)
     top_p: float = 1.0  # Nucleus sampling (0.1~1.0)
-    temperature: float = 1.0  # 음성 랜덤성 (0.1~2.0, 낮을수록 안정적)
+    temperature: float = 0.9  # 음성 랜덤성 (0.6~1.0, 낮을수록 안정)
 
     # 언어 설정 (한국어 우선)
     default_language: str = "ko"

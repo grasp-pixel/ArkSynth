@@ -109,19 +109,19 @@ def add_silence_padding(wav_data: bytes, silence_ms: int = 150) -> bytes:
 def split_text_for_tts(text: str, max_length: int = 50) -> list[str]:
     """텍스트를 TTS용 세그먼트로 분할
 
-    GPT-SoVITS는 긴 텍스트에서 조기 EOS가 발생하여 앞부분이 잘리는 문제가 있음.
-    문장부호 → 쉼표 → 한국어 연결어미 순으로 분할하여 개별 합성 후 연결합니다.
+    문장 종결 부호(. ! ?)에서만 분할합니다.
+    참조 텍스트(30자 이하)와 합쳐서 80자 이하가 되도록 유지합니다.
 
     Args:
         text: 분할할 텍스트
-        max_length: 세그먼트 최대 길이 (기본 50자)
+        max_length: 세그먼트 최대 길이 (기본 50자, 이 이상이면 쉼표로 추가 분할)
 
     Returns:
         분할된 텍스트 세그먼트 목록
     """
     import re
 
-    # 문장 종결 부호(. ! ?)로만 분할 (쉼표는 분할하지 않음)
+    # 문장 종결 부호(. ! ?)로만 분할
     # 종결 구분자는 캡처하여 앞 세그먼트에 붙임
     parts = re.split(r"([.!?])", text)
 
@@ -144,84 +144,37 @@ def split_text_for_tts(text: str, max_length: int = 50) -> list[str]:
         if part in (".", "!", "?"):
             if current:
                 current += part
+                # 문장이 완성되면 바로 저장 (문장 단위 유지)
+                segments.append(current)
+                current = ""
             i += 1
             continue
 
-        # 현재 세그먼트가 있고 합치면 max_length 초과하면 저장 후 새로 시작
-        if current:
-            test = f"{current} {part}"
-            if len(test) <= max_length:
-                current = test
-            else:
-                segments.append(current)
-                current = part
-        else:
-            current = part
-
+        # 새 문장 시작
+        current = part
         i += 1
 
-    # 마지막 세그먼트 저장
+    # 마지막 세그먼트 저장 (종결 부호 없는 경우)
     if current:
         segments.append(current)
 
-    # 긴 세그먼트를 쉼표로 분할
-    comma_split_segments = []
+    # 매우 긴 세그먼트만 쉼표로 분할 (80자 초과)
+    final_segments = []
     for seg in segments:
         seg = seg.strip()
         if not seg:
             continue
         if len(seg) <= max_length:
-            comma_split_segments.append(seg)
+            final_segments.append(seg)
         else:
             # 쉼표로 분할 시도
             comma_parts = [p.strip() for p in seg.split(",") if p.strip()]
             if len(comma_parts) > 1:
-                comma_split_segments.extend(comma_parts)
+                final_segments.extend(comma_parts)
             else:
-                comma_split_segments.append(seg)
-
-    # 여전히 긴 세그먼트를 한국어 연결어미로 분할
-    # 연결어미 패턴: ~고, ~며, ~면서, ~지만, ~는데, ~니까, ~서, ~면, ~다면
-    # 연결어미 뒤의 공백을 기준으로 분할 (어조 유지)
-    korean_connective_pattern = re.compile(
-        r"(고\s|며\s|면서\s|지만\s|는데\s|니까\s|서\s|면\s|다면\s|하여\s)"
-    )
-
-    final_segments = []
-    for seg in comma_split_segments:
-        if len(seg) <= max_length:
-            final_segments.append(seg)
-        else:
-            # 한국어 연결어미로 분할
-            conn_parts = korean_connective_pattern.split(seg)
-            if len(conn_parts) > 1:
-                # 연결어미를 앞 세그먼트에 붙임
-                rebuilt = []
-                temp = ""
-                for j, p in enumerate(conn_parts):
-                    if not p:
-                        continue
-                    # 연결어미 패턴인지 확인
-                    if korean_connective_pattern.fullmatch(p):
-                        temp += p.rstrip()  # 연결어미는 앞에 붙임 (공백 제거)
-                    else:
-                        if temp:
-                            rebuilt.append(temp)
-                            temp = p.strip()
-                        else:
-                            temp = p.strip()
-                if temp:
-                    rebuilt.append(temp)
-
-                # 분할된 파트 추가
-                for part in rebuilt:
-                    if part.strip():
-                        final_segments.append(part.strip())
-            else:
-                # 연결어미도 없음: 그대로 전달
                 final_segments.append(seg)
 
-    # 너무 짧은 세그먼트(10자 미만)는 이전/다음 세그먼트에 병합
+    # 너무 짧은 세그먼트(10자 미만)는 이전 세그먼트에 병합
     MIN_SEGMENT_LENGTH = 10
     if len(final_segments) > 1:
         merged = []
@@ -569,9 +522,9 @@ class GPTSoVITSAPIClient:
         char_id: str,
         language: str = "ko",
         speed_factor: float = 1.0,
-        top_k: int = 15,
+        top_k: int = 12,  # 안정성 (5~15 권장)
         top_p: float = 1.0,
-        temperature: float = 0.8,  # 낮은 온도로 안정성 향상
+        temperature: float = 0.9,  # 약간만 높임 (0.8→0.9)
     ) -> Optional[bytes]:
         """텍스트를 음성으로 합성
 
@@ -707,9 +660,9 @@ class GPTSoVITSAPIClient:
         char_id: str,
         language: str = "ko",
         speed_factor: float = 1.0,
-        top_k: int = 15,
+        top_k: int = 12,  # 안정성 (5~15 권장)
         top_p: float = 1.0,
-        temperature: float = 0.8,  # 낮은 온도로 안정성 향상
+        temperature: float = 0.9,  # 약간만 높임 (0.8→0.9)
         ref_audio_path: Path | None = None,
         ref_text: str | None = None,
     ) -> Optional[bytes]:
@@ -780,7 +733,7 @@ class GPTSoVITSAPIClient:
             "top_k": top_k,
             "top_p": top_p,
             "temperature": temperature,
-            "repetition_penalty": 1.35,  # T2S 모델 반복 페널티 (기본값)
+            "repetition_penalty": 1.3,  # 적절한 반복 억제
             "text_split_method": split_method,
             "speed_factor": speed_factor,
             "batch_size": 1,  # 안정적인 출력을 위해 배치 크기 1
@@ -837,9 +790,9 @@ class GPTSoVITSAPIClient:
         output_path: Path,
         language: str = "ko",
         speed_factor: float = 1.0,
-        top_k: int = 15,
+        top_k: int = 12,  # 안정성 (5~15 권장)
         top_p: float = 1.0,
-        temperature: float = 0.8,  # 낮은 온도로 안정성 향상
+        temperature: float = 0.9,  # 약간만 높임 (0.8→0.9)
     ) -> bool:
         """텍스트를 음성으로 합성하여 파일로 저장
 
