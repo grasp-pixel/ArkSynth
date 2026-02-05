@@ -4,18 +4,20 @@ GPT-SoVITS API 서버와 통신하여 음성 합성을 수행합니다.
 """
 
 import asyncio
-import io
 import logging
 import subprocess
 import sys
-import wave
 from pathlib import Path
 from typing import Optional
 
 import aiohttp
 
 from .config import GPTSoVITSConfig
-from .reference_selector import (
+
+# 공통 모듈에서 import
+from ..common.text_processor import preprocess_text_for_tts, split_text_for_tts
+from ..common.audio_utils import add_silence_padding, concatenate_wav
+from ..common.reference_manager import (
     select_reference_by_score,
     select_reference_hybrid,
     get_all_references_by_score,
@@ -23,173 +25,6 @@ from .reference_selector import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def preprocess_text_for_tts(text: str) -> str | None:
-    """TTS 합성을 위한 텍스트 전처리
-
-    GPT-SoVITS가 제대로 처리하지 못하는 패턴을 변환합니다.
-
-    Returns:
-        전처리된 텍스트, 또는 None (합성 불가능한 텍스트)
-    """
-    import re
-
-    # 원본 텍스트가 의미있는 내용을 포함하는지 확인
-    # 말줄임표/마침표만 있는 경우 비언어적 발성으로 대체
-    meaningful_chars = re.sub(r"[.\s…,?!]+", "", text)
-    if not meaningful_chars:
-        # 말줄임표나 문장부호만 있는 텍스트 → 비언어적 발성
-        return "음..."
-
-    # 괄호 안의 감탄사/의성어 제거 (예: "(한숨)" -> "")
-    # TTS로 읽을 필요 없는 연출 지시문
-    text = re.sub(r"\([^)]+\)", "", text)
-
-    # 연속된 마침표 및 말줄임표 정리 (... 또는 … -> 단일 마침표)
-    # 분할 시 마침표 기준으로 나뉘므로 단일화만 수행
-    text = re.sub(r"\.{2,}", ".", text)
-    text = re.sub(r"…+", ".", text)  # 유니코드 말줄임표(…)도 처리
-
-    # 연속된 물음표/느낌표 단순화
-    text = re.sub(r"[?!]{2,}", "?", text)
-
-    # 앞뒤 공백 및 연속 공백 정리
-    text = re.sub(r"\s+", " ", text).strip()
-
-    # 문장 시작의 쉼표/마침표 제거 (한글 마침표 포함)
-    text = re.sub(r"^[,.。\s]+", "", text)
-
-    # 연속된 쉼표 정리
-    text = re.sub(r",\s*,+", ",", text)
-
-    # 전처리 후에도 빈 문자열이면 None 반환
-    if not text.strip():
-        return None
-
-    return text
-
-
-def add_silence_padding(wav_data: bytes, silence_ms: int = 150) -> bytes:
-    """WAV 데이터 앞에 무음 패딩 추가
-
-    스피커 절전 모드로 인한 앞부분 잘림 방지용.
-
-    Args:
-        wav_data: 원본 WAV 데이터
-        silence_ms: 추가할 무음 길이 (밀리초)
-
-    Returns:
-        무음이 추가된 WAV 데이터
-    """
-    try:
-        # 원본 WAV 읽기
-        with io.BytesIO(wav_data) as wav_in:
-            with wave.open(wav_in, 'rb') as wf:
-                params = wf.getparams()
-                frames = wf.readframes(params.nframes)
-
-        # 무음 프레임 생성
-        bytes_per_sample = params.sampwidth
-        silence_samples = int(params.framerate * silence_ms / 1000)
-        silence_frames = b'\x00' * (silence_samples * params.nchannels * bytes_per_sample)
-
-        # 새 WAV 생성 (무음 + 원본)
-        with io.BytesIO() as wav_out:
-            with wave.open(wav_out, 'wb') as wf:
-                wf.setparams(params)
-                wf.writeframes(silence_frames + frames)
-            return wav_out.getvalue()
-
-    except Exception as e:
-        logger.warning(f"무음 패딩 추가 실패: {e}")
-        return wav_data  # 실패 시 원본 반환
-
-
-def split_text_for_tts(text: str, max_length: int = 50) -> list[str]:
-    """텍스트를 TTS용 세그먼트로 분할
-
-    문장 종결 부호(. ! ?)에서만 분할합니다.
-    참조 텍스트(30자 이하)와 합쳐서 80자 이하가 되도록 유지합니다.
-
-    Args:
-        text: 분할할 텍스트
-        max_length: 세그먼트 최대 길이 (기본 50자, 이 이상이면 쉼표로 추가 분할)
-
-    Returns:
-        분할된 텍스트 세그먼트 목록
-    """
-    import re
-
-    # 문장 종결 부호(. ! ?)로만 분할
-    # 종결 구분자는 캡처하여 앞 세그먼트에 붙임
-    parts = re.split(r"([.!?])", text)
-
-    segments = []
-    current = ""
-
-    i = 0
-    while i < len(parts):
-        part = parts[i]
-        if part is None:
-            i += 1
-            continue
-
-        part = part.strip()
-        if not part:
-            i += 1
-            continue
-
-        # 종결 구분자(. ! ?)는 이전 세그먼트에 붙임
-        if part in (".", "!", "?"):
-            if current:
-                current += part
-                # 문장이 완성되면 바로 저장 (문장 단위 유지)
-                segments.append(current)
-                current = ""
-            i += 1
-            continue
-
-        # 새 문장 시작
-        current = part
-        i += 1
-
-    # 마지막 세그먼트 저장 (종결 부호 없는 경우)
-    if current:
-        segments.append(current)
-
-    # 매우 긴 세그먼트만 쉼표로 분할 (80자 초과)
-    final_segments = []
-    for seg in segments:
-        seg = seg.strip()
-        if not seg:
-            continue
-        if len(seg) <= max_length:
-            final_segments.append(seg)
-        else:
-            # 쉼표로 분할 시도
-            comma_parts = [p.strip() for p in seg.split(",") if p.strip()]
-            if len(comma_parts) > 1:
-                final_segments.extend(comma_parts)
-            else:
-                final_segments.append(seg)
-
-    # 너무 짧은 세그먼트(10자 미만)는 이전 세그먼트에 병합
-    MIN_SEGMENT_LENGTH = 10
-    if len(final_segments) > 1:
-        merged = []
-        for seg in final_segments:
-            if merged and len(seg) < MIN_SEGMENT_LENGTH:
-                # 이전 세그먼트에 병합
-                merged[-1] = merged[-1].rstrip(".!?") + " " + seg
-            elif merged and len(merged[-1]) < MIN_SEGMENT_LENGTH:
-                # 이전이 짧으면 현재에 병합
-                merged[-1] = merged[-1].rstrip(".!?") + " " + seg
-            else:
-                merged.append(seg)
-        final_segments = merged
-
-    return final_segments if final_segments else [text]
 
 
 class GPTSoVITSAPIClient:
@@ -606,53 +441,8 @@ class GPTSoVITSAPIClient:
                 return None
             audio_chunks.append(chunk)
 
-        # WAV 파일 연결
-        return self._concatenate_wav(audio_chunks)
-
-    def _concatenate_wav(self, audio_chunks: list[bytes]) -> Optional[bytes]:
-        """여러 WAV 오디오를 하나로 연결
-
-        Args:
-            audio_chunks: WAV 오디오 데이터 목록
-
-        Returns:
-            연결된 WAV 오디오 데이터
-        """
-        import io
-        import wave
-
-        if not audio_chunks:
-            return None
-
-        if len(audio_chunks) == 1:
-            return audio_chunks[0]
-
-        try:
-            # 첫 번째 청크에서 오디오 파라미터 추출
-            with io.BytesIO(audio_chunks[0]) as first_buf:
-                with wave.open(first_buf, "rb") as first_wav:
-                    params = first_wav.getparams()
-
-            # 모든 청크의 프레임 데이터 추출
-            all_frames = []
-            for chunk in audio_chunks:
-                with io.BytesIO(chunk) as buf:
-                    with wave.open(buf, "rb") as wav_file:
-                        all_frames.append(wav_file.readframes(wav_file.getnframes()))
-
-            # 하나의 WAV로 합치기
-            output = io.BytesIO()
-            with wave.open(output, "wb") as out_wav:
-                out_wav.setparams(params)
-                for frames in all_frames:
-                    out_wav.writeframes(frames)
-
-            logger.info(f"[합성] {len(audio_chunks)}개 세그먼트 연결 완료")
-            return output.getvalue()
-
-        except Exception as e:
-            logger.error(f"[합성] WAV 연결 실패: {e}")
-            return None
+        # WAV 파일 연결 (공통 모듈 사용)
+        return concatenate_wav(audio_chunks)
 
     async def _synthesize_segment(
         self,

@@ -58,6 +58,7 @@ class SynthesizeRequest(BaseModel):
 
     text: str
     char_id: str | None = None  # 캐릭터 ID (GPT-SoVITS용)
+    engine: str = "auto"  # TTS 엔진 ("auto", "gpt_sovits", "qwen3_tts")
 
 
 class SynthesizeResponse(BaseModel):
@@ -74,7 +75,19 @@ async def synthesize(request: SynthesizeRequest):
 
     char_id가 필수이며, GPT-SoVITS로만 합성합니다.
     준비되지 않은 캐릭터는 자동으로 참조 오디오를 준비합니다.
+
+    engine 파라미터:
+    - "auto": 자동 선택 (현재는 gpt_sovits만 지원)
+    - "gpt_sovits": GPT-SoVITS 엔진 사용
+    - "qwen3_tts": Qwen3-TTS 엔진 사용 (미구현)
     """
+    # engine 파라미터 처리 (현재는 gpt_sovits만 지원)
+    engine = request.engine if request.engine != "auto" else "gpt_sovits"
+    if engine == "qwen3_tts":
+        raise HTTPException(
+            status_code=501,
+            detail="Qwen3-TTS 엔진은 아직 구현되지 않았습니다."
+        )
     if not request.text:
         raise HTTPException(status_code=400, detail="Text is required")
 
@@ -187,7 +200,7 @@ async def synthesize(request: SynthesizeRequest):
             headers={
                 "X-Sample-Rate": str(result.sample_rate),
                 "X-Duration-Ms": str(result.duration * 1000),
-                "X-Provider": "gpt-sovits",
+                "X-Provider": engine,
             },
         )
 
