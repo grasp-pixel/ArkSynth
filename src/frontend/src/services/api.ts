@@ -1209,6 +1209,24 @@ export interface InstallProgress {
   error?: string
 }
 
+// Qwen3-TTS 설치 관련 타입
+export interface Qwen3TTSInstallInfo {
+  is_installed: boolean
+  package_installed: boolean
+  model_downloaded: boolean
+  model_name: string
+  models_path: string
+  package_version?: string
+  available_voices: string[]
+}
+
+export interface Qwen3TTSInstallProgress {
+  stage: 'checking' | 'installing' | 'downloading_model' | 'complete' | 'error'
+  progress: number
+  message: string
+  error?: string
+}
+
 export interface InstallVerifyResult {
   valid: boolean
   details: {
@@ -1307,6 +1325,28 @@ export const settingsApi = {
     const res = await api.post<{ enabled: boolean; message: string }>('/api/settings/gpu-semaphore', null, {
       params: { enabled }
     })
+    return res.data
+  },
+
+  // Qwen3-TTS 설치 정보 조회
+  getQwen3TTSInstallInfo: async () => {
+    const res = await api.get<Qwen3TTSInstallInfo>('/api/settings/qwen3-tts/install-info')
+    return res.data
+  },
+
+  // Qwen3-TTS 설치 시작
+  startQwen3TTSInstall: async () => {
+    const res = await api.post<{ status: string; message: string }>(
+      '/api/settings/qwen3-tts/install'
+    )
+    return res.data
+  },
+
+  // Qwen3-TTS 설치 취소
+  cancelQwen3TTSInstall: async () => {
+    const res = await api.post<{ status: string; message: string }>(
+      '/api/settings/qwen3-tts/install/cancel'
+    )
     return res.data
   },
 }
@@ -1487,6 +1527,60 @@ export function createInstallStream(
   return {
     close: () => {
       console.log('[SSE] 설치 스트림 종료')
+      eventSource.close()
+    }
+  }
+}
+
+// Qwen3-TTS 설치 진행률 SSE 스트림
+export function createQwen3TTSInstallStream(
+  options: {
+    onProgress?: (progress: Qwen3TTSInstallProgress) => void
+    onComplete?: () => void
+    onError?: (error: string) => void
+  } = {}
+): { close: () => void } {
+  const { onProgress, onComplete, onError } = options
+
+  console.log('[SSE] createQwen3TTSInstallStream: 연결 시작')
+  const eventSource = new EventSource(`${API_BASE}/api/settings/qwen3-tts/install/stream`)
+
+  eventSource.onopen = () => {
+    console.log('[SSE] Qwen3-TTS 설치 스트림 연결 성공')
+  }
+
+  eventSource.addEventListener('progress', (event) => {
+    console.log('[SSE] Qwen3-TTS 설치 progress:', event.data)
+    const progress = JSON.parse(event.data) as Qwen3TTSInstallProgress
+    onProgress?.(progress)
+  })
+
+  eventSource.addEventListener('complete', () => {
+    console.log('[SSE] Qwen3-TTS 설치 완료')
+    onComplete?.()
+    eventSource.close()
+  })
+
+  eventSource.addEventListener('error', (event) => {
+    if (event instanceof MessageEvent) {
+      const data = JSON.parse(event.data)
+      console.error('[SSE] Qwen3-TTS 설치 에러:', data)
+      onError?.(data.error || '설치 실패')
+    }
+    eventSource.close()
+  })
+
+  eventSource.addEventListener('ping', () => {
+    console.log('[SSE] Qwen3-TTS 설치 ping')
+  })
+
+  eventSource.onerror = (e) => {
+    console.error('[SSE] Qwen3-TTS 설치 스트림 연결 오류:', e)
+  }
+
+  return {
+    close: () => {
+      console.log('[SSE] Qwen3-TTS 설치 스트림 종료')
       eventSource.close()
     }
   }

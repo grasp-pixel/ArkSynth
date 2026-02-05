@@ -123,6 +123,30 @@ def check_gpt_sovits() -> DependencyStatus:
     return DependencyStatus(name="GPT-SoVITS", installed=False)
 
 
+def check_qwen3_tts() -> DependencyStatus:
+    """Qwen3-TTS 설치 확인"""
+    try:
+        from ...voice.adapters.qwen3_tts import get_qwen3_tts_installer
+
+        installer = get_qwen3_tts_installer()
+        if installer.is_installed():
+            return DependencyStatus(
+                name="Qwen3-TTS",
+                installed=True,
+                path=str(installer.models_path),
+            )
+        elif installer.is_package_installed():
+            return DependencyStatus(
+                name="Qwen3-TTS",
+                installed=False,
+                version="패키지만 설치됨 (모델 다운로드 필요)",
+            )
+    except Exception:
+        pass
+
+    return DependencyStatus(name="Qwen3-TTS", installed=False)
+
+
 def check_7zip() -> DependencyStatus:
     """7-Zip 설치 확인"""
     # 일반적인 7-Zip 설치 경로
@@ -222,6 +246,7 @@ async def get_settings():
         check_7zip(),
         check_flatc(),
         check_gpt_sovits(),
+        check_qwen3_tts(),
     ]
 
     return SettingsResponse(
@@ -249,6 +274,7 @@ async def check_dependencies():
             check_7zip(),
             check_flatc(),
             check_gpt_sovits(),
+            check_qwen3_tts(),
         ]
     }
 
@@ -534,6 +560,154 @@ async def cleanup_gpt_sovits_install():
         return {"status": "ok", "message": "설치 폴더가 삭제되었습니다"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"삭제 실패: {e}")
+
+
+# ============================================================================
+# Qwen3-TTS 설치 관련 엔드포인트
+# ============================================================================
+
+# Qwen3-TTS 설치 작업 상태
+_qwen3_install_task: Optional[asyncio.Task] = None
+_qwen3_install_progress_queue: Optional[asyncio.Queue] = None
+
+
+class Qwen3TTSInstallInfoResponse(BaseModel):
+    """Qwen3-TTS 설치 정보 응답"""
+    is_installed: bool
+    package_installed: bool
+    model_downloaded: bool
+    model_name: str
+    models_path: str
+    package_version: Optional[str] = None
+    available_voices: list[str] = []
+
+
+@router.get("/qwen3-tts/install-info", response_model=Qwen3TTSInstallInfoResponse)
+async def get_qwen3_tts_install_info():
+    """Qwen3-TTS 설치 정보 조회"""
+    from ...voice.adapters.qwen3_tts import get_qwen3_tts_installer
+
+    installer = get_qwen3_tts_installer()
+    info = await installer.get_install_info()
+
+    return Qwen3TTSInstallInfoResponse(
+        is_installed=info["is_installed"],
+        package_installed=info["package_installed"],
+        model_downloaded=info["model_downloaded"],
+        model_name=info["model_name"],
+        models_path=info["models_path"],
+        package_version=info.get("package_version"),
+        available_voices=installer.get_available_voices(),
+    )
+
+
+@router.post("/qwen3-tts/install")
+async def start_qwen3_tts_install():
+    """Qwen3-TTS 설치 시작"""
+    global _qwen3_install_task, _qwen3_install_progress_queue
+
+    # 이미 설치 중인지 확인
+    if _qwen3_install_task and not _qwen3_install_task.done():
+        raise HTTPException(status_code=409, detail="이미 설치가 진행 중입니다")
+
+    from ...voice.adapters.qwen3_tts import get_qwen3_tts_installer, reset_qwen3_tts_installer
+
+    # 새 설치 시작
+    reset_qwen3_tts_installer()
+    installer = get_qwen3_tts_installer()
+
+    # 진행률 큐 생성
+    _qwen3_install_progress_queue = asyncio.Queue()
+
+    async def progress_callback(progress):
+        if _qwen3_install_progress_queue:
+            await _qwen3_install_progress_queue.put(progress)
+
+    # 설치 작업 시작
+    async def install_task():
+        try:
+            result = await installer.install(on_progress=progress_callback)
+            return result
+        except Exception as e:
+            from ...voice.adapters.qwen3_tts.installer import InstallProgress
+            await progress_callback(InstallProgress(
+                stage="error",
+                progress=0,
+                message="설치 실패",
+                error=str(e)
+            ))
+            return False
+
+    _qwen3_install_task = asyncio.create_task(install_task())
+
+    return {"status": "started", "message": "설치가 시작되었습니다"}
+
+
+@router.get("/qwen3-tts/install/stream")
+async def stream_qwen3_tts_install():
+    """Qwen3-TTS 설치 진행률 SSE 스트림"""
+    global _qwen3_install_progress_queue
+
+    if _qwen3_install_progress_queue is None:
+        raise HTTPException(status_code=404, detail="진행 중인 설치가 없습니다")
+
+    async def event_generator():
+        try:
+            while True:
+                try:
+                    progress = await asyncio.wait_for(
+                        _qwen3_install_progress_queue.get(),
+                        timeout=30.0
+                    )
+
+                    data = {
+                        "stage": progress.stage,
+                        "progress": progress.progress,
+                        "message": progress.message,
+                        "error": progress.error
+                    }
+                    yield f"event: progress\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+                    if progress.stage in ("complete", "error"):
+                        if progress.stage == "complete":
+                            yield f"event: complete\ndata: {json.dumps({'success': True})}\n\n"
+                        else:
+                            yield f"event: error\ndata: {json.dumps({'error': progress.error})}\n\n"
+                        break
+
+                except asyncio.TimeoutError:
+                    yield f"event: ping\ndata: {json.dumps({'status': 'alive'})}\n\n"
+
+        except asyncio.CancelledError:
+            pass
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
+@router.post("/qwen3-tts/install/cancel")
+async def cancel_qwen3_tts_install():
+    """Qwen3-TTS 설치 취소"""
+    global _qwen3_install_task
+
+    if _qwen3_install_task is None or _qwen3_install_task.done():
+        raise HTTPException(status_code=404, detail="진행 중인 설치가 없습니다")
+
+    from ...voice.adapters.qwen3_tts import get_qwen3_tts_installer
+
+    installer = get_qwen3_tts_installer()
+    installer.cancel()
+
+    _qwen3_install_task.cancel()
+
+    return {"status": "cancelled", "message": "설치가 취소되었습니다"}
 
 
 # ============================================================================

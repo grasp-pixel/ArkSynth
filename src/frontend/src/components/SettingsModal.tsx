@@ -21,6 +21,7 @@ import {
   type GamedataUpdateProgress,
 } from "../services/api";
 import GPTSoVITSInstallDialog from "./GPTSoVITSInstallDialog";
+import Qwen3TTSInstallDialog from "./Qwen3TTSInstallDialog";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -41,6 +42,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [show7ZipGuide, setShow7ZipGuide] = useState(false);
   const [showFlatcGuide, setShowFlatcGuide] = useState(false);
   const [showGptSovitsInstall, setShowGptSovitsInstall] = useState(false);
+  const [showQwen3TtsInstall, setShowQwen3TtsInstall] = useState(false);
   const [isRefreshingCharacters, setIsRefreshingCharacters] = useState(false);
 
   // 음성 추출 관련 상태
@@ -477,6 +479,14 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         {!dep.installed && dep.name === "GPT-SoVITS" && (
                           <button
                             onClick={() => setShowGptSovitsInstall(true)}
+                            className="text-xs text-ark-orange hover:underline"
+                          >
+                            자동 설치
+                          </button>
+                        )}
+                        {!dep.installed && dep.name === "Qwen3-TTS" && (
+                          <button
+                            onClick={() => setShowQwen3TtsInstall(true)}
                             className="text-xs text-ark-orange hover:underline"
                           >
                             자동 설치
@@ -1125,6 +1135,16 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         onInstallComplete={() => {
           refreshDependencies();
           setShowGptSovitsInstall(false);
+        }}
+      />
+
+      {/* Qwen3-TTS 설치 다이얼로그 */}
+      <Qwen3TTSInstallDialog
+        isOpen={showQwen3TtsInstall}
+        onClose={() => setShowQwen3TtsInstall(false)}
+        onInstallComplete={() => {
+          refreshDependencies();
+          setShowQwen3TtsInstall(false);
         }}
       />
     </div>

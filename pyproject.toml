@@ -51,11 +51,16 @@ dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
 ]
+# Qwen3-TTS (선택적 TTS 엔진)
+qwen3-tts = [
+    "qwen-tts>=0.1.0",
+]
 # 모든 선택적 종속성 (Windows 개발 환경 기준)
 all = [
     "pywin32>=306",
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
+    "qwen-tts>=0.1.0",
 ]
 
 [project.scripts]
