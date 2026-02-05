@@ -114,6 +114,7 @@ interface AppState {
   trainedModels: TrainedModel[]  // 학습 완료된 모델
   trainedCharIds: Set<string>  // 학습 완료된 캐릭터 ID (빠른 조회용)
   trainingError: string | null  // 학습 오류
+  continueWithFinetune: boolean  // 준비 완료 후 자동으로 학습 시작
 
   // 렌더링 관련
   isRendering: boolean  // 렌더링 진행 중
@@ -199,10 +200,11 @@ interface AppState {
   cancelPrepare: () => void
   loadGroupCharacters: (groupId: string) => Promise<void>
   loadEpisodeCharacters: (episodeId: string) => Promise<void>
-  setSpeakerVoice: (speakerId: string, voiceId: string | null) => void
-  clearSpeakerVoice: (speakerId: string) => void
+  setSpeakerVoice: (speakerId: string, voiceId: string | null) => Promise<void>
+  clearSpeakerVoice: (speakerId: string) => Promise<void>
   setNarratorCharId: (charId: string | null) => void
   loadVoiceCharacters: () => Promise<void>
+  loadVoiceMappings: () => Promise<void>  // 백엔드에서 음성 매핑 로드
   toggleAutoPlay: () => void
   startDubbing: () => void
   stopDubbing: () => void
@@ -216,8 +218,10 @@ interface AppState {
   loadTrainingStatus: () => Promise<void>
   loadTrainedModels: () => Promise<void>
   startBatchTraining: (charIds?: string[], mode?: 'prepare' | 'finetune') => Promise<void>
+  startFullBatchTraining: (charIds?: string[]) => Promise<void>  // 준비 → 학습 연속 진행
   cancelTraining: (jobId: string) => Promise<void>
   clearAllTrainedModels: () => Promise<void>
+  deleteModel: (charId: string) => Promise<void>
   subscribeToTrainingProgress: () => void
   unsubscribeFromTrainingProgress: () => void
   isCharacterTrained: (charId: string) => boolean
@@ -469,6 +473,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   trainedModels: [],
   trainedCharIds: new Set<string>(),
   trainingError: null,
+  continueWithFinetune: false,
 
   // 렌더링 초기 상태
   isRendering: false,
@@ -1452,7 +1457,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       isPrepared: false,
       groupCharacters: [],
       episodeCharacters: [],
-      speakerVoiceMap: {},
+      // speakerVoiceMap은 백엔드에 저장되므로 초기화하지 않음
     })
   },
 
@@ -1495,8 +1500,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 화자별 음성 설정 (NPC 매핑 저장 포함)
-  setSpeakerVoice: (speakerId: string, voiceId: string | null) => {
+  // 화자별 음성 설정 (백엔드 자동 저장)
+  setSpeakerVoice: async (speakerId: string, voiceId: string | null) => {
+    // 1. 로컬 상태 즉시 업데이트
     set((state) => {
       if (voiceId === null) {
         // null이면 매핑 제거
@@ -1510,16 +1516,50 @@ export const useAppStore = create<AppState>((set, get) => ({
         },
       }
     })
-    // NPC 매핑 저장
+
+    // 2. 백엔드에 저장 (null이 아닌 경우)
+    if (voiceId !== null) {
+      try {
+        await voiceApi.addVoiceMapping(speakerId, voiceId)
+        console.log('[setSpeakerVoice] 백엔드 저장 완료:', speakerId, '->', voiceId)
+      } catch (error) {
+        console.error('[setSpeakerVoice] 백엔드 저장 실패:', error)
+        // 실패해도 로컬 상태는 유지 (다음 기회에 재시도 가능)
+      }
+    } else {
+      // null이면 백엔드에서 삭제
+      try {
+        await voiceApi.removeVoiceMapping(speakerId)
+        console.log('[setSpeakerVoice] 백엔드 매핑 삭제:', speakerId)
+      } catch (error) {
+        // 404는 무시 (이미 없는 매핑)
+        if (!(error instanceof Error && error.message.includes('404'))) {
+          console.error('[setSpeakerVoice] 백엔드 삭제 실패:', error)
+        }
+      }
+    }
+
+    // localStorage에도 저장 (백업용)
     persistCurrentState(get)
   },
 
-  // 화자별 음성 매핑 제거
-  clearSpeakerVoice: (speakerId: string) => {
+  // 화자별 음성 매핑 제거 (백엔드 동기화)
+  clearSpeakerVoice: async (speakerId: string) => {
     set((state) => {
       const { [speakerId]: _, ...rest } = state.speakerVoiceMap
       return { speakerVoiceMap: rest }
     })
+
+    // 백엔드에서도 삭제
+    try {
+      await voiceApi.removeVoiceMapping(speakerId)
+      console.log('[clearSpeakerVoice] 백엔드 매핑 삭제:', speakerId)
+    } catch (error) {
+      // 404는 무시
+      if (!(error instanceof Error && error.message.includes('404'))) {
+        console.error('[clearSpeakerVoice] 백엔드 삭제 실패:', error)
+      }
+    }
   },
 
   // 나레이터 캐릭터 설정
@@ -1542,6 +1582,27 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (error) {
       console.error('Failed to load voice characters:', error)
       set({ isLoadingVoiceCharacters: false })
+    }
+  },
+
+  // 백엔드에서 음성 매핑 로드 (앱 시작 시 호출)
+  loadVoiceMappings: async () => {
+    try {
+      const data = await voiceApi.listVoiceMappings()
+      const backendMappings = data.mappings || {}
+
+      // 백엔드 매핑을 speakerVoiceMap에 병합 (백엔드 우선)
+      set((state) => ({
+        speakerVoiceMap: {
+          ...state.speakerVoiceMap,
+          ...backendMappings,
+        },
+      }))
+
+      console.log('[loadVoiceMappings] 백엔드 매핑 로드 완료:', Object.keys(backendMappings).length, '개')
+    } catch (error) {
+      console.error('[loadVoiceMappings] 백엔드 매핑 로드 실패:', error)
+      // 실패해도 localStorage 매핑은 유지
     }
   },
 
@@ -1699,6 +1760,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  // 준비 → 학습 연속 진행
+  startFullBatchTraining: async (charIds?: string[]) => {
+    console.log('[Training] 준비+학습 연속 진행 시작')
+    // 준비 완료 후 자동으로 학습 시작하도록 플래그 설정
+    set({ continueWithFinetune: true })
+    // 준비 먼저 시작
+    await get().startBatchTraining(charIds, 'prepare')
+  },
+
   // 학습 취소
   cancelTraining: async (jobId: string) => {
     try {
@@ -1731,6 +1801,27 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  // 개별 모델 삭제
+  deleteModel: async (charId: string) => {
+    try {
+      await trainingApi.deleteModel(charId)
+      console.log('[Training] 모델 삭제:', charId)
+      // 상태에서 해당 모델 제거
+      set((state) => {
+        const newModels = state.trainedModels.filter(m => m.char_id !== charId)
+        const newCharIds = new Set(newModels.map(m => m.char_id))
+        return {
+          trainedModels: newModels,
+          trainedCharIds: newCharIds,
+          trainingError: null,
+        }
+      })
+    } catch (error) {
+      console.error('Failed to delete model:', charId, error)
+      set({ trainingError: '모델 삭제 실패' })
+    }
+  },
+
   // 학습 진행 상황 구독
   subscribeToTrainingProgress: () => {
     if (trainingStream) {
@@ -1748,16 +1839,29 @@ export const useAppStore = create<AppState>((set, get) => ({
         })
       },
       onComplete: (job) => {
-        console.log('[Training] 완료:', job.char_name, job.status)
+        console.log('[Training] 완료:', job.char_name, job.status, job.mode)
         // 학습 완료 시 모델 목록 새로고침
         get().loadTrainedModels()
 
+        const { trainingQueue, continueWithFinetune } = get()
+        const remainingJobs = trainingQueue.filter(j => j.job_id !== job.job_id)
+
         // 큐에서 완료된 작업 제거
-        set((state) => ({
-          trainingQueue: state.trainingQueue.filter(j => j.job_id !== job.job_id),
+        set({
+          trainingQueue: remainingJobs,
           currentTrainingJob: null,
-          isTrainingActive: state.trainingQueue.length > 1,  // 다음 작업 있으면 활성 유지
-        }))
+          isTrainingActive: remainingJobs.length > 0,
+        })
+
+        // 준비가 모두 완료되고 연속 학습 플래그가 설정되어 있으면 학습 시작
+        if (remainingJobs.length === 0 && continueWithFinetune && job.mode === 'prepare') {
+          console.log('[Training] 준비 완료, 자동으로 학습 시작')
+          set({ continueWithFinetune: false })
+          // 약간의 딜레이 후 학습 시작 (상태 안정화)
+          setTimeout(() => {
+            get().startBatchTraining(undefined, 'finetune')
+          }, 500)
+        }
       },
       onStatus: (status) => {
         console.log('[Training] 상태:', status)

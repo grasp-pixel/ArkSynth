@@ -1,15 +1,6 @@
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useAppStore, AUTO_VOICE_FEMALE, AUTO_VOICE_MALE, simpleHash } from '../stores/appStore'
 import { voiceApi, type GroupCharacterInfo, API_BASE } from '../services/api'
-
-// 저장 아이콘 (디스크)
-function SaveIcon({ className = '' }: { className?: string }) {
-  return (
-    <svg className={className} fill="currentColor" viewBox="0 0 20 20">
-      <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
-    </svg>
-  )
-}
 
 // 체크 아이콘
 function CheckIcon({ className = '' }: { className?: string }) {
@@ -40,6 +31,7 @@ function CharacterStanding({
   // 에러가 발생한 charId를 저장 (다른 charId로 바뀌면 에러 상태 무효화)
   const [errorCharId, setErrorCharId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [showFullImage, setShowFullImage] = useState(false)
   const imageUrl = charId ? `${API_BASE}/api/voice/images/${charId}` : null
 
   // 현재 charId에서 에러가 발생했는지 확인
@@ -59,20 +51,47 @@ function CharacterStanding({
   }
 
   return (
-    <div className={`bg-ark-black/30 border border-ark-border overflow-hidden flex items-start justify-center relative ${className}`}>
-      {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center text-ark-gray/30">
-          <span className="text-sm">...</span>
+    <>
+      <div
+        className={`bg-ark-black/30 border border-ark-border overflow-hidden flex items-start justify-center relative cursor-pointer hover:border-ark-accent/50 transition-colors ${className}`}
+        onClick={() => setShowFullImage(true)}
+        title="클릭하여 크게 보기"
+      >
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center text-ark-gray/30">
+            <span className="text-sm">...</span>
+          </div>
+        )}
+        <img
+          src={imageUrl}
+          alt={alt}
+          className="w-full h-full object-cover object-top"
+          onLoad={() => setIsLoading(false)}
+          onError={() => { setErrorCharId(charId ?? null); setIsLoading(false) }}
+        />
+      </div>
+
+      {/* 확대 모달 */}
+      {showFullImage && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 cursor-pointer"
+          onClick={() => setShowFullImage(false)}
+        >
+          <div className="relative max-w-[90vw] max-h-[90vh]">
+            <img
+              src={imageUrl}
+              alt={alt}
+              className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+            />
+            <div className="absolute bottom-4 left-0 right-0 text-center">
+              <span className="bg-black/70 text-white px-3 py-1.5 rounded text-sm">
+                {alt}
+              </span>
+            </div>
+          </div>
         </div>
       )}
-      <img
-        src={imageUrl}
-        alt={alt}
-        className="w-full h-full object-cover object-top"
-        onLoad={() => setIsLoading(false)}
-        onError={() => { setErrorCharId(charId ?? null); setIsLoading(false) }}
-      />
-    </div>
+    </>
   )
 }
 
@@ -88,41 +107,20 @@ export default function VoiceMappingModal({ isOpen, onClose }: VoiceMappingModal
     getSpeakerVoice,
   } = useAppStore()
 
-  // 메타데이터 (성별, 영구 매핑)
+  // 메타데이터 (성별)
   const [genders, setGenders] = useState<Record<string, string>>({})
-  const [persistentMappings, setPersistentMappings] = useState<Record<string, string>>({})
   const [isLoadingMeta, setIsLoadingMeta] = useState(false)
 
-  // 메타데이터 로드 (성별 + 영구 매핑)
+  // 메타데이터 로드 (성별만 - 매핑은 appStore에서 관리)
   useEffect(() => {
     if (!isOpen) return
 
     setIsLoadingMeta(true)
-    Promise.all([
-      voiceApi.listGenders().catch(() => ({ genders: {} })),
-      voiceApi.listVoiceMappings().catch(() => ({ mappings: {} })),
-    ]).then(([genderRes, mappingRes]) => {
-      setGenders(genderRes.genders)
-      setPersistentMappings(mappingRes.mappings)
-      setIsLoadingMeta(false)
-    })
+    voiceApi.listGenders()
+      .then((res) => setGenders(res.genders))
+      .catch(() => setGenders({}))
+      .finally(() => setIsLoadingMeta(false))
   }, [isOpen])
-
-  // 영구 매핑 저장
-  const handleSaveMapping = useCallback(async (spriteId: string, voiceCharId: string) => {
-    await voiceApi.addVoiceMapping(spriteId, voiceCharId)
-    setPersistentMappings(prev => ({ ...prev, [spriteId]: voiceCharId }))
-  }, [])
-
-  // 영구 매핑 삭제
-  const handleDeleteMapping = useCallback(async (spriteId: string) => {
-    await voiceApi.removeVoiceMapping(spriteId)
-    setPersistentMappings(prev => {
-      const next = { ...prev }
-      delete next[spriteId]
-      return next
-    })
-  }, [])
 
   // 음성 없는 캐릭터 (매핑 대상)
   const voicelessCharacters = useMemo(() => {
@@ -163,7 +161,7 @@ export default function VoiceMappingModal({ isOpen, onClose }: VoiceMappingModal
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="bg-ark-panel border border-ark-border rounded-lg shadow-xl w-[640px] max-h-[85vh] flex flex-col overflow-hidden"
+        className="bg-ark-panel border border-ark-border rounded-lg shadow-xl w-[780px] max-h-[85vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* 헤더 */}
@@ -189,14 +187,9 @@ export default function VoiceMappingModal({ isOpen, onClose }: VoiceMappingModal
           <span className="text-xs text-ark-gray">
             음성 없는 캐릭터: {voicelessCharacters.length}명
           </span>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-ark-gray">
-              매핑: {mappedCount}/{voicelessCharacters.length}
-            </span>
-            <span className="text-xs text-green-400">
-              영구 저장: {Object.keys(persistentMappings).length}
-            </span>
-          </div>
+          <span className={`text-xs ${mappedCount > 0 ? 'text-green-400' : 'text-ark-gray'}`}>
+            매핑 설정: {mappedCount}/{voicelessCharacters.length}명
+          </span>
         </div>
 
         {/* 본문 */}
@@ -213,7 +206,7 @@ export default function VoiceMappingModal({ isOpen, onClose }: VoiceMappingModal
               <p className="text-ark-white">모든 캐릭터가 음성을 보유하고 있습니다</p>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {voicelessCharacters.map((char, idx) => (
                 <CharacterMappingRow
                   key={`${char.char_id ?? 'n'}-${char.name}-${idx}`}
@@ -227,9 +220,6 @@ export default function VoiceMappingModal({ isOpen, onClose }: VoiceMappingModal
                   defaultFemaleVoices={defaultFemaleVoices}
                   defaultMaleVoices={defaultMaleVoices}
                   trainedCharIds={trainedCharIds}
-                  persistentMappings={persistentMappings}
-                  onSaveMapping={handleSaveMapping}
-                  onDeleteMapping={handleDeleteMapping}
                 />
               ))}
             </div>
@@ -240,7 +230,7 @@ export default function VoiceMappingModal({ isOpen, onClose }: VoiceMappingModal
         <div className="p-4 border-t border-ark-border flex justify-between items-center">
           <div className="text-xs text-ark-gray/70 space-y-0.5">
             <p>* 자동: 이름 기반 분배 / 여성·남성: 성별 고정</p>
-            <p>* 💾: 영구 저장 (다른 에피소드에서도 적용)</p>
+            <p>* 변경 시 자동 저장 (다른 에피소드에서도 적용)</p>
           </div>
           <button
             onClick={onClose}
@@ -254,143 +244,230 @@ export default function VoiceMappingModal({ isOpen, onClose }: VoiceMappingModal
   )
 }
 
-// 검색 가능한 캐릭터 선택 드롭다운
-interface VoiceSelectProps {
+// 인라인 음성 선택 버튼들
+interface VoiceSelectButtonsProps {
   value: string
   onChange: (value: string | null) => void
   options: { char_id: string; name: string }[]
   genders: Record<string, string>
   trainedCharIds: Set<string>
-  autoOptions: {
-    autoVoiceName: string | null
-    autoFemaleName: string | null
-    autoMaleName: string | null
-    hasDefaultFemale: boolean
-    hasDefaultMale: boolean
-  }
+  autoVoiceName: string | null
+  autoFemaleName: string | null
+  autoMaleName: string | null
+  hasDefaultFemale: boolean
+  hasDefaultMale: boolean
+  defaultFemaleVoices: string[]
+  defaultMaleVoices: string[]
 }
 
-function VoiceSelect({
+function VoiceSelectButtons({
   value,
   onChange,
   options,
   genders,
   trainedCharIds,
-  autoOptions,
-}: VoiceSelectProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  autoVoiceName,
+  autoFemaleName,
+  autoMaleName,
+  hasDefaultFemale,
+  hasDefaultMale,
+  defaultFemaleVoices,
+  defaultMaleVoices,
+}: VoiceSelectButtonsProps) {
+  const [showSearch, setShowSearch] = useState(false)
   const [search, setSearch] = useState('')
-  const containerRef = useRef<HTMLDivElement>(null)
+  const [apiResults, setApiResults] = useState<Array<{ char_id: string; name: string; has_voice: boolean }>>([])
+  const [isSearching, setIsSearching] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
 
-  // 외부 클릭 감지
+  // 검색어 변경 시 API 호출 (debounce)
   useEffect(() => {
-    if (!isOpen) return
-    const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false)
-        setSearch('')
-      }
+    if (!search) {
+      setApiResults([])
+      return
     }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [isOpen])
 
-  // 현재 선택된 값의 표시 이름
-  const getDisplayName = () => {
-    if (!value) return `자동${autoOptions.autoVoiceName ? ` (${autoOptions.autoVoiceName})` : ''}`
-    if (value === AUTO_VOICE_FEMALE) return `여성${autoOptions.autoFemaleName ? ` (${autoOptions.autoFemaleName})` : ''}`
-    if (value === AUTO_VOICE_MALE) return `남성${autoOptions.autoMaleName ? ` (${autoOptions.autoMaleName})` : ''}`
-    const found = options.find(o => o.char_id === value)
-    return found?.name ?? value
-  }
+    const timer = setTimeout(async () => {
+      setIsSearching(true)
+      try {
+        const result = await voiceApi.searchCharacters(search, 30)
+        setApiResults(result.characters)
+      } catch (err) {
+        console.error('캐릭터 검색 실패:', err)
+      } finally {
+        setIsSearching(false)
+      }
+    }, 300) // 300ms debounce
 
-  // 검색 필터링
+    return () => clearTimeout(timer)
+  }, [search])
+
+  // 검색 필터링: 기존 options + API 결과 병합
   const filteredOptions = useMemo(() => {
-    if (!search) return options
+    if (!search) return options.slice(0, 20) // 기본 20개만
+
     const lower = search.toLowerCase()
-    return options.filter(o =>
+    // 기존 options에서 필터링
+    const fromOptions = options.filter(o =>
       o.name.toLowerCase().includes(lower) ||
       o.char_id.toLowerCase().includes(lower)
     )
-  }, [options, search])
+
+    // API 결과 중 options에 없는 것만 추가
+    const optionIds = new Set(options.map(o => o.char_id))
+    const fromApi = apiResults
+      .filter(r => !optionIds.has(r.char_id))
+      .map(r => ({ char_id: r.char_id, name: r.name }))
+
+    return [...fromOptions, ...fromApi].slice(0, 30)
+  }, [options, search, apiResults])
+
+  // 검색 패널 열릴 때 포커스
+  useEffect(() => {
+    if (showSearch && searchRef.current) {
+      searchRef.current.focus()
+    }
+  }, [showSearch])
 
   const handleSelect = (charId: string | null) => {
     onChange(charId)
-    setIsOpen(false)
+    setShowSearch(false)
     setSearch('')
+    setApiResults([])
   }
 
+  // 현재 선택된 캐릭터 이름 (options에 없으면 apiResults, 그래도 없으면 char_id에서 추출)
+  const selectedName = useMemo(() => {
+    if (!value || value === AUTO_VOICE_FEMALE || value === AUTO_VOICE_MALE) return null
+    const fromOptions = options.find(o => o.char_id === value)?.name
+    if (fromOptions) return fromOptions
+    const fromApi = apiResults.find(r => r.char_id === value)?.name
+    if (fromApi) return fromApi
+    // char_id에서 이름 추출 (char_XXX_name → name)
+    const match = value.match(/^char_\d+_(.+)$/)
+    return match ? match[1] : value
+  }, [value, options, apiResults])
+
+  const isAuto = !value
+  const isFemale = value === AUTO_VOICE_FEMALE
+  const isMale = value === AUTO_VOICE_MALE
+  const isSpecific = value && !isFemale && !isMale
+
   return (
-    <div ref={containerRef} className="relative w-full">
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="ark-input text-xs py-1.5 px-2 w-full text-left flex items-center justify-between"
-      >
-        <span className="truncate">{getDisplayName()}</span>
-        <svg className={`w-3 h-3 ml-1 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="currentColor" viewBox="0 0 20 20">
-          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-        </svg>
-      </button>
+    <div className="space-y-2">
+      {/* 프리셋 버튼들 */}
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          onClick={() => handleSelect(null)}
+          className={`px-2.5 py-1.5 text-xs rounded transition-colors ${
+            isAuto
+              ? 'bg-ark-accent text-white'
+              : 'bg-ark-black/40 text-ark-gray hover:bg-ark-black/60'
+          }`}
+          title={autoVoiceName ? `자동: ${autoVoiceName}` : '자동 선택'}
+        >
+          자동
+        </button>
+        {hasDefaultFemale && (
+          <>
+            <button
+              onClick={() => handleSelect(AUTO_VOICE_FEMALE)}
+              className={`px-2.5 py-1.5 text-xs rounded transition-colors ${
+                isFemale
+                  ? 'bg-pink-500 text-white'
+                  : 'bg-ark-black/40 text-pink-400 hover:bg-ark-black/60'
+              }`}
+              title={autoFemaleName ? `여성: ${autoFemaleName}` : '여성 음성'}
+            >
+              ♀
+            </button>
+            <button
+              onClick={() => {
+                const randomVoice = defaultFemaleVoices[Math.floor(Math.random() * defaultFemaleVoices.length)]
+                if (randomVoice) handleSelect(randomVoice)
+              }}
+              className="px-2.5 py-1.5 text-xs rounded transition-colors bg-ark-black/40 text-pink-400 hover:bg-pink-500/30"
+              title="여성 기본 음성 중 랜덤 선택"
+            >
+              ♀🎲
+            </button>
+          </>
+        )}
+        {hasDefaultMale && (
+          <>
+            <button
+              onClick={() => handleSelect(AUTO_VOICE_MALE)}
+              className={`px-2.5 py-1.5 text-xs rounded transition-colors ${
+                isMale
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-ark-black/40 text-blue-400 hover:bg-ark-black/60'
+              }`}
+              title={autoMaleName ? `남성: ${autoMaleName}` : '남성 음성'}
+            >
+              ♂
+            </button>
+            <button
+              onClick={() => {
+                const randomVoice = defaultMaleVoices[Math.floor(Math.random() * defaultMaleVoices.length)]
+                if (randomVoice) handleSelect(randomVoice)
+              }}
+              className="px-2.5 py-1.5 text-xs rounded transition-colors bg-ark-black/40 text-blue-400 hover:bg-blue-500/30"
+              title="남성 기본 음성 중 랜덤 선택"
+            >
+              ♂🎲
+            </button>
+          </>
+        )}
+        <button
+          onClick={() => setShowSearch(!showSearch)}
+          className={`px-2.5 py-1.5 text-xs rounded transition-colors flex items-center gap-1 ${
+            isSpecific
+              ? 'bg-green-600 text-white'
+              : 'bg-ark-black/40 text-ark-gray hover:bg-ark-black/60'
+          }`}
+          title="캐릭터 검색"
+        >
+          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+          </svg>
+          {selectedName ? (
+            <span className="truncate max-w-[80px]">{selectedName}</span>
+          ) : (
+            '검색'
+          )}
+        </button>
+      </div>
 
-      {isOpen && (
-        <div className="absolute z-50 mt-1 w-64 right-0 bg-ark-panel border border-ark-border rounded shadow-xl max-h-64 overflow-hidden flex flex-col">
-          {/* 검색 입력 */}
-          <div className="p-2 border-b border-ark-border">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="캐릭터 검색..."
-              className="ark-input text-xs w-full py-1 px-2"
-              autoFocus
-            />
-          </div>
-
-          {/* 옵션 목록 */}
-          <div className="overflow-y-auto flex-1">
-            {/* 자동 옵션들 */}
-            {!search && (
-              <>
-                <button
-                  onClick={() => handleSelect(null)}
-                  className={`w-full text-left px-3 py-2 text-xs hover:bg-ark-black/40 ${!value ? 'bg-ark-accent/20 text-ark-accent' : 'text-ark-white'}`}
-                >
-                  자동{autoOptions.autoVoiceName ? ` (${autoOptions.autoVoiceName})` : ''}
-                </button>
-                {autoOptions.hasDefaultFemale && (
-                  <button
-                    onClick={() => handleSelect(AUTO_VOICE_FEMALE)}
-                    className={`w-full text-left px-3 py-2 text-xs hover:bg-ark-black/40 ${value === AUTO_VOICE_FEMALE ? 'bg-ark-accent/20 text-ark-accent' : 'text-ark-white'}`}
-                  >
-                    여성{autoOptions.autoFemaleName ? ` (${autoOptions.autoFemaleName})` : ''}
-                  </button>
-                )}
-                {autoOptions.hasDefaultMale && (
-                  <button
-                    onClick={() => handleSelect(AUTO_VOICE_MALE)}
-                    className={`w-full text-left px-3 py-2 text-xs hover:bg-ark-black/40 ${value === AUTO_VOICE_MALE ? 'bg-ark-accent/20 text-ark-accent' : 'text-ark-white'}`}
-                  >
-                    남성{autoOptions.autoMaleName ? ` (${autoOptions.autoMaleName})` : ''}
-                  </button>
-                )}
-                <div className="border-t border-ark-border my-1" />
-              </>
-            )}
-
-            {/* 캐릭터 옵션 */}
-            {filteredOptions.length === 0 ? (
-              <div className="px-3 py-4 text-xs text-ark-gray text-center">검색 결과 없음</div>
+      {/* 검색 패널 (인라인) */}
+      {showSearch && (
+        <div className="bg-ark-black/60 rounded border border-ark-border p-2.5 space-y-2">
+          <input
+            ref={searchRef}
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="캐릭터 검색..."
+            className="ark-input text-sm w-full py-1.5 px-2.5"
+          />
+          <div className="max-h-40 overflow-y-auto space-y-1">
+            {isSearching ? (
+              <div className="text-xs text-ark-gray text-center py-2">검색 중...</div>
+            ) : filteredOptions.length === 0 ? (
+              <div className="text-xs text-ark-gray text-center py-2">검색 결과 없음</div>
             ) : (
               filteredOptions.map(opt => {
                 const isPrepared = trainedCharIds.has(opt.char_id)
                 const gender = genders[opt.char_id]
                 const isSelected = value === opt.char_id
+                // API에서만 온 결과인지 (기존 options에 없는 캐릭터)
+                const isFromApi = !options.some(o => o.char_id === opt.char_id)
                 return (
                   <button
                     key={opt.char_id}
                     onClick={() => handleSelect(opt.char_id)}
-                    className={`w-full text-left px-3 py-2 text-xs hover:bg-ark-black/40 flex items-center gap-2 ${isSelected ? 'bg-ark-accent/20 text-ark-accent' : 'text-ark-white'}`}
+                    className={`w-full text-left px-2.5 py-1.5 text-xs rounded hover:bg-ark-black/40 flex items-center gap-1.5 ${
+                      isSelected ? 'bg-ark-accent/20 text-ark-accent' : 'text-ark-white'
+                    }`}
                   >
                     <span className="truncate flex-1">{opt.name}</span>
                     {gender && (
@@ -398,12 +475,19 @@ function VoiceSelect({
                         {gender === 'female' ? '♀' : '♂'}
                       </span>
                     )}
-                    {!isPrepared && <span className="text-ark-gray/50">(기본)</span>}
+                    {isFromApi && <span className="text-yellow-500/70 text-[10px]">테이블</span>}
+                    {!isPrepared && !isFromApi && <span className="text-ark-gray/50 text-[10px]">기본</span>}
                   </button>
                 )
               })
             )}
           </div>
+          <button
+            onClick={() => { setShowSearch(false); setSearch(''); setApiResults([]) }}
+            className="w-full text-xs text-ark-gray hover:text-ark-white py-1.5"
+          >
+            닫기
+          </button>
         </div>
       )}
     </div>
@@ -417,14 +501,11 @@ interface CharacterMappingRowProps {
   availableVoices: { char_id: string; name: string }[]
   voiceCharacters: { char_id: string; name: string }[]
   speakerVoiceMap: Record<string, string>
-  setSpeakerVoice: (speakerId: string, voiceId: string | null) => void
+  setSpeakerVoice: (speakerId: string, voiceId: string | null) => Promise<void>
   getSpeakerVoice: (speakerId: string, speakerName?: string) => string | null
   defaultFemaleVoices: string[]
   defaultMaleVoices: string[]
   trainedCharIds: Set<string>
-  persistentMappings: Record<string, string>
-  onSaveMapping: (spriteId: string, voiceCharId: string) => Promise<void>
-  onDeleteMapping: (spriteId: string) => Promise<void>
 }
 
 function CharacterMappingRow({
@@ -438,9 +519,6 @@ function CharacterMappingRow({
   defaultFemaleVoices,
   defaultMaleVoices,
   trainedCharIds,
-  persistentMappings,
-  onSaveMapping,
-  onDeleteMapping,
 }: CharacterMappingRowProps) {
   const [isSaving, setIsSaving] = useState(false)
   const mappingKey = char.char_id || `name:${char.name}`
@@ -474,26 +552,14 @@ function CharacterMappingRow({
     ? voiceCharacters.find(v => v.char_id === mappedCharId)?.name
     : null
 
-  // 영구 매핑 상태
-  const persistentMapping = char.char_id ? persistentMappings[char.char_id] : null
-  const isPersistentlySaved = persistentMapping === currentMapping
-  const canSavePersistently = char.char_id && currentMapping && currentMapping !== AUTO_VOICE_FEMALE && currentMapping !== AUTO_VOICE_MALE
+  // 매핑 상태: setSpeakerVoice가 백엔드에 자동 저장하므로 speakerVoiceMap에 값이 있으면 저장됨
+  const isSaved = currentMapping !== undefined && currentMapping !== null
 
-  const handleSaveMapping = async () => {
-    if (!char.char_id || !currentMapping || currentMapping === AUTO_VOICE_FEMALE || currentMapping === AUTO_VOICE_MALE) return
+  // 매핑 초기화 (자동 선택으로 되돌리기)
+  const handleClearMapping = async () => {
     setIsSaving(true)
     try {
-      await onSaveMapping(char.char_id, currentMapping)
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  const handleDeleteMapping = async () => {
-    if (!char.char_id || !persistentMapping) return
-    setIsSaving(true)
-    try {
-      await onDeleteMapping(char.char_id)
+      setSpeakerVoice(mappingKey, null)
     } finally {
       setIsSaving(false)
     }
@@ -503,16 +569,16 @@ function CharacterMappingRow({
     <div className="rounded-lg bg-ark-black/40 hover:bg-ark-black/50 transition-colors overflow-hidden border border-ark-border/50">
       <div className="flex">
         {/* 이미지 영역: NPC → 매핑 캐릭터 */}
-        <div className="flex gap-1 p-2 bg-ark-black/30">
+        <div className="flex gap-2 p-3 bg-ark-black/30">
           {/* NPC 이미지 */}
           <CharacterStanding
             charId={char.char_id}
             alt={char.name}
-            className="w-20 h-32 rounded"
+            className="w-28 h-44 rounded"
           />
           {/* 화살표 */}
           <div className="flex items-center px-1 text-ark-gray/50">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
             </svg>
           </div>
@@ -520,88 +586,82 @@ function CharacterMappingRow({
           <CharacterStanding
             charId={mappedCharId}
             alt={mappedCharName ?? '매핑 필요'}
-            className="w-20 h-32 rounded"
+            className="w-28 h-44 rounded"
             showPlaceholder={true}
           />
         </div>
 
         {/* 정보 영역 */}
-        <div className="flex-1 p-3 flex flex-col justify-between min-w-0">
+        <div className="flex-1 p-4 flex flex-col justify-between min-w-0">
           {/* 상단: 캐릭터 이름/정보 */}
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-ark-white truncate" title={char.name}>
+              <span className="text-base font-medium text-ark-white truncate" title={char.name}>
                 {char.name}
               </span>
               {charGender && (
-                <span className={`text-[10px] px-1 rounded ${
+                <span className={`text-xs px-1.5 py-0.5 rounded ${
                   charGender === 'female' ? 'bg-pink-500/20 text-pink-400' : 'bg-blue-500/20 text-blue-400'
                 }`}>
                   {charGender === 'female' ? '♀' : '♂'}
                 </span>
               )}
-              {/* 영구 저장 상태 표시 */}
-              {isPersistentlySaved && (
-                <span className="text-[10px] px-1 rounded bg-green-500/20 text-green-400 flex items-center gap-0.5">
-                  <CheckIcon className="w-2.5 h-2.5" />
+              {/* 저장 상태 표시 (자동 저장) */}
+              {isSaved && (
+                <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 flex items-center gap-0.5">
+                  <CheckIcon className="w-3 h-3" />
                   저장됨
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1.5">
               {!char.char_id && (
-                <span className="text-[10px] text-ark-gray/50">(이름만)</span>
+                <span className="text-xs text-ark-gray/50">(이름만)</span>
               )}
-              <span className="text-[10px] text-ark-gray">{char.dialogue_count}대사</span>
+              <span className="text-xs text-ark-gray">{char.dialogue_count}대사</span>
               {char.char_id && (
-                <span className="text-[10px] text-ark-gray/50 truncate" title={char.char_id}>
+                <span className="text-xs text-ark-gray/50 truncate" title={char.char_id}>
                   {char.char_id}
                 </span>
               )}
             </div>
           </div>
 
-          {/* 하단: 음성 선택 + 저장 버튼 */}
-          <div className="mt-2 flex items-center gap-2">
-            <div className="flex-1">
-              <VoiceSelect
-                value={currentMapping ?? ''}
-                onChange={(val) => setSpeakerVoice(mappingKey, val)}
-                options={availableVoices}
-                genders={genders}
-                trainedCharIds={trainedCharIds}
-                autoOptions={{
-                  autoVoiceName: autoVoiceName ?? null,
-                  autoFemaleName: autoFemaleName ?? null,
-                  autoMaleName: autoMaleName ?? null,
-                  hasDefaultFemale: defaultFemaleVoices.length > 0,
-                  hasDefaultMale: defaultMaleVoices.length > 0,
-                }}
-              />
+          {/* 하단: 음성 선택 버튼들 */}
+          <div className="mt-3">
+            <div className="flex items-start gap-3">
+              <div className="flex-1">
+                <VoiceSelectButtons
+                  value={currentMapping ?? ''}
+                  onChange={(val) => setSpeakerVoice(mappingKey, val)}
+                  options={availableVoices}
+                  genders={genders}
+                  trainedCharIds={trainedCharIds}
+                  autoVoiceName={autoVoiceName ?? null}
+                  autoFemaleName={autoFemaleName ?? null}
+                  autoMaleName={autoMaleName ?? null}
+                  hasDefaultFemale={defaultFemaleVoices.length > 0}
+                  hasDefaultMale={defaultMaleVoices.length > 0}
+                  defaultFemaleVoices={defaultFemaleVoices}
+                  defaultMaleVoices={defaultMaleVoices}
+                />
+              </div>
+              {/* 초기화 버튼 (매핑 삭제) */}
+              {isSaved && (
+                <div className="flex gap-1.5 shrink-0">
+                  <button
+                    onClick={handleClearMapping}
+                    disabled={isSaving}
+                    className="p-2 rounded bg-ark-black/40 text-ark-gray hover:bg-ark-black/60 hover:text-ark-white transition-colors disabled:opacity-50"
+                    title="매핑 초기화 (자동 선택으로 되돌리기)"
+                  >
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
+              )}
             </div>
-            {/* 영구 저장/삭제 버튼 */}
-            {canSavePersistently && !isPersistentlySaved && (
-              <button
-                onClick={handleSaveMapping}
-                disabled={isSaving}
-                className="p-1.5 rounded bg-ark-accent/20 text-ark-accent hover:bg-ark-accent/30 transition-colors disabled:opacity-50"
-                title="영구 매핑으로 저장"
-              >
-                <SaveIcon className="w-4 h-4" />
-              </button>
-            )}
-            {persistentMapping && (
-              <button
-                onClick={handleDeleteMapping}
-                disabled={isSaving}
-                className="p-1.5 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50"
-                title="영구 매핑 삭제"
-              >
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                </svg>
-              </button>
-            )}
           </div>
         </div>
       </div>

@@ -36,6 +36,7 @@ function App() {
     toggleGpuSemaphore,
     // 음성 캐릭터
     loadVoiceCharacters,
+    loadVoiceMappings,
     // 패널 접기
     isLeftPanelCollapsed,
     isRightPanelCollapsed,
@@ -54,9 +55,10 @@ function App() {
       loadCategories()
       checkGptSovitsStatus()
       loadVoiceCharacters()  // 음성 캐릭터 목록 로드 (getSpeakerVoice에서 사용)
+      loadVoiceMappings()  // 백엔드 음성 매핑 로드 (에피소드 전환 시 유지)
       loadGpuSemaphoreStatus()  // GPU 세마포어 상태 로드
     }
-  }, [backendStatus, loadCategories, checkGptSovitsStatus, loadVoiceCharacters, loadGpuSemaphoreStatus])
+  }, [backendStatus, loadCategories, checkGptSovitsStatus, loadVoiceCharacters, loadVoiceMappings, loadGpuSemaphoreStatus])
 
   // GPT-SoVITS 상태 주기적 확인 (30초)
   useEffect(() => {

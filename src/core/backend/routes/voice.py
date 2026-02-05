@@ -76,6 +76,55 @@ async def list_voice_characters(lang: str | None = None):
     }
 
 
+@router.get("/characters/search")
+async def search_characters(q: str, lang: str | None = None, limit: int = 30):
+    """캐릭터 테이블에서 검색 (음성 파일 유무와 무관)
+
+    플레이어블 캐릭터(char_로 시작)를 이름 또는 ID로 검색합니다.
+    NPC에 특정 캐릭터 음성을 매핑할 때 사용합니다.
+
+    Args:
+        q: 검색어 (이름 또는 char_id)
+        lang: 언어 코드
+        limit: 최대 결과 수 (기본 30)
+    """
+    from ..shared_loaders import get_story_loader
+
+    loader = get_story_loader()
+    mapper = get_voice_mapper()
+    lang = lang or config.game_language
+    voice_lang = config.voice_language
+
+    characters = loader.load_characters(lang)
+    q_lower = q.lower()
+
+    results = []
+    for char_id, char in characters.items():
+        # 플레이어블 캐릭터만 (char_로 시작, npc 제외)
+        if not char_id.startswith("char_") or char_id.startswith("char_npc_"):
+            continue
+
+        name = char.name_ko or char.name or ""
+
+        # 이름 또는 ID에 검색어 포함
+        if q_lower in name.lower() or q_lower in char_id.lower():
+            has_voice = mapper.has_voice(char_id, voice_lang)
+            results.append({
+                "char_id": char_id,
+                "name": name,
+                "has_voice": has_voice,
+            })
+
+            if len(results) >= limit:
+                break
+
+    return {
+        "query": q,
+        "total": len(results),
+        "characters": results,
+    }
+
+
 @router.get("/characters/{char_id}")
 async def get_character_voice_info(char_id: str, lang: str | None = None):
     """특정 캐릭터의 음성 정보"""
@@ -192,6 +241,7 @@ async def get_dialogue_stats():
 
 from ...voice.alias_resolver import (
     get_all_voice_mappings,
+    get_all_voice_mappings_flat,
     save_voice_mapping,
     delete_voice_mapping,
 )
@@ -214,10 +264,15 @@ async def list_voice_mappings():
     """음성 매핑 목록 조회
 
     Returns:
-        mappings: 스프라이트 ID → 음성 캐릭터 ID 매핑
+        mappings: 스프라이트 ID → 음성 캐릭터 ID 매핑 (플랫 형식, 프론트엔드 호환)
+        mappings_v2: 스프라이트 ID → {voice_char_id, source} (v2 형식, 상세 정보)
         mappings_by_voice: 음성 캐릭터별 스프라이트 ID 목록
     """
-    mappings = get_all_voice_mappings()
+    # v2 형식 (상세 정보)
+    mappings_v2 = get_all_voice_mappings()
+
+    # 플랫 형식 (프론트엔드 호환)
+    mappings = get_all_voice_mappings_flat()
 
     # 음성 캐릭터별 스프라이트 그룹화
     mappings_by_voice: dict[str, list[str]] = {}
@@ -228,7 +283,8 @@ async def list_voice_mappings():
 
     return {
         "total": len(mappings),
-        "mappings": mappings,
+        "mappings": mappings,  # 플랫 형식 (호환성)
+        "mappings_v2": mappings_v2,  # v2 형식 (상세 정보)
         "mappings_by_voice": mappings_by_voice,
     }
 
@@ -275,10 +331,14 @@ async def add_voice_mapping(request: AddVoiceMappingRequest):
     }
 
 
-@router.delete("/voice-mappings/{sprite_id}")
+@router.delete("/voice-mappings/{sprite_id:path}")
 async def remove_voice_mapping(sprite_id: str):
-    """음성 매핑 삭제"""
-    mappings = get_all_voice_mappings()
+    """음성 매핑 삭제
+
+    Note: sprite_id에 name:XXX 형식도 지원 (URL 인코딩 필요)
+    """
+    # 플랫 형식으로 확인 (name: 접두사 포함)
+    mappings = get_all_voice_mappings_flat()
 
     if sprite_id not in mappings:
         raise HTTPException(status_code=404, detail=f"매핑을 찾을 수 없습니다: {sprite_id}")
