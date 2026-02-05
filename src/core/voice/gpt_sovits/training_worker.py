@@ -118,7 +118,11 @@ def load_charword_transcripts(
 
         result = {}
         for key, item in data.get("charWords", {}).items():
-            if item.get("charId") == char_id:
+            # voiceAsset으로 필터링 (char_002_amiya/CN_002 형태)
+            # charId만으로 필터링하면 같은 charId를 공유하는 다른 형태(이형/스킨)의
+            # 대사가 덮어쓰기되어 음성-텍스트 불일치 발생
+            voice_asset = item.get("voiceAsset", "")
+            if voice_asset.startswith(f"{char_id}/"):
                 voice_id = item.get("voiceId", "")  # CN_001
                 voice_text = item.get("voiceText", "")
                 voice_title = item.get("voiceTitle", "")  # 어시스턴트 임명, 대화 1 등
