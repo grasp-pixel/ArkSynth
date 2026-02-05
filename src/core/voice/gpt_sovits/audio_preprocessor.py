@@ -212,6 +212,12 @@ class AudioPreprocessor:
         logger.debug(f"전사 완료: {len(segments)}개 세그먼트")
         return segments
 
+    def _normalize_text(self, text: str) -> str:
+        """텍스트 정규화 (공백, 문장부호 통일)"""
+        text = re.sub(r"\s+", "", text)  # 공백 제거
+        text = re.sub(r"[.。!！?？…]+", ".", text)  # 문장부호 통일
+        return text.lower()
+
     def align_texts(
         self,
         whisper_text: str,
@@ -228,15 +234,8 @@ class AudioPreprocessor:
         Returns:
             (유사도 점수 0-1, 사용할 텍스트)
         """
-
-        def normalize(text: str) -> str:
-            """텍스트 정규화 (공백, 문장부호 통일)"""
-            text = re.sub(r"\s+", "", text)  # 공백 제거
-            text = re.sub(r"[.。!！?？…]+", ".", text)  # 문장부호 통일
-            return text.lower()
-
-        norm_whisper = normalize(whisper_text)
-        norm_expected = normalize(expected_text)
+        norm_whisper = self._normalize_text(whisper_text)
+        norm_expected = self._normalize_text(expected_text)
 
         # 전체 유사도 계산
         similarity = SequenceMatcher(None, norm_whisper, norm_expected).ratio()
@@ -251,6 +250,48 @@ class AudioPreprocessor:
             return similarity, expected_text
 
         return similarity, expected_text
+
+    def find_best_matching_transcript(
+        self,
+        whisper_text: str,
+        transcripts: dict[str, str],
+        threshold: float = 0.5,
+    ) -> tuple[str | None, str | None, float]:
+        """Whisper 텍스트와 가장 유사한 대사 찾기
+
+        Args:
+            whisper_text: Whisper 인식 텍스트
+            transcripts: {voice_id: text} 매핑
+            threshold: 최소 유사도 임계값
+
+        Returns:
+            (best_voice_id, best_text, similarity) 또는 (None, None, 0) if no match
+        """
+        if not whisper_text or not transcripts:
+            return None, None, 0.0
+
+        norm_whisper = self._normalize_text(whisper_text)
+
+        best_voice_id = None
+        best_text = None
+        best_similarity = 0.0
+
+        for voice_id, text in transcripts.items():
+            if not text:
+                continue
+
+            norm_text = self._normalize_text(text)
+            similarity = SequenceMatcher(None, norm_whisper, norm_text).ratio()
+
+            if similarity > best_similarity:
+                best_similarity = similarity
+                best_voice_id = voice_id
+                best_text = text
+
+        if best_similarity >= threshold:
+            return best_voice_id, best_text, best_similarity
+
+        return None, None, best_similarity
 
     def _find_split_points(
         self,
@@ -434,20 +475,23 @@ class AudioPreprocessor:
         expected_text: str,
         voice_id: str,
         output_dir: Path,
+        transcripts_all: dict[str, str] | None = None,
     ) -> list[AudioSegment]:
         """긴 오디오를 문장 단위로 분할
 
         1. Whisper로 전사 및 타임스탬프 추출
-        2. 문장부호에서 word.end + margin으로 분할점 결정
-        3. FFmpeg로 세그먼트 추출
-        4. 마지막 세그먼트는 오디오 끝까지 확장
-        5. 각 WAV 파일 옆에 .txt 파일 저장
+        2. (검증) Whisper 결과를 전체 대사와 매칭하여 텍스트 자동 교정
+        3. 문장부호에서 word.end + margin으로 분할점 결정
+        4. FFmpeg로 세그먼트 추출
+        5. 마지막 세그먼트는 오디오 끝까지 확장
+        6. 각 WAV 파일 옆에 .txt 파일 저장
 
         Args:
             audio_path: 원본 오디오 경로
             expected_text: charword_table의 대사 텍스트
             voice_id: 음성 ID (CN_001 등)
             output_dir: 출력 디렉토리
+            transcripts_all: 검증용 전체 대사 매핑 {voice_id: text}
 
         Returns:
             생성된 AudioSegment 목록
@@ -465,6 +509,28 @@ class AudioPreprocessor:
 
         # 전체 Whisper 텍스트
         whisper_text = " ".join(seg.text for seg in segments)
+
+        # 텍스트 검증 및 자동 교정
+        if transcripts_all:
+            best_id, best_text, best_sim = self.find_best_matching_transcript(
+                whisper_text, transcripts_all, threshold=0.5
+            )
+            if best_id and best_text:
+                if best_id != voice_id:
+                    logger.warning(
+                        f"텍스트 교정: {voice_id} → {best_id} (유사도: {best_sim:.2f})\n"
+                        f"  기존: {expected_text[:50]}...\n"
+                        f"  교정: {best_text[:50]}..."
+                    )
+                    expected_text = best_text
+                else:
+                    logger.debug(f"텍스트 검증 통과: {voice_id} (유사도: {best_sim:.2f})")
+            else:
+                logger.warning(
+                    f"텍스트 매칭 실패: {voice_id} (최고 유사도: {best_sim:.2f})\n"
+                    f"  Whisper: {whisper_text[:50]}...\n"
+                    f"  Expected: {expected_text[:50]}..."
+                )
 
         # 텍스트 정렬 확인
         similarity, _ = self.align_texts(whisper_text, expected_text)
@@ -540,6 +606,7 @@ class AudioPreprocessor:
         expected_text: str,
         voice_id: str,
         output_dir: Path,
+        transcripts_all: dict[str, str] | None = None,
     ) -> list[AudioSegment]:
         """단일 오디오 파일 처리
 
@@ -547,6 +614,13 @@ class AudioPreprocessor:
         - 적절한 길이 (3-10초): 그대로 복사 (텍스트 검증만)
         - 너무 긴 경우 (>10초): split_long_audio() 호출
         - 너무 짧은 경우 (<3초): 건너뜀
+
+        Args:
+            audio_path: 오디오 파일 경로
+            expected_text: charword_table의 대사 텍스트
+            voice_id: 음성 ID (CN_001 등)
+            output_dir: 출력 디렉토리
+            transcripts_all: 검증용 전체 대사 매핑 {voice_id: text}
 
         Returns:
             처리된 AudioSegment 목록 (빈 목록일 수 있음)
@@ -586,8 +660,11 @@ class AudioPreprocessor:
                 ]
             return []
 
-        # 긴 오디오: Whisper로 분할
-        return self.split_long_audio(audio_path, expected_text, voice_id, output_dir)
+        # 긴 오디오: Whisper로 분할 (검증 포함)
+        return self.split_long_audio(
+            audio_path, expected_text, voice_id, output_dir,
+            transcripts_all=transcripts_all
+        )
 
     def preprocess_character(
         self,
@@ -638,10 +715,11 @@ class AudioPreprocessor:
                 logger.debug(f"텍스트 없음: {voice_id}")
                 continue
 
-            # 오디오 처리
+            # 오디오 처리 (전체 대사 전달하여 Whisper 검증 활성화)
             try:
                 segments = self.process_audio_file(
-                    audio_path, text, voice_id, output_dir
+                    audio_path, text, voice_id, output_dir,
+                    transcripts_all=transcripts
                 )
                 all_segments.extend(segments)
             except Exception as e:
