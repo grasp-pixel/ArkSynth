@@ -96,14 +96,48 @@ def emit_error(message: str, error: str = ""):
     print(json.dumps(data, ensure_ascii=False), flush=True)
 
 
-def emit_complete(char_id: str, char_name: str):
+def emit_complete(char_id: str, char_name: str, cleaned_size: int = 0):
     """완료를 JSON으로 출력"""
     data = {
         "type": "complete",
         "char_id": char_id,
         "char_name": char_name,
+        "cleaned_size": cleaned_size,  # 정리된 용량 (bytes)
     }
     print(json.dumps(data, ensure_ascii=False), flush=True)
+
+
+def cleanup_training_data(output_dir: Path) -> int:
+    """학습 완료 후 중간 산출물 정리
+
+    training_data 폴더를 삭제하여 디스크 공간을 확보합니다.
+    preprocessed 폴더는 참조 오디오로 사용되므로 유지합니다.
+
+    Args:
+        output_dir: 모델 출력 디렉토리
+
+    Returns:
+        정리된 용량 (bytes)
+    """
+    training_data_dir = output_dir / "training_data"
+    cleaned_size = 0
+
+    if training_data_dir.exists():
+        # 폴더 크기 계산
+        for f in training_data_dir.rglob("*"):
+            if f.is_file():
+                cleaned_size += f.stat().st_size
+
+        # 폴더 삭제
+        try:
+            shutil.rmtree(training_data_dir)
+            size_gb = cleaned_size / (1024 ** 3)
+            logger.info(f"학습 중간 산출물 정리 완료: {size_gb:.2f}GB 확보")
+        except Exception as e:
+            logger.error(f"training_data 폴더 삭제 실패: {e}")
+            cleaned_size = 0
+
+    return cleaned_size
 
 
 def load_charword_texts(gamedata_path: Path, char_id: str, language: str = "ko") -> dict[str, str]:
@@ -1247,6 +1281,7 @@ def finetune_character(
     epochs_sovits: int = 8,
     epochs_gpt: int = 15,
     version: str = "v2Pro",
+    cleanup: bool = True,
 ):
     """캐릭터 음성 모델 Fine-tuning 메인 함수
 
@@ -1393,7 +1428,16 @@ def finetune_character(
     # 8. 참조 오디오 설정
     setup_reference_audios(sliced_dir, list_path, output_dir, char_name)
 
-    emit_complete(char_id, char_name)
+    # 9. 학습 중간 산출물 정리 (cleanup 옵션이 활성화된 경우)
+    cleaned_size = 0
+    if cleanup:
+        emit_progress("cleanup", 0.98, "학습 중간 산출물 정리 중...")
+        cleaned_size = cleanup_training_data(output_dir)
+        if cleaned_size > 0:
+            size_gb = cleaned_size / (1024 ** 3)
+            emit_progress("cleanup", 0.99, f"정리 완료: {size_gb:.2f}GB 확보")
+
+    emit_complete(char_id, char_name, cleaned_size)
     return True
 
 
@@ -1409,6 +1453,10 @@ def main():
     parser.add_argument("--epochs-sovits", type=int, default=8, help="SoVITS 에포크")
     parser.add_argument("--epochs-gpt", type=int, default=15, help="GPT 에포크")
     parser.add_argument("--version", default="v2Pro", help="모델 버전 (v2Pro 권장)")
+    parser.add_argument("--cleanup", action="store_true", default=True,
+                        help="학습 완료 후 중간 산출물 정리 (기본값: True)")
+    parser.add_argument("--no-cleanup", dest="cleanup", action="store_false",
+                        help="학습 완료 후 중간 산출물 유지")
 
     args = parser.parse_args()
 
@@ -1423,6 +1471,7 @@ def main():
         epochs_sovits=args.epochs_sovits,
         epochs_gpt=args.epochs_gpt,
         version=args.version,
+        cleanup=args.cleanup,
     )
 
     sys.exit(0 if success else 1)

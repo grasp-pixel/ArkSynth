@@ -143,6 +143,9 @@ class GPTSoVITSConfig:
     whisper_compute_type: str = "float16"  # 연산 타입 (float16, int8, float32)
     use_whisper_preprocessing: bool = True  # Whisper 기반 전처리 사용 여부
 
+    # 학습 후 정리 설정
+    cleanup_after_training: bool = True  # 학습 완료 후 training_data 폴더 자동 삭제
+
     @property
     def api_url(self) -> str:
         """GPT-SoVITS API 서버 URL"""

@@ -147,6 +147,13 @@ class GPTSoVITSTrainer:
             "--language", self.config.default_language,
         ]
 
+        # finetune 모드: cleanup 옵션 전달
+        if mode == "finetune":
+            if self.config.cleanup_after_training:
+                cmd.append("--cleanup")
+            else:
+                cmd.append("--no-cleanup")
+
         mode_label = "학습" if mode == "finetune" else "준비"
         logger.info(f"{mode_label} 시작: {char_id} ({char_name}) [mode={mode}]")
         logger.debug(f"명령: {' '.join(cmd)}")
