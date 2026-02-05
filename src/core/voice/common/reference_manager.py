@@ -117,6 +117,26 @@ class ReferenceManager:
             return ReferenceAudio(audio_path, text, score, duration)
         return None
 
+    def select_multiple(self, count: int = 3, input_text_len: int = 20) -> list[ReferenceAudio]:
+        """여러 참조 오디오 선택 (캐릭터성 향상용)
+
+        다양한 톤과 발화 스타일을 커버하기 위해 여러 참조 샘플 반환.
+
+        Args:
+            count: 선택할 참조 개수
+            input_text_len: 입력 텍스트 길이 (길이 유사도 계산용)
+
+        Returns:
+            선택된 참조 오디오 목록 (점수 내림차순)
+        """
+        all_refs = self.get_all_by_score()
+        if not all_refs:
+            # 폴백: select_best 단일 반환
+            best = self.select_best(input_text_len)
+            return [best] if best else []
+
+        return all_refs[:count]
+
     def get_all_by_score(self, exclude_primary: Path | None = None) -> list[ReferenceAudio]:
         """점수 순으로 정렬된 모든 참조 오디오
 

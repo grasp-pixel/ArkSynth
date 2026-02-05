@@ -35,6 +35,7 @@ dependencies = [
     "opencv-python>=4.8.0",
     "torch>=2.0.0",
     "torchvision>=0.15.0",
+    "torchaudio>=2.0.0",
     "py7zr>=1.1.0",
     # 게임 데이터 다운로드
     "arkprts[all]>=0.3.0",
@@ -83,3 +84,4 @@ explicit = true
 [tool.uv.sources]
 torch = { index = "pytorch-cu121" }
 torchvision = { index = "pytorch-cu121" }
+torchaudio = { index = "pytorch-cu121" }

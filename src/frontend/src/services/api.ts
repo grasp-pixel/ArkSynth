@@ -157,14 +157,18 @@ export const storiesApi = {
   },
 }
 
+// TTS 엔진 타입
+export type TTSEngine = 'gpt_sovits' | 'qwen3_tts'
+
 // TTS 관련 API
 export const ttsApi = {
-  // 음성 합성 (GPT-SoVITS)
+  // 음성 합성
+  // engine을 지정하지 않으면 서버 설정(default_tts_engine) 사용
   // TTS 파라미터는 백엔드 config의 기본값 사용
   // 첫 합성은 API 서버 시작 + 참조 오디오 준비로 오래 걸릴 수 있음 (최대 120초)
-  synthesize: async (text: string, charId: string): Promise<Blob> => {
+  synthesize: async (text: string, charId: string, engine?: TTSEngine): Promise<Blob> => {
     const res = await api.post('/api/tts/synthesize',
-      { text, char_id: charId },
+      { text, char_id: charId, engine },
       {
         responseType: 'blob',
         timeout: 120000,  // 120초 (첫 합성 시 API 서버 시작 + 참조 준비 포함)
@@ -228,6 +232,99 @@ export const ttsApi = {
     )
     return res.data
   },
+
+  // Qwen3-TTS 상태 확인
+  getQwen3TtsStatus: async () => {
+    const res = await api.get<{
+      installed: boolean
+      package_installed: boolean
+      model_downloaded: boolean
+      model_loaded: boolean
+      ready_characters: string[]
+      ready_count: number
+      error?: string
+    }>('/api/tts/qwen3-tts/status')
+    return res.data
+  },
+
+  // Qwen3-TTS 모델 로드
+  loadQwen3Tts: async () => {
+    const res = await api.post<{ status: string; message: string }>(
+      '/api/tts/qwen3-tts/load',
+      {},
+      { timeout: 120000 }  // 모델 로드에 시간이 걸릴 수 있음
+    )
+    return res.data
+  },
+
+  // Qwen3-TTS 모델 언로드
+  unloadQwen3Tts: async () => {
+    const res = await api.post<{ status: string; message: string }>('/api/tts/qwen3-tts/unload')
+    return res.data
+  },
+
+  // Qwen3-TTS 캐시 상태 조회
+  getQwen3TtsCacheStatus: async () => {
+    const res = await api.get<Qwen3TTSCacheStatus>('/api/tts/qwen3-tts/cache-status')
+    return res.data
+  },
+
+  // Qwen3-TTS 설정 조회
+  getQwen3TtsSettings: async () => {
+    const res = await api.get<Qwen3TTSSettingsResponse>('/api/tts/qwen3-tts/settings')
+    return res.data
+  },
+
+  // Qwen3-TTS 설정 변경
+  setQwen3TtsSettings: async (settings: Qwen3TTSSettingsRequest) => {
+    const res = await api.post<{
+      use_finetuned: boolean
+      max_finetuned_models: number
+      message: string
+    }>('/api/tts/qwen3-tts/settings', settings)
+    return res.data
+  },
+}
+
+// Qwen3-TTS 캐시 상태 타입
+export interface Qwen3TTSCacheStatus {
+  base_model_loaded: boolean
+  finetuned_models: {
+    count: number
+    max: number
+    loaded: string[]  // 현재 로드된 캐릭터 ID 목록
+  }
+  voice_prompts: {
+    count: number
+    loaded: string[]  // 현재 로드된 ICL 프롬프트 캐릭터 목록
+  }
+  config: {
+    use_finetuned: boolean
+    max_finetuned_models: number
+  }
+}
+
+// Qwen3-TTS 설정 응답 타입
+export interface Qwen3TTSSettingsResponse {
+  use_finetuned: boolean
+  max_finetuned_models: number
+  description: {
+    use_finetuned: string
+    max_finetuned_models: string
+  }
+  recommendations: {
+    [key: string]: {
+      max_finetuned_models?: number
+      use_finetuned?: boolean
+      note: string
+    }
+  }
+}
+
+// Qwen3-TTS 설정 요청 타입
+export interface Qwen3TTSSettingsRequest {
+  use_finetuned?: boolean
+  max_finetuned_models?: number
 }
 
 // GPT-SoVITS 진단 타입
@@ -701,6 +798,23 @@ export interface TrainedModel {
   can_finetune: boolean     // finetune 가능 여부 (prepared이고 전처리 완료됨)
 }
 
+// 엔진별 모델 상태 (GPT-SoVITS, Qwen3-TTS 각각)
+export interface EngineSpecificModelStatus {
+  char_id: string
+  gpt_sovits: {
+    model_type: 'none' | 'prepared' | 'finetuned'
+    is_preprocessed: boolean
+    segment_count: number
+    can_finetune: boolean
+  }
+  qwen3_tts: {
+    model_type: 'none' | 'prepared' | 'finetuned'
+    can_finetune: boolean
+    has_ref_audio: boolean
+    can_use_icl: boolean  // GPT-SoVITS preprocessed 사용 가능
+  }
+}
+
 export type TrainingMode = 'prepare' | 'finetune'
 
 export const trainingApi = {
@@ -752,6 +866,26 @@ export const trainingApi = {
       is_preprocessed: boolean
       can_finetune: boolean
     }>(`/api/training/models/${charId}/type`)
+    return res.data
+  },
+
+  // 엔진별 모델 상태 조회
+  getEngineStatus: async (charId: string) => {
+    const res = await api.get<EngineSpecificModelStatus>(
+      `/api/training/models/${charId}/engine-status`
+    )
+    return res.data
+  },
+
+  // Qwen3-TTS 학습 (GPT-SoVITS와 별도)
+  trainQwen3TTS: async (charId: string, mode: 'prepare' | 'finetune' = 'prepare') => {
+    const res = await api.post<{
+      success: boolean
+      char_id: string
+      char_name: string
+      mode: string
+      message: string
+    }>('/api/training/qwen3-tts/train', { char_id: charId, mode })
     return res.data
   },
 
@@ -1154,11 +1288,24 @@ export interface SettingsResponse {
   game_language: string
   voice_language: string
   gpt_sovits_language: string
+  // TTS 설정
+  default_tts_engine: TTSEngine
   // Whisper 전처리 설정
   whisper_model_size: string
   whisper_compute_type: string
   use_whisper_preprocessing: boolean
   dependencies: DependencyStatus[]
+}
+
+// TTS 엔진 설정 타입
+export interface TTSEngineSetting {
+  engine: TTSEngine
+  available_engines: TTSEngine[]
+  engine_status: Record<string, {
+    installed: boolean
+    name: string
+    description: string
+  }>
 }
 
 export interface FFmpegInstallGuide {
@@ -1192,6 +1339,19 @@ export interface FlatcInstallGuide {
   required_for: string
 }
 
+export interface SoxInstallGuide {
+  name: string
+  description: string
+  windows: {
+    method: string
+    command: string
+    alternative: string
+  }
+  manual_steps: string[]
+  required_for: string
+  note: string
+}
+
 // GPT-SoVITS 설치 관련 타입
 export interface GptSovitsInstallInfo {
   is_installed: boolean
@@ -1222,6 +1382,36 @@ export interface Qwen3TTSInstallInfo {
 
 export interface Qwen3TTSInstallProgress {
   stage: 'checking' | 'installing' | 'downloading_model' | 'complete' | 'error'
+  progress: number
+  message: string
+  error?: string
+}
+
+// Qwen3-TTS 모델 다운로드 관련 타입
+export interface Qwen3ModelInfo {
+  model_name: string
+  model_downloaded: boolean
+  size_gb: number
+  hf_cache_path?: string
+  model_cache_path?: string
+  hf_endpoint: string
+  available_mirrors: string[]
+}
+
+export interface Qwen3ModelDownloadRequest {
+  use_mirror?: boolean
+  model_name?: string
+}
+
+// SoX 설치 관련 타입
+export interface SoxInstallInfo {
+  is_installed: boolean
+  version?: string
+  path?: string
+}
+
+export interface SoxInstallProgress {
+  stage: 'downloading' | 'extracting' | 'configuring' | 'complete' | 'error'
   progress: number
   message: string
   error?: string
@@ -1274,6 +1464,12 @@ export const settingsApi = {
   // flatc 설치 가이드
   getFlatcGuide: async () => {
     const res = await api.get<FlatcInstallGuide>('/api/settings/flatc/install-guide')
+    return res.data
+  },
+
+  // SoX 설치 가이드
+  getSoxGuide: async () => {
+    const res = await api.get<SoxInstallGuide>('/api/settings/sox/install-guide')
     return res.data
   },
 
@@ -1349,6 +1545,156 @@ export const settingsApi = {
     )
     return res.data
   },
+
+  // Qwen3-TTS 모델 정보 조회
+  getQwen3ModelInfo: async () => {
+    const res = await api.get<Qwen3ModelInfo>('/api/settings/qwen3-tts/model-info')
+    return res.data
+  },
+
+  // Qwen3-TTS 모델 다운로드 시작
+  startQwen3ModelDownload: async (options?: Qwen3ModelDownloadRequest) => {
+    const res = await api.post<{ status: string; message: string }>(
+      '/api/settings/qwen3-tts/model/download',
+      options || {}
+    )
+    return res.data
+  },
+
+  // Qwen3-TTS 모델 다운로드 취소
+  cancelQwen3ModelDownload: async () => {
+    const res = await api.post<{ status: string; message: string }>(
+      '/api/settings/qwen3-tts/model/download/cancel'
+    )
+    return res.data
+  },
+
+  // SoX 설치 정보 조회
+  getSoxInstallInfo: async () => {
+    const res = await api.get<SoxInstallInfo>('/api/settings/sox/install-info')
+    return res.data
+  },
+
+  // SoX 설치 시작
+  startSoxInstall: async () => {
+    const res = await api.post<{ status: string; message: string }>(
+      '/api/settings/sox/install'
+    )
+    return res.data
+  },
+
+  // SoX 설치 취소
+  cancelSoxInstall: async () => {
+    const res = await api.post<{ status: string; message: string }>(
+      '/api/settings/sox/install/cancel'
+    )
+    return res.data
+  },
+
+  // TTS 엔진 설정 조회
+  getTTSEngineSetting: async () => {
+    const res = await api.get<TTSEngineSetting>('/api/settings/tts-engine')
+    return res.data
+  },
+
+  // TTS 엔진 설정 변경
+  setTTSEngineSetting: async (engine: TTSEngine) => {
+    const res = await api.post<{ engine: TTSEngine; message: string }>(
+      '/api/settings/tts-engine',
+      { engine }
+    )
+    return res.data
+  },
+}
+
+// SoX 설치 SSE 스트림
+export function createSoxInstallStream(
+  options: {
+    onProgress?: (progress: SoxInstallProgress) => void
+    onComplete?: () => void
+    onError?: (error: string) => void
+  } = {}
+): { close: () => void } {
+  const { onProgress, onComplete, onError } = options
+
+  const eventSource = new EventSource(`${API_BASE}/api/settings/sox/install/stream`)
+
+  eventSource.addEventListener('progress', (event) => {
+    const progress = JSON.parse(event.data) as SoxInstallProgress
+    onProgress?.(progress)
+  })
+
+  eventSource.addEventListener('complete', () => {
+    eventSource.close()
+    onComplete?.()
+  })
+
+  eventSource.addEventListener('error', (event) => {
+    if (event instanceof MessageEvent) {
+      const data = JSON.parse(event.data)
+      onError?.(data.error)
+    }
+    eventSource.close()
+  })
+
+  eventSource.onerror = () => {
+    eventSource.close()
+    onError?.('스트림 연결 오류')
+  }
+
+  return { close: () => eventSource.close() }
+}
+
+// Qwen3-TTS 모델 다운로드 SSE 스트림
+export function createQwen3ModelDownloadStream(
+  options: {
+    onProgress?: (progress: Qwen3TTSInstallProgress) => void
+    onComplete?: () => void
+    onError?: (error: string) => void
+  } = {}
+): { close: () => void } {
+  const { onProgress, onComplete, onError } = options
+
+  console.log('[SSE] createQwen3ModelDownloadStream: 연결 시작')
+  const eventSource = new EventSource(`${API_BASE}/api/settings/qwen3-tts/model/download/stream`)
+
+  eventSource.onopen = () => {
+    console.log('[SSE] Qwen3 모델 다운로드 스트림 연결 성공')
+  }
+
+  eventSource.addEventListener('progress', (event) => {
+    console.log('[SSE] Qwen3 모델 다운로드 progress:', event.data)
+    const progress = JSON.parse(event.data) as Qwen3TTSInstallProgress
+    onProgress?.(progress)
+  })
+
+  eventSource.addEventListener('complete', () => {
+    console.log('[SSE] Qwen3 모델 다운로드 완료')
+    eventSource.close()
+    onComplete?.()
+  })
+
+  eventSource.addEventListener('error', (event) => {
+    if (event instanceof MessageEvent) {
+      const data = JSON.parse(event.data)
+      console.error('[SSE] Qwen3 모델 다운로드 에러:', data)
+      onError?.(data.error)
+    }
+    eventSource.close()
+  })
+
+  eventSource.onerror = (e) => {
+    console.error('[SSE] Qwen3 모델 다운로드 스트림 연결 오류:', e)
+    eventSource.close()
+    onError?.('스트림 연결 오류')
+  }
+
+  return {
+    close: () => {
+      console.log('[SSE] Qwen3 모델 다운로드 스트림 종료')
+      eventSource.close()
+    }
+  }
 }
 
 // === 음성 추출 API ===

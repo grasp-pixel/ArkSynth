@@ -551,7 +551,10 @@ class AudioPreprocessor:
 
         # 세그먼트 추출
         results: list[AudioSegment] = []
-        expected_sentences = self._split_text_by_punctuation(expected_text)
+
+        # 순차 매칭으로 각 세그먼트의 텍스트 결정
+        whisper_texts = [text for _, _, text in split_points]
+        matched_texts = self._match_segments_sequential(whisper_texts, expected_text)
 
         for i, (start, end, whisper_seg_text) in enumerate(split_points):
             output_path = output_dir / f"{voice_id}_{i:02d}.wav"
@@ -564,13 +567,8 @@ class AudioPreprocessor:
             ):
                 continue
 
-            # 세그먼트 텍스트 결정
-            # Whisper 텍스트와 가장 유사한 expected 문장 찾기
-            if i < len(expected_sentences):
-                seg_text = expected_sentences[i]
-            else:
-                # expected 문장이 부족하면 Whisper 텍스트 사용
-                seg_text = whisper_seg_text
+            # 순차 매칭 결과 사용
+            seg_text = matched_texts[i]
 
             # 텍스트 파일 저장 (WAV 옆에)
             text_path.write_text(seg_text, encoding="utf-8")
@@ -592,13 +590,168 @@ class AudioPreprocessor:
         logger.info(f"분할 완료: {audio_path.name} → {len(results)}개 세그먼트")
         return results
 
-    def _split_text_by_punctuation(self, text: str) -> list[str]:
-        """텍스트를 문장부호 기준으로 분할"""
-        # 문장부호로 분할
-        pattern = f"[{re.escape(self.SPLIT_PUNCTUATION)}]+"
-        sentences = re.split(pattern, text)
-        # 빈 문자열 제거
-        return [s.strip() for s in sentences if s.strip()]
+    def _find_best_substring(
+        self,
+        whisper_text: str,
+        expected_text: str,
+        search_start: int = 0,
+    ) -> tuple[int, int, float] | None:
+        """expected_text에서 whisper_text와 가장 유사한 서브스트링 찾기
+
+        슬라이딩 윈도우 방식으로 최적 매칭 위치를 찾습니다.
+
+        Args:
+            whisper_text: 찾을 텍스트 (정규화됨)
+            expected_text: 검색 대상 (정규화됨)
+            search_start: 검색 시작 위치
+
+        Returns:
+            (시작 인덱스, 끝 인덱스, 유사도) 또는 None
+        """
+        if not whisper_text or not expected_text:
+            return None
+
+        search_text = expected_text[search_start:]
+        if not search_text:
+            return None
+
+        whisper_len = len(whisper_text)
+        best_start = -1
+        best_end = -1
+        best_similarity = 0.0
+
+        # 윈도우 크기 범위: whisper 길이의 0.7배 ~ 1.5배
+        min_window = max(1, int(whisper_len * 0.7))
+        max_window = min(len(search_text), int(whisper_len * 1.5))
+
+        for window_size in range(min_window, max_window + 1):
+            for pos in range(len(search_text) - window_size + 1):
+                candidate = search_text[pos : pos + window_size]
+                similarity = SequenceMatcher(None, whisper_text, candidate).ratio()
+
+                if similarity > best_similarity:
+                    best_similarity = similarity
+                    best_start = search_start + pos
+                    best_end = search_start + pos + window_size
+
+        if best_similarity >= 0.5:
+            return (best_start, best_end, best_similarity)
+
+        return None
+
+    def _extract_original_substring(
+        self,
+        original: str,
+        norm_start: int,
+        norm_end: int,
+    ) -> str:
+        """정규화된 인덱스를 사용해 원본 텍스트에서 부분 추출
+
+        정규화 과정(공백/문장부호 제거)의 역변환을 수행합니다.
+
+        Args:
+            original: 원본 텍스트
+            norm_start: 정규화 텍스트에서의 시작 인덱스
+            norm_end: 정규화 텍스트에서의 끝 인덱스
+
+        Returns:
+            원본 텍스트의 해당 부분
+        """
+        # 원본 인덱스 → 정규화 인덱스 매핑 구축
+        orig_to_norm: list[tuple[int, int]] = []
+        norm_idx = 0
+
+        for orig_idx, char in enumerate(original):
+            # _normalize_text()와 동일한 로직: 공백 제거
+            if char.isspace():
+                continue
+            orig_to_norm.append((orig_idx, norm_idx))
+            norm_idx += 1
+
+        # 정규화 인덱스 → 원본 인덱스 역변환
+        orig_start = None
+        orig_end = None
+
+        for orig_idx, n_idx in orig_to_norm:
+            if n_idx == norm_start and orig_start is None:
+                orig_start = orig_idx
+            if n_idx == norm_end - 1:
+                orig_end = orig_idx + 1
+
+        if orig_start is None:
+            orig_start = 0
+        if orig_end is None:
+            orig_end = len(original)
+
+        return original[orig_start:orig_end].strip()
+
+    def _match_segments_sequential(
+        self,
+        whisper_texts: list[str],
+        expected_text: str,
+    ) -> list[str]:
+        """Whisper 세그먼트들을 expected_text와 순차적으로 매칭
+
+        각 세그먼트에 대해 expected_text에서 가장 유사한 연속 부분을
+        순차적으로 찾아 반환합니다.
+
+        Args:
+            whisper_texts: Whisper 세그먼트 텍스트 목록 (시간순)
+            expected_text: 전체 예상 텍스트
+
+        Returns:
+            각 세그먼트에 대응하는 텍스트 목록
+        """
+        if not whisper_texts:
+            return []
+
+        if not expected_text:
+            return whisper_texts
+
+        # 단일 세그먼트: expected_text 전체 사용
+        if len(whisper_texts) == 1:
+            return [expected_text]
+
+        results: list[str] = []
+        search_start = 0
+        norm_expected = self._normalize_text(expected_text)
+
+        for i, whisper_text in enumerate(whisper_texts):
+            norm_whisper = self._normalize_text(whisper_text)
+
+            # 마지막 세그먼트: 남은 텍스트 전체 사용
+            if i == len(whisper_texts) - 1:
+                remaining = self._extract_original_substring(
+                    expected_text, search_start, len(norm_expected)
+                )
+                results.append(remaining if remaining else whisper_text)
+                continue
+
+            # expected_text의 남은 부분에서 최적 서브스트링 찾기
+            best_match = self._find_best_substring(
+                norm_whisper,
+                norm_expected,
+                search_start,
+            )
+
+            if best_match:
+                match_start, match_end, similarity = best_match
+                original_text = self._extract_original_substring(
+                    expected_text, match_start, match_end
+                )
+                results.append(original_text)
+                search_start = match_end
+                logger.debug(
+                    f"세그먼트 {i} 매칭: 유사도 {similarity:.2f}\n"
+                    f"  Whisper: {whisper_text[:40]}...\n"
+                    f"  Matched: {original_text[:40]}..."
+                )
+            else:
+                # 매칭 실패: Whisper 텍스트 사용
+                results.append(whisper_text)
+                logger.warning(f"세그먼트 {i} 매칭 실패: {whisper_text[:50]}...")
+
+        return results
 
     def process_audio_file(
         self,

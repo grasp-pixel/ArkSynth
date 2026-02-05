@@ -42,6 +42,9 @@ class SettingsResponse(BaseModel):
     voice_language: str
     gpt_sovits_language: str
 
+    # TTS 설정
+    default_tts_engine: str  # gpt_sovits, qwen3_tts
+
     # Whisper 전처리 설정
     whisper_model_size: str
     whisper_compute_type: str
@@ -232,6 +235,31 @@ def check_flatc() -> DependencyStatus:
     return DependencyStatus(name="flatc", installed=False)
 
 
+def check_sox() -> DependencyStatus:
+    """SoX (Sound eXchange) 설치 확인
+
+    Qwen3-TTS의 오디오 처리에 필요합니다.
+    로컬 설치(tools/sox) 및 시스템 PATH 모두 확인합니다.
+    """
+    from ..sox_installer import get_sox_installer
+
+    installer = get_sox_installer()
+
+    # 로컬 또는 시스템에 설치되어 있는지 확인
+    if installer.is_installed():
+        sox_path = installer.get_sox_path()
+        version = installer.get_version() or "14.4.2"
+
+        return DependencyStatus(
+            name="SoX",
+            installed=True,
+            version=version,
+            path=str(sox_path) if sox_path else None,
+        )
+
+    return DependencyStatus(name="SoX", installed=False)
+
+
 @router.get("", response_model=SettingsResponse)
 async def get_settings():
     """현재 설정 조회"""
@@ -243,6 +271,7 @@ async def get_settings():
     dependencies = [
         check_ffmpeg(),
         check_ffprobe(),
+        check_sox(),
         check_7zip(),
         check_flatc(),
         check_gpt_sovits(),
@@ -257,6 +286,7 @@ async def get_settings():
         game_language=config.game_language,
         voice_language=config.voice_language,
         gpt_sovits_language=config.gpt_sovits_language,
+        default_tts_engine=config.default_tts_engine,
         whisper_model_size=gpt_config.whisper_model_size,
         whisper_compute_type=gpt_config.whisper_compute_type,
         use_whisper_preprocessing=gpt_config.use_whisper_preprocessing,
@@ -271,6 +301,7 @@ async def check_dependencies():
         "dependencies": [
             check_ffmpeg(),
             check_ffprobe(),
+            check_sox(),
             check_7zip(),
             check_flatc(),
             check_gpt_sovits(),
@@ -353,6 +384,29 @@ async def flatc_install_guide():
             "4. 터미널 재시작 후 'flatc --version'으로 확인",
         ],
         "required_for": "게임 데이터 업데이트 (arkprts)",
+    }
+
+
+@router.get("/sox/install-guide")
+async def sox_install_guide():
+    """SoX 설치 가이드"""
+    return {
+        "name": "SoX (Sound eXchange)",
+        "description": "Qwen3-TTS의 오디오 처리에 필요한 오디오 변환 도구입니다.",
+        "windows": {
+            "method": "winget",
+            "command": "winget install ChrisBagwell.SoX",
+            "alternative": "https://sourceforge.net/projects/sox/files/sox/ 에서 다운로드",
+        },
+        "manual_steps": [
+            "1. https://sourceforge.net/projects/sox/files/sox/14.4.2/ 에서 다운로드",
+            "2. sox-14.4.2-win32.exe (Windows 설치 파일) 선택",
+            "3. 설치 프로그램 실행 후 기본 설정으로 설치",
+            "4. 설치 경로(예: C:\\Program Files (x86)\\sox-14.4.2)를 PATH 환경변수에 추가",
+            "5. 터미널 재시작 후 'sox --version'으로 확인",
+        ],
+        "required_for": "Qwen3-TTS 음성 합성",
+        "note": "SoX 없이 Qwen3-TTS를 사용하면 오디오 처리 오류가 발생합니다.",
     }
 
 
@@ -706,6 +760,306 @@ async def cancel_qwen3_tts_install():
     installer.cancel()
 
     _qwen3_install_task.cancel()
+
+    return {"status": "cancelled", "message": "설치가 취소되었습니다"}
+
+
+# Qwen3-TTS 모델 다운로드 작업 상태 (설치와 별도)
+_qwen3_model_download_task: Optional[asyncio.Task] = None
+_qwen3_model_download_queue: Optional[asyncio.Queue] = None
+
+
+class Qwen3ModelDownloadRequest(BaseModel):
+    """모델 다운로드 요청"""
+    use_mirror: bool = False  # HuggingFace 미러 사용 여부
+    model_name: Optional[str] = None  # 기본값: Qwen3-TTS-12Hz-1.7B-Base
+
+
+class Qwen3ModelInfoResponse(BaseModel):
+    """모델 정보 응답"""
+    model_name: str
+    model_downloaded: bool
+    size_gb: float
+    hf_cache_path: Optional[str] = None
+    model_cache_path: Optional[str] = None
+    hf_endpoint: str
+    available_mirrors: list[str]
+
+
+@router.get("/qwen3-tts/model-info", response_model=Qwen3ModelInfoResponse)
+async def get_qwen3_model_info():
+    """Qwen3-TTS 모델 정보 조회"""
+    from ...voice.adapters.qwen3_tts import get_qwen3_tts_installer
+
+    installer = get_qwen3_tts_installer()
+    info = await installer.get_install_info()
+
+    return Qwen3ModelInfoResponse(
+        model_name=info["model_name"],
+        model_downloaded=info["model_downloaded"],
+        size_gb=info.get("size_gb", 3.0),
+        hf_cache_path=info.get("hf_cache_path"),
+        model_cache_path=info.get("model_cache_path"),
+        hf_endpoint=info.get("hf_endpoint", "https://huggingface.co"),
+        available_mirrors=info.get("available_mirrors", []),
+    )
+
+
+@router.post("/qwen3-tts/model/download")
+async def start_qwen3_model_download(request: Qwen3ModelDownloadRequest):
+    """Qwen3-TTS 모델 다운로드 시작 (패키지 설치 없이)"""
+    global _qwen3_model_download_task, _qwen3_model_download_queue
+
+    # 이미 다운로드 중인지 확인
+    if _qwen3_model_download_task and not _qwen3_model_download_task.done():
+        raise HTTPException(status_code=409, detail="이미 다운로드가 진행 중입니다")
+
+    from ...voice.adapters.qwen3_tts import get_qwen3_tts_installer
+
+    installer = get_qwen3_tts_installer()
+
+    # 이미 다운로드됨
+    if installer.is_model_downloaded(request.model_name):
+        return {"status": "downloaded", "message": "모델이 이미 다운로드되어 있습니다"}
+
+    # 진행률 큐 생성
+    _qwen3_model_download_queue = asyncio.Queue()
+
+    async def progress_callback(progress):
+        if _qwen3_model_download_queue:
+            await _qwen3_model_download_queue.put(progress)
+
+    # 다운로드 작업 시작
+    async def download_task():
+        try:
+            result = await installer.download_model_only(
+                on_progress=progress_callback,
+                model_name=request.model_name,
+                use_mirror=request.use_mirror,
+            )
+            return result
+        except Exception as e:
+            from ...voice.adapters.qwen3_tts.installer import InstallProgress
+            await progress_callback(InstallProgress(
+                stage="error",
+                progress=0,
+                message="다운로드 실패",
+                error=str(e)
+            ))
+            return False
+
+    _qwen3_model_download_task = asyncio.create_task(download_task())
+
+    mirror_msg = " (미러 사용)" if request.use_mirror else ""
+    return {"status": "started", "message": f"모델 다운로드가 시작되었습니다{mirror_msg}"}
+
+
+@router.get("/qwen3-tts/model/download/stream")
+async def stream_qwen3_model_download():
+    """Qwen3-TTS 모델 다운로드 진행률 SSE 스트림"""
+    global _qwen3_model_download_queue
+
+    if _qwen3_model_download_queue is None:
+        raise HTTPException(status_code=404, detail="진행 중인 다운로드가 없습니다")
+
+    async def event_generator():
+        try:
+            while True:
+                try:
+                    progress = await asyncio.wait_for(
+                        _qwen3_model_download_queue.get(),
+                        timeout=30.0
+                    )
+
+                    data = {
+                        "stage": progress.stage,
+                        "progress": progress.progress,
+                        "message": progress.message,
+                        "error": progress.error
+                    }
+                    yield f"event: progress\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+                    if progress.stage in ("complete", "error"):
+                        if progress.stage == "complete":
+                            yield f"event: complete\ndata: {json.dumps({'success': True})}\n\n"
+                        else:
+                            yield f"event: error\ndata: {json.dumps({'error': progress.error})}\n\n"
+                        break
+
+                except asyncio.TimeoutError:
+                    yield f"event: ping\ndata: {json.dumps({'status': 'alive'})}\n\n"
+
+        except asyncio.CancelledError:
+            pass
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
+@router.post("/qwen3-tts/model/download/cancel")
+async def cancel_qwen3_model_download():
+    """Qwen3-TTS 모델 다운로드 취소"""
+    global _qwen3_model_download_task
+
+    if _qwen3_model_download_task is None or _qwen3_model_download_task.done():
+        raise HTTPException(status_code=404, detail="진행 중인 다운로드가 없습니다")
+
+    from ...voice.adapters.qwen3_tts import get_qwen3_tts_installer
+
+    installer = get_qwen3_tts_installer()
+    installer.cancel()
+
+    _qwen3_model_download_task.cancel()
+
+    return {"status": "cancelled", "message": "다운로드가 취소되었습니다"}
+
+
+# ============================================================================
+# SoX 설치 관련 엔드포인트
+# ============================================================================
+
+# SoX 설치 작업 상태
+_sox_install_task: Optional[asyncio.Task] = None
+_sox_install_progress_queue: Optional[asyncio.Queue] = None
+
+
+class SoxInstallInfoResponse(BaseModel):
+    """SoX 설치 정보 응답"""
+    is_installed: bool
+    version: Optional[str] = None
+    path: Optional[str] = None
+
+
+@router.get("/sox/install-info", response_model=SoxInstallInfoResponse)
+async def get_sox_install_info():
+    """SoX 설치 정보 조회"""
+    from ..sox_installer import get_sox_installer
+
+    installer = get_sox_installer()
+
+    return SoxInstallInfoResponse(
+        is_installed=installer.is_installed(),
+        version=installer.get_version() if installer.is_installed() else None,
+        path=str(installer.get_sox_path()) if installer.get_sox_path() else None,
+    )
+
+
+@router.post("/sox/install")
+async def start_sox_install():
+    """SoX 설치 시작"""
+    global _sox_install_task, _sox_install_progress_queue
+
+    # 이미 설치 중인지 확인
+    if _sox_install_task and not _sox_install_task.done():
+        raise HTTPException(status_code=409, detail="이미 설치가 진행 중입니다")
+
+    from ..sox_installer import get_sox_installer, reset_sox_installer
+
+    # 새 설치 시작
+    reset_sox_installer()
+    installer = get_sox_installer()
+
+    # 이미 설치됨
+    if installer.is_installed():
+        return {"status": "installed", "message": "SoX가 이미 설치되어 있습니다"}
+
+    # 진행률 큐 생성
+    _sox_install_progress_queue = asyncio.Queue()
+
+    async def progress_callback(progress):
+        if _sox_install_progress_queue:
+            await _sox_install_progress_queue.put(progress)
+
+    # 설치 작업 시작
+    async def install_task():
+        try:
+            result = await installer.install(on_progress=progress_callback)
+            return result
+        except Exception as e:
+            from ..sox_installer import SoxInstallProgress
+            await progress_callback(SoxInstallProgress(
+                stage="error",
+                progress=0,
+                message="설치 실패",
+                error=str(e)
+            ))
+            return False
+
+    _sox_install_task = asyncio.create_task(install_task())
+
+    return {"status": "started", "message": "설치가 시작되었습니다"}
+
+
+@router.get("/sox/install/stream")
+async def stream_sox_install():
+    """SoX 설치 진행률 SSE 스트림"""
+    global _sox_install_progress_queue
+
+    if _sox_install_progress_queue is None:
+        raise HTTPException(status_code=404, detail="진행 중인 설치가 없습니다")
+
+    async def event_generator():
+        try:
+            while True:
+                try:
+                    progress = await asyncio.wait_for(
+                        _sox_install_progress_queue.get(),
+                        timeout=30.0
+                    )
+
+                    data = {
+                        "stage": progress.stage,
+                        "progress": progress.progress,
+                        "message": progress.message,
+                        "error": progress.error
+                    }
+                    yield f"event: progress\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+                    if progress.stage in ("complete", "error"):
+                        if progress.stage == "complete":
+                            yield f"event: complete\ndata: {json.dumps({'success': True})}\n\n"
+                        else:
+                            yield f"event: error\ndata: {json.dumps({'error': progress.error})}\n\n"
+                        break
+
+                except asyncio.TimeoutError:
+                    yield f"event: ping\ndata: {json.dumps({'status': 'alive'})}\n\n"
+
+        except asyncio.CancelledError:
+            pass
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
+@router.post("/sox/install/cancel")
+async def cancel_sox_install():
+    """SoX 설치 취소"""
+    global _sox_install_task
+
+    if _sox_install_task is None or _sox_install_task.done():
+        raise HTTPException(status_code=404, detail="진행 중인 설치가 없습니다")
+
+    from ..sox_installer import get_sox_installer
+
+    installer = get_sox_installer()
+    installer.cancel()
+
+    _sox_install_task.cancel()
 
     return {"status": "cancelled", "message": "설치가 취소되었습니다"}
 
@@ -1222,4 +1576,79 @@ async def set_gpu_semaphore_status(enabled: bool):
     return {
         "enabled": enabled,
         "message": f"GPU 세마포어 {'활성화' if enabled else '비활성화'}됨"
+    }
+
+
+# ============================================================================
+# TTS 엔진 설정
+# ============================================================================
+
+
+class TTSEngineSettingResponse(BaseModel):
+    """TTS 엔진 설정 응답"""
+    engine: str  # gpt_sovits, qwen3_tts
+    available_engines: list[str]
+    engine_status: dict
+
+
+@router.get("/tts-engine")
+async def get_tts_engine_setting():
+    """기본 TTS 엔진 설정 조회"""
+    # 사용 가능한 엔진 확인
+    available_engines = []
+    engine_status = {}
+
+    # GPT-SoVITS 확인
+    gpt_status = check_gpt_sovits()
+    engine_status["gpt_sovits"] = {
+        "installed": gpt_status.installed,
+        "name": "GPT-SoVITS",
+        "description": "고품질 음성 클로닝. 캐릭터별 학습 필요, 학습 후 최상의 품질.",
+    }
+    if gpt_status.installed:
+        available_engines.append("gpt_sovits")
+
+    # Qwen3-TTS 확인
+    qwen_status = check_qwen3_tts()
+    engine_status["qwen3_tts"] = {
+        "installed": qwen_status.installed,
+        "name": "Qwen3-TTS",
+        "description": "제로샷 음성 클로닝. 학습 불필요, 참조 오디오만으로 즉시 사용 가능.",
+    }
+    if qwen_status.installed:
+        available_engines.append("qwen3_tts")
+
+    return TTSEngineSettingResponse(
+        engine=config.default_tts_engine,
+        available_engines=available_engines,
+        engine_status=engine_status,
+    )
+
+
+class SetTTSEngineRequest(BaseModel):
+    """TTS 엔진 설정 요청"""
+    engine: str  # gpt_sovits, qwen3_tts
+
+
+@router.post("/tts-engine")
+async def set_tts_engine_setting(request: SetTTSEngineRequest):
+    """기본 TTS 엔진 설정 변경"""
+    valid_engines = ["gpt_sovits", "qwen3_tts"]
+    if request.engine not in valid_engines:
+        raise HTTPException(
+            status_code=400,
+            detail=f"유효하지 않은 엔진: {request.engine}. 가능한 값: {valid_engines}"
+        )
+
+    # 설정 변경
+    config.default_tts_engine = request.engine
+
+    engine_names = {
+        "gpt_sovits": "GPT-SoVITS",
+        "qwen3_tts": "Qwen3-TTS",
+    }
+
+    return {
+        "engine": request.engine,
+        "message": f"TTS 엔진이 '{engine_names.get(request.engine, request.engine)}'(으)로 변경되었습니다"
     }

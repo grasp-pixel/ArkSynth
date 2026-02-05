@@ -27,6 +27,7 @@ class ServerConfig(BaseModel):
     default_voice: str = "ko-KR-SunHiNeural"
     default_tts_language: str = "ko-KR"  # Edge TTS 언어
     gpt_sovits_language: str = "ko"  # GPT-SoVITS 언어 (ko, ja, zh, en)
+    default_tts_engine: str = "gpt_sovits"  # 기본 TTS 엔진 (gpt_sovits, qwen3_tts)
 
 
 # 전역 설정 인스턴스

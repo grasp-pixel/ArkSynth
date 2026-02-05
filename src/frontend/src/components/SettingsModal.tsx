@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { useAppStore } from "../stores/appStore";
 import {
   settingsApi,
   extractApi,
@@ -13,15 +14,20 @@ import {
   type FFmpegInstallGuide,
   type SevenZipInstallGuide,
   type FlatcInstallGuide,
+  type SoxInstallGuide,
   type VoiceAssetsStatus,
   type ExtractProgress,
   type ImageAssetsStatus,
   type ImageExtractProgress,
   type GamedataStatus,
   type GamedataUpdateProgress,
+  type TTSEngine,
+  type TTSEngineSetting,
 } from "../services/api";
 import GPTSoVITSInstallDialog from "./GPTSoVITSInstallDialog";
 import Qwen3TTSInstallDialog from "./Qwen3TTSInstallDialog";
+import Qwen3TTSSettings from "./Qwen3TTSSettings";
+import SoxInstallDialog from "./SoxInstallDialog";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -29,6 +35,7 @@ interface SettingsModalProps {
 }
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+  const { loadTtsEngineSetting: syncAppStoreEngine } = useAppStore();
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [ffmpegGuide, setFFmpegGuide] = useState<FFmpegInstallGuide | null>(
     null,
@@ -36,14 +43,21 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [sevenZipGuide, setSevenZipGuide] =
     useState<SevenZipInstallGuide | null>(null);
   const [flatcGuide, setFlatcGuide] = useState<FlatcInstallGuide | null>(null);
+  const [soxGuide, setSoxGuide] = useState<SoxInstallGuide | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showFFmpegGuide, setShowFFmpegGuide] = useState(false);
   const [show7ZipGuide, setShow7ZipGuide] = useState(false);
   const [showFlatcGuide, setShowFlatcGuide] = useState(false);
+  const [showSoxGuide, setShowSoxGuide] = useState(false);
   const [showGptSovitsInstall, setShowGptSovitsInstall] = useState(false);
   const [showQwen3TtsInstall, setShowQwen3TtsInstall] = useState(false);
+  const [showSoxInstall, setShowSoxInstall] = useState(false);
   const [isRefreshingCharacters, setIsRefreshingCharacters] = useState(false);
+
+  // TTS 엔진 설정
+  const [ttsEngineSetting, setTtsEngineSetting] = useState<TTSEngineSetting | null>(null);
+  const [isChangingEngine, setIsChangingEngine] = useState(false);
 
   // 음성 추출 관련 상태
   const [voiceAssetsStatus, setVoiceAssetsStatus] =
@@ -83,6 +97,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       checkVoiceAssets();
       checkImageAssets();
       checkGamedataStatus();
+      loadTTSEngineSetting();
     }
     return () => {
       // 모달 닫힐 때 스트림 정리
@@ -136,6 +151,16 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
+  const loadSoxGuide = async () => {
+    try {
+      const guide = await settingsApi.getSoxGuide();
+      setSoxGuide(guide);
+      setShowSoxGuide(true);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const refreshCharacterData = async () => {
     setIsRefreshingCharacters(true);
     try {
@@ -144,6 +169,28 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       console.error("캐릭터 데이터 새로고침 실패:", err);
     } finally {
       setIsRefreshingCharacters(false);
+    }
+  };
+
+  const loadTTSEngineSetting = async () => {
+    try {
+      const setting = await settingsApi.getTTSEngineSetting();
+      setTtsEngineSetting(setting);
+    } catch (err) {
+      console.error("TTS 엔진 설정 로드 실패:", err);
+    }
+  };
+
+  const changeTTSEngine = async (engine: TTSEngine) => {
+    setIsChangingEngine(true);
+    try {
+      await settingsApi.setTTSEngineSetting(engine);
+      await loadTTSEngineSetting();
+      await syncAppStoreEngine();  // 헤더 UI 업데이트
+    } catch (err) {
+      console.error("TTS 엔진 변경 실패:", err);
+    } finally {
+      setIsChangingEngine(false);
     }
   };
 
@@ -476,6 +523,23 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             설치 방법
                           </button>
                         )}
+                        {!dep.installed && dep.name === "SoX" && (
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setShowSoxInstall(true)}
+                              className="text-xs text-ark-orange hover:underline"
+                            >
+                              자동 설치
+                            </button>
+                            <span className="text-ark-gray">|</span>
+                            <button
+                              onClick={loadSoxGuide}
+                              className="text-xs text-ark-gray hover:text-ark-white"
+                            >
+                              수동 설치
+                            </button>
+                          </div>
+                        )}
                         {!dep.installed && dep.name === "GPT-SoVITS" && (
                           <button
                             onClick={() => setShowGptSovitsInstall(true)}
@@ -484,12 +548,12 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             자동 설치
                           </button>
                         )}
-                        {!dep.installed && dep.name === "Qwen3-TTS" && (
+                        {dep.name === "Qwen3-TTS" && (
                           <button
                             onClick={() => setShowQwen3TtsInstall(true)}
                             className="text-xs text-ark-orange hover:underline"
                           >
-                            자동 설치
+                            {dep.installed ? "설정/모델 다운로드" : "자동 설치"}
                           </button>
                         )}
                       </div>
@@ -689,6 +753,82 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         <p className="text-xs text-ark-gray mb-2">수동 설치:</p>
                         <ol className="text-xs text-ark-white space-y-1">
                           {flatcGuide.manual_steps.map((step, i) => (
+                            <li key={i}>{step}</li>
+                          ))}
+                        </ol>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* SoX 설치 가이드 */}
+                  {showSoxGuide && soxGuide && (
+                    <div className="mt-3 p-4 bg-ark-panel rounded border border-ark-border">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-sm font-medium text-ark-white">
+                          {soxGuide.name} 설치 방법
+                        </h4>
+                        <button
+                          onClick={() => setShowSoxGuide(false)}
+                          className="text-ark-gray hover:text-ark-white"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="w-4 h-4"
+                            fill="currentColor"
+                          >
+                            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                          </svg>
+                        </button>
+                      </div>
+
+                      {/* 안내 메시지 */}
+                      <div className="mb-4 p-2 bg-blue-500/10 border border-blue-500/30 rounded">
+                        <p className="text-xs text-blue-400">
+                          {soxGuide.description}
+                        </p>
+                      </div>
+
+                      {/* 경고 메시지 */}
+                      <div className="mb-4 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded">
+                        <p className="text-xs text-yellow-400">
+                          {soxGuide.note}
+                        </p>
+                      </div>
+
+                      {/* winget 방법 */}
+                      <div className="mb-4">
+                        <p className="text-xs text-ark-gray mb-2">
+                          Windows (winget 사용):
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 px-3 py-2 bg-ark-black rounded text-sm text-ark-white font-mono">
+                            {soxGuide.windows.command}
+                          </code>
+                          <button
+                            onClick={() =>
+                              navigator.clipboard.writeText(
+                                soxGuide.windows.command,
+                              )
+                            }
+                            className="px-3 py-2 bg-ark-black rounded text-ark-gray hover:text-ark-white"
+                            title="복사"
+                          >
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="w-4 h-4"
+                              fill="currentColor"
+                            >
+                              <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 수동 설치 */}
+                      <div>
+                        <p className="text-xs text-ark-gray mb-2">수동 설치:</p>
+                        <ol className="text-xs text-ark-white space-y-1">
+                          {soxGuide.manual_steps.map((step, i) => (
                             <li key={i}>{step}</li>
                           ))}
                         </ol>
@@ -1056,6 +1196,83 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </section>
 
+                {/* TTS 엔진 설정 */}
+                <section>
+                  <h3 className="text-sm font-medium text-ark-white mb-3">
+                    TTS 엔진
+                  </h3>
+                  <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
+                    {ttsEngineSetting === null ? (
+                      <p className="text-sm text-ark-gray">로딩 중...</p>
+                    ) : (
+                      <div className="space-y-3">
+                        <p className="text-xs text-ark-gray mb-2">
+                          앱 전체에서 사용할 TTS 엔진을 선택합니다.
+                        </p>
+                        <div className="flex gap-2 flex-wrap">
+                          {/* GPT-SoVITS */}
+                          <button
+                            onClick={() => changeTTSEngine("gpt_sovits")}
+                            disabled={isChangingEngine || !ttsEngineSetting.engine_status.gpt_sovits?.installed}
+                            className={`px-4 py-2 rounded border transition-colors ${
+                              ttsEngineSetting.engine === "gpt_sovits"
+                                ? "bg-ark-orange/20 border-ark-orange text-ark-orange"
+                                : ttsEngineSetting.engine_status.gpt_sovits?.installed
+                                  ? "bg-ark-panel border-ark-border text-ark-gray hover:text-ark-white hover:border-ark-orange/50"
+                                  : "bg-ark-panel/50 border-ark-border/50 text-ark-gray/50 cursor-not-allowed"
+                            }`}
+                          >
+                            <div className="text-sm font-medium">GPT-SoVITS</div>
+                            <div className="text-[10px] opacity-70">
+                              {ttsEngineSetting.engine_status.gpt_sovits?.installed ? "v2" : "미설치"}
+                            </div>
+                          </button>
+
+                          {/* Qwen3-TTS */}
+                          <button
+                            onClick={() => changeTTSEngine("qwen3_tts")}
+                            disabled={isChangingEngine || !ttsEngineSetting.engine_status.qwen3_tts?.installed}
+                            className={`px-4 py-2 rounded border transition-colors ${
+                              ttsEngineSetting.engine === "qwen3_tts"
+                                ? "bg-ark-orange/20 border-ark-orange text-ark-orange"
+                                : ttsEngineSetting.engine_status.qwen3_tts?.installed
+                                  ? "bg-ark-panel border-ark-border text-ark-gray hover:text-ark-white hover:border-ark-orange/50"
+                                  : "bg-ark-panel/50 border-ark-border/50 text-ark-gray/50 cursor-not-allowed"
+                            }`}
+                          >
+                            <div className="text-sm font-medium">Qwen3-TTS</div>
+                            <div className="text-[10px] opacity-70">
+                              {ttsEngineSetting.engine_status.qwen3_tts?.installed ? "1.7B" : "미설치"}
+                            </div>
+                          </button>
+                        </div>
+
+                        {/* 현재 선택된 엔진 설명 */}
+                        <div className="mt-2 p-2 bg-ark-panel/50 rounded text-xs text-ark-gray">
+                          {ttsEngineSetting.engine === "gpt_sovits" && (
+                            <span>캐릭터별 학습 후 최상의 품질. 학습 안 된 캐릭터는 제로샷 모드로 동작.</span>
+                          )}
+                          {ttsEngineSetting.engine === "qwen3_tts" && (
+                            <span>참조 오디오만으로 즉시 사용. 파인튜닝 모델이 있으면 우선 사용.</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                {/* Qwen3-TTS 설정 */}
+                {ttsEngineSetting?.engine_status.qwen3_tts?.installed && (
+                  <section>
+                    <h3 className="text-sm font-medium text-ark-white mb-3">
+                      Qwen3-TTS 설정
+                    </h3>
+                    <Qwen3TTSSettings
+                      isInstalled={ttsEngineSetting.engine_status.qwen3_tts.installed}
+                    />
+                  </section>
+                )}
+
                 {/* 언어 설정 */}
                 <section>
                   <h3 className="text-sm font-medium text-ark-white mb-3">
@@ -1145,6 +1362,16 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         onInstallComplete={() => {
           refreshDependencies();
           setShowQwen3TtsInstall(false);
+        }}
+      />
+
+      {/* SoX 설치 다이얼로그 */}
+      <SoxInstallDialog
+        isOpen={showSoxInstall}
+        onClose={() => setShowSoxInstall(false)}
+        onInstallComplete={() => {
+          refreshDependencies();
+          setShowSoxInstall(false);
         }}
       />
     </div>
