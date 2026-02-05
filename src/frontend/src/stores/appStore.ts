@@ -898,14 +898,39 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistCurrentState(get)
   },
 
-  // 화자별 음성 결정 (voice_char_id → 수동 매핑 → 성별 기반 기본 음성 자동 분배)
-  // 별칭 기반 자동 감지된 음성이 최우선, 수동 매핑은 음성 없는 캐릭터용 폴백
+  // 화자별 음성 결정 (수동 매핑 우선 → voice_char_id → 성별 기반 기본 음성 자동 분배)
+  // 사용자가 명시적으로 설정한 수동 매핑이 최우선, 자동 감지는 폴백
   getSpeakerVoice: (speakerId: string, speakerName?: string): string | null => {
     const { trainedCharIds, speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices, defaultVoices, voiceCharacters, episodeCharacters } = get()
 
     console.log('[getSpeakerVoice] 입력:', { speakerId, speakerName })
 
-    // 1. episodeCharacters에서 voice_char_id 확인 (별칭 기반 자동 감지)
+    // 1. 수동 매핑 (사용자가 명시적으로 설정한 매핑이 최우선)
+    const mapping = speakerVoiceMap[speakerId]
+    if (mapping) {
+      // 특수 값 처리: 자동 여성/남성
+      if (mapping === AUTO_VOICE_FEMALE) {
+        if (defaultFemaleVoices.length > 0) {
+          const hash = simpleHash(speakerId)
+          const result = defaultFemaleVoices[hash % defaultFemaleVoices.length]
+          console.log('[getSpeakerVoice] 결과: 수동 매핑 (자동 여성) ->', result)
+          return result
+        }
+      } else if (mapping === AUTO_VOICE_MALE) {
+        if (defaultMaleVoices.length > 0) {
+          const hash = simpleHash(speakerId)
+          const result = defaultMaleVoices[hash % defaultMaleVoices.length]
+          console.log('[getSpeakerVoice] 결과: 수동 매핑 (자동 남성) ->', result)
+          return result
+        }
+      } else {
+        // 일반 캐릭터 매핑
+        console.log('[getSpeakerVoice] 결과: 수동 매핑 ->', mapping)
+        return mapping
+      }
+    }
+
+    // 2. episodeCharacters에서 voice_char_id 확인 (별칭 기반 자동 감지)
     // name: 접두사 키인 경우 이름으로 찾기
     let episodeChar
     if (speakerId.startsWith('name:')) {
@@ -918,42 +943,17 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     console.log('[getSpeakerVoice] voiceCharId:', voiceCharId, 'hasVoice:', episodeChar?.has_voice)
 
-    // 2. voice_char_id가 음성 파일을 가지고 있으면 사용 (별칭 기반 "올바른" 음성)
+    // 3. voice_char_id가 음성 파일을 가지고 있으면 사용 (별칭 기반 "올바른" 음성)
     const hasOwnVoice = voiceCharacters.some(v => v.char_id === voiceCharId)
     if (hasOwnVoice) {
       console.log('[getSpeakerVoice] 결과: 캐릭터 음성 사용 ->', voiceCharId)
       return voiceCharId
     }
 
-    // 3. 학습된 음성 있으면 사용
+    // 4. 학습된 음성 있으면 사용
     if (trainedCharIds.has(voiceCharId)) {
       console.log('[getSpeakerVoice] 결과: 학습된 음성 사용 ->', voiceCharId)
       return voiceCharId
-    }
-
-    // 4. 수동 매핑 (음성 없는 캐릭터용 폴백)
-    const mapping = speakerVoiceMap[speakerId]
-    if (mapping) {
-      // 특수 값 처리: 자동 여성/남성
-      if (mapping === AUTO_VOICE_FEMALE) {
-        if (defaultFemaleVoices.length > 0) {
-          const hash = simpleHash(speakerId)
-          const result = defaultFemaleVoices[hash % defaultFemaleVoices.length]
-          console.log('[getSpeakerVoice] 결과: 자동 여성 매핑 ->', result)
-          return result
-        }
-      } else if (mapping === AUTO_VOICE_MALE) {
-        if (defaultMaleVoices.length > 0) {
-          const hash = simpleHash(speakerId)
-          const result = defaultMaleVoices[hash % defaultMaleVoices.length]
-          console.log('[getSpeakerVoice] 결과: 자동 남성 매핑 ->', result)
-          return result
-        }
-      } else {
-        // 일반 캐릭터 매핑
-        console.log('[getSpeakerVoice] 결과: 수동 매핑 ->', mapping)
-        return mapping
-      }
     }
 
     // 5. 성별 기반 기본 음성 분배

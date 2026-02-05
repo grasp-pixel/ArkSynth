@@ -48,9 +48,12 @@ export default function VoiceSetupPanel() {
     speakerVoiceMap,
     defaultFemaleVoices,
     defaultMaleVoices,
+    getSpeakerVoice,
     // 모델 타입 조회
     trainedModels,
     canFinetune,
+    // 나레이션
+    narratorCharId,
   } = useAppStore()
 
   useEffect(() => {
@@ -93,31 +96,52 @@ export default function VoiceSetupPanel() {
     })
   }, [episodeCharacters, trainedCharIds])
 
-  // 전체 준비 대상 수 (에피소드 캐릭터 + 기본 음성 캐릭터)
-  const totalTrainableCount = useMemo(() => {
-    const episodeIds = trainableCharacters.map(c => c.voice_char_id || c.char_id).filter((id): id is string => id !== null)
-    // 기본 음성 캐릭터 중 미준비 캐릭터 추가
-    const defaultIds = [...defaultFemaleVoices, ...defaultMaleVoices].filter(id => !trainedCharIds.has(id))
-    // 중복 제거 후 카운트
-    return new Set([...episodeIds, ...defaultIds]).size
-  }, [trainableCharacters, trainedCharIds, defaultFemaleVoices, defaultMaleVoices])
-
-  // Fine-tune 가능한 캐릭터 수 (준비됨 + 전처리 완료 + finetuned 아님)
-  // episodeCharacters에서 직접 계산 (trainableCharacters는 미학습만 포함하므로)
-  const totalFinetuneableCount = useMemo(() => {
-    const episodeIds = episodeCharacters
-      .filter(c => c.has_voice)
-      .map(c => c.voice_char_id || c.char_id)
-      .filter((id): id is string => id !== null)
-    // canFinetune이 true인 캐릭터만 (prepared + 전처리 완료)
-    return [...new Set(episodeIds)].filter(id => canFinetune(id)).length
-  }, [episodeCharacters, canFinetune, trainedModels])
-
   // 음성 없는 캐릭터 (수동 매핑 대상) - 에피소드 캐릭터 목록 기준
   // char_id가 null이어도 name이 있으면 매핑 가능
   const voicelessCharacters = useMemo(() => {
     return episodeCharacters.filter(c => !c.has_voice && c.name)
   }, [episodeCharacters])
+
+  // 음성 없는 캐릭터에 실제로 매핑된 음성 ID들
+  const mappedVoiceIds = useMemo(() => {
+    return voicelessCharacters
+      .map(c => {
+        const key = c.char_id || `name:${c.name}`
+        return getSpeakerVoice(key, c.name)
+      })
+      .filter((id): id is string => id !== null)
+  }, [voicelessCharacters, getSpeakerVoice, speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices])
+
+  // 전체 준비 대상 수 (에피소드 캐릭터 + 매핑된 음성 + 나레이션)
+  const totalTrainableCount = useMemo(() => {
+    const episodeIds = trainableCharacters.map(c => c.voice_char_id || c.char_id).filter((id): id is string => id !== null)
+    // 매핑된 음성 중 미준비 캐릭터만
+    const mappedIds = mappedVoiceIds.filter(id => !trainedCharIds.has(id))
+    // 나레이션이 있고, 나레이터 캐릭터가 설정되어 있고, 미준비인 경우 포함
+    const narratorIds: string[] = []
+    if (episodeNarrationCount > 0 && narratorCharId && !trainedCharIds.has(narratorCharId)) {
+      narratorIds.push(narratorCharId)
+    }
+    // 중복 제거 후 카운트
+    return new Set([...episodeIds, ...mappedIds, ...narratorIds]).size
+  }, [trainableCharacters, trainedCharIds, mappedVoiceIds, episodeNarrationCount, narratorCharId])
+
+  // Fine-tune 가능한 캐릭터 수 (준비됨 + 전처리 완료 + finetuned 아님)
+  // episodeCharacters + 매핑된 음성 + 나레이션에서 계산
+  const totalFinetuneableCount = useMemo(() => {
+    const episodeIds = episodeCharacters
+      .filter(c => c.has_voice)
+      .map(c => c.voice_char_id || c.char_id)
+      .filter((id): id is string => id !== null)
+    // 나레이션 캐릭터도 포함
+    const narratorIds: string[] = []
+    if (episodeNarrationCount > 0 && narratorCharId) {
+      narratorIds.push(narratorCharId)
+    }
+    // 에피소드 캐릭터 + 매핑된 음성 + 나레이션 합쳐서 canFinetune 체크
+    const allIds = [...new Set([...episodeIds, ...mappedVoiceIds, ...narratorIds])]
+    return allIds.filter(id => canFinetune(id)).length
+  }, [episodeCharacters, canFinetune, trainedModels, mappedVoiceIds, episodeNarrationCount, narratorCharId])
 
   // 매핑 완료된 캐릭터 수
   const mappedCount = useMemo(() => {
@@ -158,19 +182,24 @@ export default function VoiceSetupPanel() {
     }
   }
 
-  // 일괄 준비 시작 (에피소드 캐릭터 + 기본 음성 캐릭터)
+  // 일괄 준비 시작 (에피소드 캐릭터 + 매핑된 음성 + 나레이션)
   const handleStartBatchTraining = async () => {
-    // voice_char_id가 있으면 사용, 없으면 char_id 사용
+    // 1. 에피소드 캐릭터 중 음성이 있고 미준비인 것
     const charIdsFromEpisode = trainableCharacters
       .map(c => c.voice_char_id || c.char_id)
       .filter((id): id is string => id !== null)
 
-    // 기본 음성 캐릭터 중 미준비 캐릭터 추가
-    const defaultCharIds = [...defaultFemaleVoices, ...defaultMaleVoices]
-      .filter(id => !trainedCharIds.has(id))
+    // 2. 음성 없는 캐릭터에 매핑된 음성 중 미준비인 것
+    const mappedIds = mappedVoiceIds.filter(id => !trainedCharIds.has(id))
+
+    // 3. 나레이션이 있고, 나레이터 캐릭터가 설정되어 있고, 미준비인 경우 포함
+    const narratorIds: string[] = []
+    if (episodeNarrationCount > 0 && narratorCharId && !trainedCharIds.has(narratorCharId)) {
+      narratorIds.push(narratorCharId)
+    }
 
     // 중복 제거 후 합치기
-    const uniqueCharIds = [...new Set([...charIdsFromEpisode, ...defaultCharIds])]
+    const uniqueCharIds = [...new Set([...charIdsFromEpisode, ...mappedIds, ...narratorIds])]
 
     if (uniqueCharIds.length > 0) {
       await startBatchTraining(uniqueCharIds, 'prepare')
@@ -179,17 +208,24 @@ export default function VoiceSetupPanel() {
 
   // 일괄 학습 시작 (Fine-tuning, 준비됨 + 전처리 완료된 캐릭터)
   const handleStartBatchFinetuning = async () => {
-    // episodeCharacters에서 finetune 가능한 캐릭터 추출
+    // 1. 에피소드 캐릭터 중 음성이 있는 것
     const charIdsFromEpisode = episodeCharacters
       .filter(c => c.has_voice)
       .map(c => c.voice_char_id || c.char_id)
       .filter((id): id is string => id !== null)
 
-    // 중복 제거 후 canFinetune이 true인 캐릭터만
-    const uniqueCharIds = [...new Set(charIdsFromEpisode)].filter(id => canFinetune(id))
+    // 2. 나레이션 캐릭터도 포함
+    const narratorIds: string[] = []
+    if (episodeNarrationCount > 0 && narratorCharId) {
+      narratorIds.push(narratorCharId)
+    }
 
-    if (uniqueCharIds.length > 0) {
-      await startBatchTraining(uniqueCharIds, 'finetune')
+    // 3. 에피소드 캐릭터 + 매핑된 음성 + 나레이션 합쳐서 canFinetune 체크
+    const allIds = [...new Set([...charIdsFromEpisode, ...mappedVoiceIds, ...narratorIds])]
+    const finetuneableIds = allIds.filter(id => canFinetune(id))
+
+    if (finetuneableIds.length > 0) {
+      await startBatchTraining(finetuneableIds, 'finetune')
     }
   }
 

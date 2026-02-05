@@ -306,6 +306,16 @@ export const voiceApi = {
     return res.data
   },
 
+  // 캐릭터 테이블에서 검색 (음성 파일 유무와 무관)
+  searchCharacters: async (query: string, limit: number = 30) => {
+    const res = await api.get<{
+      query: string
+      total: number
+      characters: Array<{ char_id: string; name: string; has_voice: boolean }>
+    }>('/api/voice/characters/search', { params: { q: query, limit } })
+    return res.data
+  },
+
   // === 캐릭터 별칭 API ===
 
   // 전체 별칭 목록 조회

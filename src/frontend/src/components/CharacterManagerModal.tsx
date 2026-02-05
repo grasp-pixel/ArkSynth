@@ -71,6 +71,9 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
     total_folders: number
   } | null>(null)
 
+  // 기본 음성 섹션 접기/펼치기
+  const [isDefaultsExpanded, setIsDefaultsExpanded] = useState(false)
+
   // 이미지 상태 로드 함수
   const loadImageStatus = async () => {
     try {
@@ -440,98 +443,143 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
           </div>
         </div>
 
-        {/* 기본 음성 & 나레이션 표시 */}
-        <div className="p-4 border-b border-ark-border bg-ark-black/30 space-y-2">
-          {/* 여성 기본 음성 */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-ark-gray whitespace-nowrap w-24">기본(여성):</span>
-            <div className="flex flex-wrap gap-1 flex-1">
-              {defaultFemaleVoices.length === 0 ? (
-                <span className="text-xs text-ark-gray/50">설정 안 됨</span>
-              ) : (
-                defaultFemaleVoices.map((charId, idx) => {
-                  const char = voiceCharacters.find(c => c.char_id === charId)
-                  return (
-                    <span
-                      key={charId}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-pink-500/20 text-pink-400 rounded"
-                    >
-                      {char?.name || charId}
-                      <button
-                        onClick={() => removeDefaultFemaleVoice(idx)}
-                        className="hover:text-red-400"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  )
-                })
-              )}
-            </div>
-          </div>
-
-          {/* 남성 기본 음성 */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-ark-gray whitespace-nowrap w-24">기본(남성):</span>
-            <div className="flex flex-wrap gap-1 flex-1">
-              {defaultMaleVoices.length === 0 ? (
-                <span className="text-xs text-ark-gray/50">설정 안 됨</span>
-              ) : (
-                defaultMaleVoices.map((charId, idx) => {
-                  const char = voiceCharacters.find(c => c.char_id === charId)
-                  return (
-                    <span
-                      key={charId}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-blue-500/20 text-blue-400 rounded"
-                    >
-                      {char?.name || charId}
-                      <button
-                        onClick={() => removeDefaultMaleVoice(idx)}
-                        className="hover:text-red-400"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  )
-                })
-              )}
-            </div>
-          </div>
-
-          {/* 나레이션 */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-ark-gray whitespace-nowrap w-24">나레이션:</span>
-            <div className="flex flex-wrap gap-1 flex-1">
-              {narratorCharId ? (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-purple-500/20 text-purple-400 rounded">
-                  {voiceCharacters.find(c => c.char_id === narratorCharId)?.name || narratorCharId}
-                  <button
-                    onClick={() => setNarratorCharId(null)}
-                    className="hover:text-red-400"
-                  >
-                    ×
-                  </button>
-                </span>
-              ) : (
-                <span className="text-xs text-ark-gray/50">설정 안 됨</span>
-              )}
-            </div>
-          </div>
-          <p className="text-[10px] text-ark-gray/50 mt-1">
-            * 기본(여성): 일반 캐릭터 / 기본(남성): "남자", "남성", "소년", "청년" 포함 캐릭터
-          </p>
-
-          {/* 이미지 캐시 관리 */}
-          <div className="flex items-center justify-between pt-2 mt-2 border-t border-ark-border/30">
-            <div className="flex items-center gap-3 text-xs text-ark-gray">
-              <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
-                <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+        {/* 기본 음성 & 나레이션 표시 (접기/펼치기 가능) */}
+        <div className="border-b border-ark-border bg-ark-black/30">
+          {/* 헤더 (클릭하면 접기/펼치기) */}
+          <button
+            onClick={() => setIsDefaultsExpanded(!isDefaultsExpanded)}
+            className="w-full px-4 py-2 flex items-center justify-between hover:bg-white/5 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <svg
+                viewBox="0 0 24 24"
+                className={`w-4 h-4 text-ark-gray transition-transform ${isDefaultsExpanded ? 'rotate-90' : ''}`}
+                fill="currentColor"
+              >
+                <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/>
               </svg>
-              <span>
-                이미지: {imageStatus ? `${imageStatus.total_images}개 (${imageStatus.total_folders}폴더)` : '...'}
-              </span>
+              <span className="text-sm text-ark-gray">기본 음성 설정</span>
             </div>
-          </div>
+            {/* 접힌 상태에서 요약 표시 */}
+            {!isDefaultsExpanded && (
+              <div className="flex items-center gap-2">
+                {defaultFemaleVoices.length > 0 && (
+                  <span className="text-xs px-2 py-0.5 bg-pink-500/20 text-pink-400 rounded">
+                    여 {defaultFemaleVoices.length}
+                  </span>
+                )}
+                {defaultMaleVoices.length > 0 && (
+                  <span className="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded">
+                    남 {defaultMaleVoices.length}
+                  </span>
+                )}
+                {narratorCharId && (
+                  <span className="text-xs px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded">
+                    나레이터
+                  </span>
+                )}
+                {defaultFemaleVoices.length === 0 && defaultMaleVoices.length === 0 && !narratorCharId && (
+                  <span className="text-xs text-ark-gray/50">설정 안 됨</span>
+                )}
+              </div>
+            )}
+          </button>
+
+          {/* 펼쳐진 내용 */}
+          {isDefaultsExpanded && (
+            <div className="px-4 pb-3 space-y-2">
+              {/* 여성 기본 음성 */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-ark-gray whitespace-nowrap w-24">기본(여성):</span>
+                <div className="flex flex-wrap gap-1 flex-1">
+                  {defaultFemaleVoices.length === 0 ? (
+                    <span className="text-xs text-ark-gray/50">설정 안 됨</span>
+                  ) : (
+                    defaultFemaleVoices.map((charId, idx) => {
+                      const char = voiceCharacters.find(c => c.char_id === charId)
+                      return (
+                        <span
+                          key={charId}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-pink-500/20 text-pink-400 rounded"
+                        >
+                          {char?.name || charId}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); removeDefaultFemaleVoice(idx) }}
+                            className="hover:text-red-400"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* 남성 기본 음성 */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-ark-gray whitespace-nowrap w-24">기본(남성):</span>
+                <div className="flex flex-wrap gap-1 flex-1">
+                  {defaultMaleVoices.length === 0 ? (
+                    <span className="text-xs text-ark-gray/50">설정 안 됨</span>
+                  ) : (
+                    defaultMaleVoices.map((charId, idx) => {
+                      const char = voiceCharacters.find(c => c.char_id === charId)
+                      return (
+                        <span
+                          key={charId}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-blue-500/20 text-blue-400 rounded"
+                        >
+                          {char?.name || charId}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); removeDefaultMaleVoice(idx) }}
+                            className="hover:text-red-400"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* 나레이션 */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-ark-gray whitespace-nowrap w-24">나레이션:</span>
+                <div className="flex flex-wrap gap-1 flex-1">
+                  {narratorCharId ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-purple-500/20 text-purple-400 rounded">
+                      {voiceCharacters.find(c => c.char_id === narratorCharId)?.name || narratorCharId}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setNarratorCharId(null) }}
+                        className="hover:text-red-400"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ) : (
+                    <span className="text-xs text-ark-gray/50">설정 안 됨</span>
+                  )}
+                </div>
+              </div>
+              <p className="text-[10px] text-ark-gray/50 mt-1">
+                * 기본(여성): 일반 캐릭터 / 기본(남성): "남자", "남성", "소년", "청년" 포함 캐릭터
+              </p>
+
+              {/* 이미지 캐시 관리 */}
+              <div className="flex items-center justify-between pt-2 mt-2 border-t border-ark-border/30">
+                <div className="flex items-center gap-3 text-xs text-ark-gray">
+                  <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+                    <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+                  </svg>
+                  <span>
+                    이미지: {imageStatus ? `${imageStatus.total_images}개 (${imageStatus.total_folders}폴더)` : '...'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 캐릭터 그리드 */}
