@@ -69,7 +69,6 @@ class BatchTrainingRequest(BaseModel):
 
     char_ids: Optional[list[str]] = None  # None이면 음성 있는 모든 캐릭터
     mode: str = "prepare"  # "prepare" (Zero-shot) 또는 "finetune" (실제 학습)
-    engine: str = "gpt_sovits"  # "gpt_sovits" 또는 "qwen3_tts"
 
 
 class TrainingJobResponse(BaseModel):
@@ -273,106 +272,6 @@ async def cancel_training(job_id: str):
     return {"cancelled": True}
 
 
-# ============================================================================
-# Qwen3-TTS 학습 전용 엔드포인트
-# ============================================================================
-
-
-class Qwen3TTSTrainingRequest(BaseModel):
-    """Qwen3-TTS 학습 요청"""
-    char_id: str
-    mode: str = "prepare"  # "prepare" (ICL 준비) 또는 "finetune" (SFT 학습)
-
-
-@router.post("/qwen3-tts/train")
-async def train_qwen3_tts(request: Qwen3TTSTrainingRequest):
-    """Qwen3-TTS 학습 시작
-
-    GPT-SoVITS와 독립적으로 Qwen3-TTS 학습을 수행합니다.
-    GPT-SoVITS PREPARE가 완료된 캐릭터에 대해 실행할 수 있습니다.
-
-    Args:
-        request.char_id: 캐릭터 ID
-        request.mode: "prepare" (ICL 참조 오디오 준비) 또는 "finetune" (SFT 학습)
-    """
-    from ...voice.adapters.qwen3_tts import Qwen3TTSConfig, Qwen3TTSTrainingAdapter
-    from ...voice.interfaces import TrainingConfig, TrainingMode
-
-    char_id = request.char_id
-    mapper = get_character_mapper()
-    char_name = mapper.get_character_name(char_id, game_lang=config.game_language)
-
-    # Qwen3-TTS 설정
-    qwen_config = Qwen3TTSConfig(
-        models_path=config.models_path / "qwen3_tts",
-        gpt_sovits_models_path=config.models_path / "gpt_sovits",
-    )
-
-    # GPT-SoVITS 전처리 폴더 확인
-    gpt_sovits_dir = qwen_config.get_gpt_sovits_fallback_path(char_id)
-    if not gpt_sovits_dir or not gpt_sovits_dir.exists():
-        raise HTTPException(
-            status_code=400,
-            detail="GPT-SoVITS 전처리가 필요합니다. 먼저 GPT-SoVITS로 '준비'를 실행하세요.",
-        )
-
-    # 학습 어댑터 생성
-    adapter = Qwen3TTSTrainingAdapter(qwen_config)
-
-    # 학습 모드 결정
-    training_mode = TrainingMode.FINETUNE if request.mode == "finetune" else TrainingMode.PREPARE
-
-    # 출력 디렉토리
-    output_dir = qwen_config.get_model_path(char_id)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # 학습 설정
-    training_config = TrainingConfig(
-        char_id=char_id,
-        char_name=char_name,
-        audio_dir=gpt_sovits_dir,  # GPT-SoVITS preprocessed 폴더
-        output_dir=output_dir,
-        mode=training_mode,
-        extra_config=adapter.get_default_config(training_mode),
-    )
-
-    # 진행률 저장용
-    progress_data = {"stage": "starting", "progress": 0.0, "message": "시작 중..."}
-
-    def on_progress(progress):
-        progress_data["stage"] = progress.stage
-        progress_data["progress"] = progress.progress
-        progress_data["message"] = progress.message
-
-    # 학습 실행 (동기적으로 - 작은 작업이므로)
-    mode_label = "파인튜닝" if request.mode == "finetune" else "준비"
-    logger.info(f"[Qwen3-TTS] {mode_label} 시작: {char_id} ({char_name})")
-
-    try:
-        success = await adapter.train(training_config, on_progress)
-
-        if success:
-            logger.info(f"[Qwen3-TTS] {mode_label} 완료: {char_id}")
-            return {
-                "success": True,
-                "char_id": char_id,
-                "char_name": char_name,
-                "mode": request.mode,
-                "message": f"Qwen3-TTS {mode_label} 완료",
-            }
-        else:
-            logger.error(f"[Qwen3-TTS] {mode_label} 실패: {char_id}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Qwen3-TTS {mode_label} 실패: {progress_data.get('message', '알 수 없는 오류')}",
-            )
-    except NotImplementedError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.exception(f"[Qwen3-TTS] {mode_label} 오류: {char_id}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @router.get("/models")
 async def list_trained_models():
     """학습 완료된 모델 목록
@@ -500,10 +399,7 @@ async def check_preprocessing_status(char_id: str):
 
 @router.get("/models/{char_id}/engine-status")
 async def get_engine_specific_model_status(char_id: str):
-    """엔진별 모델 상태 조회
-
-    GPT-SoVITS와 Qwen3-TTS의 학습 상태를 각각 반환합니다.
-    각 엔진별로 독립적으로 PREPARE/FINETUNE 가능합니다.
+    """GPT-SoVITS 모델 상태 조회
 
     Returns:
         char_id: 캐릭터 ID
@@ -512,10 +408,6 @@ async def get_engine_specific_model_status(char_id: str):
             - is_preprocessed: 전처리 완료 여부
             - segment_count: 전처리된 세그먼트 수
             - can_finetune: finetune 가능 여부
-        qwen3_tts: Qwen3-TTS 상태
-            - model_type: "none" | "prepared" | "finetuned"
-            - can_finetune: finetune 가능 여부 (GPT-SoVITS preprocessed 필요)
-            - has_ref_audio: 참조 오디오 존재 여부
     """
     # GPT-SoVITS 상태
     model_manager = get_model_manager()
@@ -536,21 +428,6 @@ async def get_engine_specific_model_status(char_id: str):
 
     gpt_can_finetune = gpt_model_type == "prepared" and is_preprocessed
 
-    # Qwen3-TTS 상태
-    from ...voice.adapters.qwen3_tts import Qwen3TTSConfig, Qwen3TTSModelAdapter
-
-    qwen_config = Qwen3TTSConfig(
-        models_path=config.models_path / "qwen3_tts",
-        gpt_sovits_models_path=config.models_path / "gpt_sovits",
-    )
-    qwen_adapter = Qwen3TTSModelAdapter(qwen_config)
-    qwen_model_type = qwen_adapter.get_model_type(char_id).value
-    qwen_can_finetune = qwen_adapter.can_finetune(char_id)
-
-    # 참조 오디오 존재 여부
-    ref_audio = qwen_config.get_ref_audio_path(char_id)
-    has_ref_audio = ref_audio.exists()
-
     return {
         "char_id": char_id,
         "gpt_sovits": {
@@ -558,13 +435,6 @@ async def get_engine_specific_model_status(char_id: str):
             "is_preprocessed": is_preprocessed,
             "segment_count": segment_count,
             "can_finetune": gpt_can_finetune,
-        },
-        "qwen3_tts": {
-            "model_type": qwen_model_type,
-            "can_finetune": qwen_can_finetune,
-            "has_ref_audio": has_ref_audio,
-            # GPT-SoVITS preprocessed 폴더 사용 가능 시 ICL 모드 가능
-            "can_use_icl": is_preprocessed,
         },
     }
 

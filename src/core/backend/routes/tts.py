@@ -1,6 +1,6 @@
 """TTS 관련 라우터
 
-GPT-SoVITS 및 Qwen3-TTS 캐릭터별 음성 클로닝 지원
+GPT-SoVITS 캐릭터별 음성 클로닝 지원
 """
 
 import logging
@@ -16,8 +16,6 @@ from ...voice.providers.edge_tts import EdgeTTSProvider
 from ...voice.gpt_sovits import GPTSoVITSConfig, GPTSoVITSModelManager
 from ...voice.gpt_sovits.synthesizer import GPTSoVITSSynthesizer
 from ...voice.gpt_sovits.training_worker import prepare_reference_audio
-from ...voice.adapters.qwen3_tts import Qwen3TTSConfig, Qwen3TTSSynthesisAdapter
-from ...voice.interfaces import SynthesisRequest as AdapterSynthesisRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -26,7 +24,6 @@ router = APIRouter()
 _tts_provider: EdgeTTSProvider | None = None
 _gpt_synthesizer: GPTSoVITSSynthesizer | None = None
 _gpt_model_manager: GPTSoVITSModelManager | None = None
-_qwen3_adapter: Optional[Qwen3TTSSynthesisAdapter] = None
 
 
 def get_tts_provider() -> EdgeTTSProvider:
@@ -54,21 +51,6 @@ def get_gpt_model_manager() -> GPTSoVITSModelManager:
     return _gpt_model_manager
 
 
-def get_qwen3_adapter() -> Qwen3TTSSynthesisAdapter:
-    """Qwen3-TTS 어댑터 인스턴스"""
-    global _qwen3_adapter
-    if _qwen3_adapter is None:
-        # SoX가 로컬 설치되어 있으면 PATH에 추가
-        from ..sox_installer import ensure_sox_in_path
-        ensure_sox_in_path()
-
-        qwen_config = Qwen3TTSConfig(
-            models_path=config.models_path / "qwen3_tts",
-        )
-        _qwen3_adapter = Qwen3TTSSynthesisAdapter(qwen_config)
-    return _qwen3_adapter
-
-
 class SynthesizeRequest(BaseModel):
     """TTS 합성 요청
 
@@ -77,7 +59,7 @@ class SynthesizeRequest(BaseModel):
 
     text: str
     char_id: str | None = None  # 캐릭터 ID
-    engine: str | None = None  # TTS 엔진 ("gpt_sovits", "qwen3_tts"), None이면 글로벌 설정 사용
+    engine: str | None = None  # TTS 엔진 (현재 "gpt_sovits"만 지원), None이면 글로벌 설정 사용
 
 
 class SynthesizeResponse(BaseModel):
@@ -88,79 +70,18 @@ class SynthesizeResponse(BaseModel):
     audio_size: int
 
 
-async def _synthesize_qwen3_tts(request: SynthesizeRequest) -> Response:
-    """Qwen3-TTS를 사용한 음성 합성"""
-    try:
-        adapter = get_qwen3_adapter()
-
-        # 모델 준비 확인
-        if not adapter.is_voice_available(request.char_id):
-            raise HTTPException(
-                status_code=404,
-                detail=f"Qwen3-TTS 참조 오디오 없음: {request.char_id}. "
-                       f"models/qwen3_tts/{request.char_id}/ref.wav 파일이 필요합니다."
-            )
-
-        # GPU 세마포어: 다른 GPU 작업과 동시 실행 방지
-        async with gpu_semaphore_context():
-            logger.info(f"[Qwen3-TTS] 합성 시작: {request.char_id}")
-
-            # 합성 요청 생성
-            synthesis_request = AdapterSynthesisRequest(
-                text=request.text,
-                voice_id=request.char_id,
-                language="ko",  # 기본 한국어
-            )
-
-            result = await adapter.synthesize(synthesis_request)
-
-        if not result:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Qwen3-TTS 음성 합성 실패: {request.char_id}"
-            )
-
-        return Response(
-            content=result.audio_data,
-            media_type="audio/wav",
-            headers={
-                "X-Sample-Rate": str(result.sample_rate),
-                "X-Duration-Ms": str(result.duration * 1000),
-                "X-Provider": "qwen3_tts",
-            },
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"[Qwen3-TTS] 오류: {e}")
-        raise HTTPException(status_code=500, detail=f"Qwen3-TTS 오류: {str(e)}")
-
-
 @router.post("/synthesize")
 async def synthesize(request: SynthesizeRequest):
     """텍스트를 음성으로 변환 (WAV 반환)
 
-    char_id가 필수이며, 지정된 TTS 엔진으로 합성합니다.
+    char_id가 필수이며, GPT-SoVITS 엔진으로 합성합니다.
     준비되지 않은 캐릭터는 자동으로 참조 오디오를 준비합니다.
-
-    engine 파라미터:
-    - None: 글로벌 설정(default_tts_engine) 사용
-    - "gpt_sovits": GPT-SoVITS 엔진 사용
-    - "qwen3_tts": Qwen3-TTS 엔진 사용
     """
     if not request.text:
         raise HTTPException(status_code=400, detail="Text is required")
 
     if not request.char_id:
         raise HTTPException(status_code=400, detail="char_id is required")
-
-    # 엔진 선택: 요청에 명시되지 않으면 글로벌 설정 사용
-    engine = request.engine or config.default_tts_engine
-
-    # Qwen3-TTS 엔진 처리
-    if engine == "qwen3_tts":
-        return await _synthesize_qwen3_tts(request)
 
     # GPT-SoVITS 엔진 처리
     try:
@@ -269,7 +190,7 @@ async def synthesize(request: SynthesizeRequest):
             headers={
                 "X-Sample-Rate": str(result.sample_rate),
                 "X-Duration-Ms": str(result.duration * 1000),
-                "X-Provider": engine,
+                "X-Provider": "gpt_sovits",
             },
         )
 
@@ -516,179 +437,3 @@ async def set_force_zero_shot(enabled: bool = True):
         "force_zero_shot": synthesizer.force_zero_shot,
         "message": f"제로샷 강제 모드가 {'활성화' if enabled else '비활성화'}되었습니다",
     }
-
-
-# ============================================================================
-# Qwen3-TTS 관련 엔드포인트
-# ============================================================================
-
-
-@router.get("/qwen3-tts/status")
-async def qwen3_tts_status():
-    """Qwen3-TTS 상태 확인"""
-    try:
-        adapter = get_qwen3_adapter()
-
-        # 설치 상태 확인
-        from ...voice.adapters.qwen3_tts import get_qwen3_tts_installer
-        installer = get_qwen3_tts_installer()
-
-        # 모델 로드 상태
-        model_loaded = adapter._initialized
-
-        # 준비된 캐릭터
-        ready_chars = adapter.get_available_voices()
-
-        return {
-            "installed": installer.is_installed(),
-            "package_installed": installer.is_package_installed(),
-            "model_downloaded": installer.is_model_downloaded(),
-            "model_loaded": model_loaded,
-            "ready_characters": ready_chars,
-            "ready_count": len(ready_chars),
-        }
-    except Exception as e:
-        return {
-            "installed": False,
-            "package_installed": False,
-            "model_downloaded": False,
-            "model_loaded": False,
-            "ready_characters": [],
-            "ready_count": 0,
-            "error": str(e),
-        }
-
-
-@router.post("/qwen3-tts/load")
-async def load_qwen3_tts():
-    """Qwen3-TTS 모델 로드 (명시적 요청)"""
-    try:
-        adapter = get_qwen3_adapter()
-
-        # 이미 로드됨
-        if adapter._initialized:
-            return {"status": "loaded", "message": "Qwen3-TTS 모델이 이미 로드되어 있습니다"}
-
-        # 설치 확인
-        from ...voice.adapters.qwen3_tts import get_qwen3_tts_installer
-        installer = get_qwen3_tts_installer()
-        if not installer.is_installed():
-            raise HTTPException(
-                status_code=400,
-                detail="Qwen3-TTS가 설치되어 있지 않습니다. 설정에서 먼저 설치해주세요."
-            )
-
-        # GPU 세마포어와 함께 모델 로드
-        async with gpu_semaphore_context():
-            success = await adapter.ensure_ready()
-
-        if success:
-            return {"status": "loaded", "message": "Qwen3-TTS 모델이 로드되었습니다"}
-        else:
-            raise HTTPException(status_code=500, detail="Qwen3-TTS 모델 로드 실패")
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/qwen3-tts/unload")
-async def unload_qwen3_tts():
-    """Qwen3-TTS 모델 언로드 (메모리 해제)"""
-    try:
-        adapter = get_qwen3_adapter()
-        await adapter.shutdown()
-        return {"status": "unloaded", "message": "Qwen3-TTS 모델이 언로드되었습니다"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/qwen3-tts/cache-status")
-async def get_qwen3_tts_cache_status():
-    """Qwen3-TTS 캐시 상태 조회
-
-    - base_model_loaded: 베이스 모델 로드 여부
-    - finetuned_models: 파인튜닝 모델 LRU 캐시 상태
-    - voice_prompts: ICL 음성 프롬프트 캐시 상태
-    """
-    try:
-        adapter = get_qwen3_adapter()
-        return adapter.get_cache_status()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-class Qwen3TTSSettingsRequest(BaseModel):
-    """Qwen3-TTS 설정 요청"""
-    use_finetuned: bool | None = None  # 파인튜닝 모델 사용 여부
-    max_finetuned_models: int | None = None  # 최대 파인튜닝 모델 캐시 수
-
-
-@router.get("/qwen3-tts/settings")
-async def get_qwen3_tts_settings():
-    """Qwen3-TTS 설정 조회
-
-    파인튜닝 모델 관련 설정:
-    - use_finetuned: 파인튜닝 모델 사용 여부 (False면 ICL만 사용)
-    - max_finetuned_models: 동시에 로드할 최대 모델 수 (LRU 캐시)
-
-    참고:
-    - 각 파인튜닝 모델은 약 3.5GB VRAM 사용
-    - max_finetuned_models=2면 최대 ~7GB VRAM 사용 (베이스 모델 별도)
-    - ICL 모드는 베이스 모델만 사용하므로 VRAM 효율적
-    """
-    try:
-        adapter = get_qwen3_adapter()
-        return {
-            "use_finetuned": adapter.config.use_finetuned,
-            "max_finetuned_models": adapter.config.max_finetuned_models,
-            "description": {
-                "use_finetuned": "파인튜닝 모델 사용 여부 (False면 ICL 제로샷 모드만 사용)",
-                "max_finetuned_models": "동시에 로드할 최대 파인튜닝 모델 수 (각 ~3.5GB VRAM)",
-            },
-            "recommendations": {
-                "8GB_VRAM": {"max_finetuned_models": 1, "note": "베이스 모델 + 파인튜닝 1개"},
-                "12GB_VRAM": {"max_finetuned_models": 2, "note": "베이스 모델 + 파인튜닝 2개"},
-                "24GB_VRAM": {"max_finetuned_models": 4, "note": "베이스 모델 + 파인튜닝 4개"},
-                "ICL_only": {"use_finetuned": False, "note": "메모리 절약, 베이스 모델만 사용"},
-            },
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/qwen3-tts/settings")
-async def set_qwen3_tts_settings(request: Qwen3TTSSettingsRequest):
-    """Qwen3-TTS 설정 변경
-
-    - use_finetuned: 파인튜닝 모델 사용 여부
-    - max_finetuned_models: 최대 파인튜닝 모델 캐시 수 (1~10)
-    """
-    try:
-        adapter = get_qwen3_adapter()
-        changes = []
-
-        if request.use_finetuned is not None:
-            adapter.config.use_finetuned = request.use_finetuned
-            mode = "파인튜닝 우선" if request.use_finetuned else "ICL 전용"
-            changes.append(f"모드: {mode}")
-
-        if request.max_finetuned_models is not None:
-            if not 1 <= request.max_finetuned_models <= 10:
-                raise HTTPException(
-                    status_code=400,
-                    detail="max_finetuned_models는 1~10 범위여야 합니다"
-                )
-            adapter.config.max_finetuned_models = request.max_finetuned_models
-            changes.append(f"최대 모델 수: {request.max_finetuned_models}")
-
-        return {
-            "use_finetuned": adapter.config.use_finetuned,
-            "max_finetuned_models": adapter.config.max_finetuned_models,
-            "message": f"설정 변경됨: {', '.join(changes)}" if changes else "변경 없음",
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))

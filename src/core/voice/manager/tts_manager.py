@@ -11,7 +11,7 @@ from ..adapters.gpt_sovits import GPTSoVITSSynthesisAdapter
 
 logger = logging.getLogger(__name__)
 
-EngineType = Literal["gpt_sovits", "qwen3_tts", "auto"]
+EngineType = Literal["gpt_sovits", "auto"]
 
 
 class TTSManager:
@@ -35,22 +35,12 @@ class TTSManager:
         if self._initialized:
             return
 
-        # GPT-SoVITS는 항상 초기화
+        # GPT-SoVITS 초기화
         try:
             self._adapters["gpt_sovits"] = GPTSoVITSSynthesisAdapter()
             logger.info("GPT-SoVITS 어댑터 초기화 완료")
         except Exception as e:
             logger.error(f"GPT-SoVITS 어댑터 초기화 실패: {e}")
-
-        # Qwen3-TTS 초기화 (선택적)
-        try:
-            from ..adapters.qwen3_tts import Qwen3TTSSynthesisAdapter
-            self._adapters["qwen3_tts"] = Qwen3TTSSynthesisAdapter()
-            logger.info("Qwen3-TTS 어댑터 초기화 완료")
-        except ImportError as e:
-            logger.debug(f"Qwen3-TTS 어댑터 초기화 스킵 (qwen-tts 미설치): {e}")
-        except Exception as e:
-            logger.warning(f"Qwen3-TTS 어댑터 초기화 실패: {e}")
 
         self._initialized = True
 

@@ -132,13 +132,8 @@ interface AppState {
   isStartingGptSovits: boolean
   gptSovitsError: string | null
 
-  // Qwen3-TTS 관련
-  qwen3TtsStatus: { installed: boolean; model_loaded: boolean; ready_count: number } | null
-  isLoadingQwen3Tts: boolean
-  qwen3TtsError: string | null
-
   // TTS 엔진 설정
-  defaultTtsEngine: 'gpt_sovits' | 'qwen3_tts'
+  defaultTtsEngine: 'gpt_sovits'
 
   // GPU 세마포어 (OCR/TTS 동시 실행 제한)
   gpuSemaphoreEnabled: boolean
@@ -256,11 +251,6 @@ interface AppState {
   // GPT-SoVITS
   checkGptSovitsStatus: () => Promise<void>
   startGptSovits: () => Promise<void>
-
-  // Qwen3-TTS
-  checkQwen3TtsStatus: () => Promise<void>
-  loadQwen3Tts: () => Promise<void>
-  unloadQwen3Tts: () => Promise<void>
 
   // TTS 엔진 설정
   loadTtsEngineSetting: () => Promise<void>
@@ -506,11 +496,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   gptSovitsStatus: null,
   isStartingGptSovits: false,
   gptSovitsError: null,
-
-  // Qwen3-TTS 초기 상태
-  qwen3TtsStatus: null,
-  isLoadingQwen3Tts: false,
-  qwen3TtsError: null,
 
   // TTS 엔진 설정 초기 상태
   defaultTtsEngine: 'gpt_sovits',
@@ -2304,65 +2289,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ gptSovitsError: errorMsg })
     } finally {
       set({ isStartingGptSovits: false })
-    }
-  },
-
-  // === Qwen3-TTS ===
-
-  // Qwen3-TTS 상태 확인
-  checkQwen3TtsStatus: async () => {
-    try {
-      const status = await ttsApi.getQwen3TtsStatus()
-      set({
-        qwen3TtsStatus: {
-          installed: status.installed,
-          model_loaded: status.model_loaded,
-          ready_count: status.ready_count,
-        },
-      })
-    } catch (error) {
-      console.error('Failed to check Qwen3-TTS status:', error)
-      set({ qwen3TtsStatus: null })
-    }
-  },
-
-  // Qwen3-TTS 베이스 모델 로드
-  loadQwen3Tts: async () => {
-    set({ isLoadingQwen3Tts: true, qwen3TtsError: null })
-    try {
-      await ttsApi.loadQwen3Tts()
-      // 상태 갱신
-      const status = await ttsApi.getQwen3TtsStatus()
-      set({
-        qwen3TtsStatus: {
-          installed: status.installed,
-          model_loaded: status.model_loaded,
-          ready_count: status.ready_count,
-        },
-      })
-    } catch (error: any) {
-      console.error('Failed to load Qwen3-TTS:', error)
-      set({ qwen3TtsError: error.response?.data?.detail || '모델 로드 실패' })
-    } finally {
-      set({ isLoadingQwen3Tts: false })
-    }
-  },
-
-  // Qwen3-TTS 베이스 모델 언로드
-  unloadQwen3Tts: async () => {
-    try {
-      await ttsApi.unloadQwen3Tts()
-      // 상태 갱신
-      const status = await ttsApi.getQwen3TtsStatus()
-      set({
-        qwen3TtsStatus: {
-          installed: status.installed,
-          model_loaded: status.model_loaded,
-          ready_count: status.ready_count,
-        },
-      })
-    } catch (error) {
-      console.error('Failed to unload Qwen3-TTS:', error)
     }
   },
 

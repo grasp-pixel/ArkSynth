@@ -30,13 +30,6 @@ function App() {
     gptSovitsError,
     checkGptSovitsStatus,
     startGptSovits,
-    // Qwen3-TTS
-    qwen3TtsStatus,
-    checkQwen3TtsStatus,
-    loadQwen3Tts,
-    unloadQwen3Tts,
-    isLoadingQwen3Tts,
-    qwen3TtsError,
     // TTS 엔진 설정
     defaultTtsEngine,
     loadTtsEngineSetting,
@@ -64,13 +57,12 @@ function App() {
     if (backendStatus === 'connected') {
       loadCategories()
       checkGptSovitsStatus()
-      checkQwen3TtsStatus()  // Qwen3-TTS 상태 확인
       loadTtsEngineSetting()  // TTS 엔진 설정 로드
       loadVoiceCharacters()  // 음성 캐릭터 목록 로드 (getSpeakerVoice에서 사용)
       loadVoiceMappings()  // 백엔드 음성 매핑 로드 (에피소드 전환 시 유지)
       loadGpuSemaphoreStatus()  // GPU 세마포어 상태 로드
     }
-  }, [backendStatus, loadCategories, checkGptSovitsStatus, checkQwen3TtsStatus, loadTtsEngineSetting, loadVoiceCharacters, loadVoiceMappings, loadGpuSemaphoreStatus])
+  }, [backendStatus, loadCategories, checkGptSovitsStatus, loadTtsEngineSetting, loadVoiceCharacters, loadVoiceMappings, loadGpuSemaphoreStatus])
 
   // GPT-SoVITS 상태 주기적 확인 (30초)
   useEffect(() => {
@@ -164,46 +156,6 @@ function App() {
               ) : null}
               {gptSovitsError && (
                 <span className="text-xs text-red-400" title={gptSovitsError}>
-                  오류
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Qwen3-TTS 상태 - 기본 엔진일 때 로드 버튼 표시 */}
-          {defaultTtsEngine === 'qwen3_tts' && qwen3TtsStatus?.installed && (
-            <div className="flex items-center gap-2">
-              {qwen3TtsStatus.model_loaded ? (
-                <>
-                  <span className="w-2 h-2 rounded-full bg-purple-400" />
-                  <span className="text-sm text-purple-400">Qwen3-TTS</span>
-                  <button
-                    onClick={unloadQwen3Tts}
-                    className="text-xs text-purple-400/70 hover:text-purple-300 underline ml-1"
-                  >
-                    언로드
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={loadQwen3Tts}
-                  disabled={isLoadingQwen3Tts}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-gradient-to-r from-purple-500 to-violet-500 text-white shadow-lg shadow-purple-500/30 hover:from-purple-400 hover:to-violet-400 hover:shadow-purple-500/50 transition-all animate-pulse hover:animate-none disabled:opacity-50 disabled:animate-none"
-                >
-                  {isLoadingQwen3Tts ? (
-                    <span>로드 중...</span>
-                  ) : (
-                    <>
-                      <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
-                        <path d="M8 5v14l11-7z"/>
-                      </svg>
-                      <span>Qwen3-TTS 로드</span>
-                    </>
-                  )}
-                </button>
-              )}
-              {qwen3TtsError && (
-                <span className="text-xs text-red-400" title={qwen3TtsError}>
                   오류
                 </span>
               )}

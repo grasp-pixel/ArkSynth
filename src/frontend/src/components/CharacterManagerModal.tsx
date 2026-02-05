@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react'
 import { useAppStore } from '../stores/appStore'
-import { ttsApi, voiceApi, trainingApi, API_BASE, type TTSEngine, type EngineSpecificModelStatus } from '../services/api'
+import { ttsApi, voiceApi, API_BASE, type TTSEngine } from '../services/api'
 
 type SortBy = 'dialogues' | 'files' | 'name' | 'id'
 
@@ -74,10 +74,6 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
 
   // 기본 음성 섹션 접기/펼치기
   const [isDefaultsExpanded, setIsDefaultsExpanded] = useState(false)
-
-  // Qwen3-TTS 학습 상태
-  const [qwen3TrainingCharId, setQwen3TrainingCharId] = useState<string | null>(null)
-  const [engineStatus, setEngineStatus] = useState<Record<string, EngineSpecificModelStatus>>({})
 
   // 이미지 상태 로드 함수
   const loadImageStatus = async () => {
@@ -265,43 +261,6 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
   const handleResetCharacter = async (charId: string) => {
     scrollTargetCharId.current = charId
     await deleteModel(charId)
-  }
-
-  // Qwen3-TTS 학습 (GPT-SoVITS와 별도)
-  const handleQwen3TTSPrepare = async (charId: string) => {
-    setQwen3TrainingCharId(charId)
-    try {
-      await trainingApi.trainQwen3TTS(charId, 'prepare')
-      // 상태 새로고침
-      await loadEngineStatus(charId)
-    } catch (error) {
-      console.error('Qwen3-TTS 준비 실패:', error)
-    } finally {
-      setQwen3TrainingCharId(null)
-    }
-  }
-
-  const handleQwen3TTSFinetune = async (charId: string) => {
-    setQwen3TrainingCharId(charId)
-    try {
-      await trainingApi.trainQwen3TTS(charId, 'finetune')
-      // 상태 새로고침
-      await loadEngineStatus(charId)
-    } catch (error) {
-      console.error('Qwen3-TTS 파인튜닝 실패:', error)
-    } finally {
-      setQwen3TrainingCharId(null)
-    }
-  }
-
-  // 엔진별 상태 로드
-  const loadEngineStatus = async (charId: string) => {
-    try {
-      const status = await trainingApi.getEngineStatus(charId)
-      setEngineStatus(prev => ({ ...prev, [charId]: status }))
-    } catch (error) {
-      console.error('엔진 상태 로드 실패:', error)
-    }
   }
 
   // 음성 테스트
@@ -753,27 +712,6 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
                                   G준비
                                 </span>
                               )}
-                              {/* Qwen3-TTS 상태 */}
-                              {(() => {
-                                const qwenStatus = engineStatus[char.char_id]?.qwen3_tts
-                                if (qwenStatus?.model_type === 'finetuned') {
-                                  return (
-                                    <span className="text-xs text-teal-300 flex items-center gap-1" title="Qwen3-TTS 학습됨">
-                                      <svg viewBox="0 0 24 24" className="w-3 h-3" fill="currentColor">
-                                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-                                      </svg>
-                                      Q학습
-                                    </span>
-                                  )
-                                } else if (qwenStatus?.model_type === 'prepared') {
-                                  return (
-                                    <span className="text-xs text-teal-300/70 flex items-center gap-1" title="Qwen3-TTS ICL 준비됨">
-                                      Q준비
-                                    </span>
-                                  )
-                                }
-                                return null
-                              })()}
                             </>
                           ) : isTraining ? (
                             <div className="flex flex-col gap-1 w-full">
@@ -850,38 +788,6 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
                                         학습
                                       </button>
                                     )}
-                                    {/* Qwen3-TTS 학습 버튼 */}
-                                    {(() => {
-                                      const qwenStatus = engineStatus[char.char_id]?.qwen3_tts
-                                      const isQwenTraining = qwen3TrainingCharId === char.char_id
-                                      // Qwen3-TTS가 아직 finetuned 아닌 경우만 버튼 표시
-                                      if (qwenStatus?.model_type !== 'finetuned') {
-                                        return (
-                                          <button
-                                            onClick={() => qwenStatus?.can_finetune
-                                              ? handleQwen3TTSFinetune(char.char_id)
-                                              : handleQwen3TTSPrepare(char.char_id)
-                                            }
-                                            onMouseEnter={() => !engineStatus[char.char_id] && loadEngineStatus(char.char_id)}
-                                            disabled={isTrainingActive || isQwenTraining}
-                                            className="text-[10px] px-1.5 py-0.5 rounded bg-teal-500/40 text-teal-200 hover:bg-teal-500/60 disabled:opacity-50"
-                                            title={qwenStatus?.can_finetune
-                                              ? 'Qwen3-TTS 파인튜닝 (SFT 학습)'
-                                              : 'Qwen3-TTS 준비 (ICL 참조 오디오)'
-                                            }
-                                          >
-                                            {isQwenTraining ? '...' : (
-                                              qwenStatus?.model_type === 'prepared' ? 'Q학습' : 'Q준비'
-                                            )}
-                                          </button>
-                                        )
-                                      }
-                                      return qwenStatus?.model_type === 'finetuned' ? (
-                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-500/20 text-teal-300">
-                                          Q학습됨
-                                        </span>
-                                      ) : null
-                                    })()}
                                     <button
                                       onClick={() => handleResetCharacter(char.char_id)}
                                       disabled={isTrainingActive}
@@ -961,7 +867,6 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
               title="TTS 엔진 선택"
             >
               <option value="gpt_sovits">GPT-SoVITS</option>
-              <option value="qwen3_tts">Qwen3-TTS</option>
             </select>
           </div>
           <div className="flex items-center gap-3">
