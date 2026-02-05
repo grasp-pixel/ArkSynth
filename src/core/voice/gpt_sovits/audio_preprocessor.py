@@ -638,8 +638,34 @@ class AudioPreprocessor:
             logger.debug(f"너무 짧음 ({duration:.1f}초): {audio_path.name}")
             return []
 
-        # 적절한 길이: 그대로 복사
+        # 적절한 길이: Whisper 검증 후 복사
         if duration <= self.max_duration:
+            # Whisper 검증 (짧은 오디오도 텍스트 불일치 가능)
+            final_text = expected_text
+            if transcripts_all:
+                segments = self.transcribe_audio(audio_path)
+                if segments:
+                    whisper_text = " ".join(seg.text for seg in segments)
+                    best_id, best_text, best_sim = self.find_best_matching_transcript(
+                        whisper_text, transcripts_all, threshold=0.5
+                    )
+                    if best_id and best_text:
+                        if best_id != voice_id:
+                            logger.warning(
+                                f"텍스트 교정: {voice_id} → {best_id} (유사도: {best_sim:.2f})\n"
+                                f"  기존: {expected_text[:50]}...\n"
+                                f"  교정: {best_text[:50]}..."
+                            )
+                            final_text = best_text
+                        else:
+                            logger.debug(f"텍스트 검증 통과: {voice_id} (유사도: {best_sim:.2f})")
+                    else:
+                        logger.warning(
+                            f"텍스트 매칭 실패: {voice_id} (최고 유사도: {best_sim:.2f})\n"
+                            f"  Whisper: {whisper_text[:50]}...\n"
+                            f"  Expected: {expected_text[:50]}..."
+                        )
+
             output_path = output_dir / f"{voice_id}.wav"
             text_path = output_dir / f"{voice_id}.txt"
 
@@ -648,11 +674,11 @@ class AudioPreprocessor:
                 audio_duration=duration,
             ):
                 # 텍스트 파일 저장 (WAV 옆에)
-                text_path.write_text(expected_text, encoding="utf-8")
+                text_path.write_text(final_text, encoding="utf-8")
                 return [
                     AudioSegment(
                         audio_path=output_path,
-                        text=expected_text,
+                        text=final_text,
                         duration=duration,
                         original_voice_id=voice_id,
                         segment_index=0,
