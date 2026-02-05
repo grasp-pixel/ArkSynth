@@ -4,9 +4,11 @@ GPT-SoVITS API 서버와 통신하여 음성 합성을 수행합니다.
 """
 
 import asyncio
+import io
 import logging
 import subprocess
 import sys
+import wave
 from pathlib import Path
 from typing import Optional
 
@@ -68,7 +70,43 @@ def preprocess_text_for_tts(text: str) -> str | None:
     return text
 
 
-def split_text_for_tts(text: str, max_length: int = 35) -> list[str]:
+def add_silence_padding(wav_data: bytes, silence_ms: int = 150) -> bytes:
+    """WAV 데이터 앞에 무음 패딩 추가
+
+    스피커 절전 모드로 인한 앞부분 잘림 방지용.
+
+    Args:
+        wav_data: 원본 WAV 데이터
+        silence_ms: 추가할 무음 길이 (밀리초)
+
+    Returns:
+        무음이 추가된 WAV 데이터
+    """
+    try:
+        # 원본 WAV 읽기
+        with io.BytesIO(wav_data) as wav_in:
+            with wave.open(wav_in, 'rb') as wf:
+                params = wf.getparams()
+                frames = wf.readframes(params.nframes)
+
+        # 무음 프레임 생성
+        bytes_per_sample = params.sampwidth
+        silence_samples = int(params.framerate * silence_ms / 1000)
+        silence_frames = b'\x00' * (silence_samples * params.nchannels * bytes_per_sample)
+
+        # 새 WAV 생성 (무음 + 원본)
+        with io.BytesIO() as wav_out:
+            with wave.open(wav_out, 'wb') as wf:
+                wf.setparams(params)
+                wf.writeframes(silence_frames + frames)
+            return wav_out.getvalue()
+
+    except Exception as e:
+        logger.warning(f"무음 패딩 추가 실패: {e}")
+        return wav_data  # 실패 시 원본 반환
+
+
+def split_text_for_tts(text: str, max_length: int = 50) -> list[str]:
     """텍스트를 TTS용 세그먼트로 분할
 
     GPT-SoVITS는 긴 텍스트에서 조기 EOS가 발생하여 앞부분이 잘리는 문제가 있음.
@@ -76,7 +114,7 @@ def split_text_for_tts(text: str, max_length: int = 35) -> list[str]:
 
     Args:
         text: 분할할 텍스트
-        max_length: 세그먼트 최대 길이 (기본 35자)
+        max_length: 세그먼트 최대 길이 (기본 50자)
 
     Returns:
         분할된 텍스트 세그먼트 목록
@@ -182,6 +220,21 @@ def split_text_for_tts(text: str, max_length: int = 35) -> list[str]:
             else:
                 # 연결어미도 없음: 그대로 전달
                 final_segments.append(seg)
+
+    # 너무 짧은 세그먼트(10자 미만)는 이전/다음 세그먼트에 병합
+    MIN_SEGMENT_LENGTH = 10
+    if len(final_segments) > 1:
+        merged = []
+        for seg in final_segments:
+            if merged and len(seg) < MIN_SEGMENT_LENGTH:
+                # 이전 세그먼트에 병합
+                merged[-1] = merged[-1].rstrip(".!?") + " " + seg
+            elif merged and len(merged[-1]) < MIN_SEGMENT_LENGTH:
+                # 이전이 짧으면 현재에 병합
+                merged[-1] = merged[-1].rstrip(".!?") + " " + seg
+            else:
+                merged.append(seg)
+        final_segments = merged
 
     return final_segments if final_segments else [text]
 
@@ -695,8 +748,7 @@ class GPTSoVITSAPIClient:
         # 추가 참조 오디오
         aux_refs = self._get_aux_reference_audios(char_id, ref_audio_path)
 
-        # prompt_text: 참조 텍스트 전체 사용
-        # (마지막 문장만 추출하면 오디오와 불일치하여 품질 저하)
+        # prompt_text: 참조 텍스트 사용 (품질 유지)
         prompt_text = ref_text
 
         # 디버깅용 로깅: 실제 API로 전송되는 참조 정보
@@ -757,6 +809,10 @@ class GPTSoVITSAPIClient:
                         return None
 
                     audio_data = await resp.read()
+
+                    # 스피커 절전 모드로 인한 앞부분 잘림 방지
+                    audio_data = add_silence_padding(audio_data, silence_ms=150)
+
                     logger.debug(
                         f"[합성] 세그먼트 완료 ({elapsed:.1f}초, {len(audio_data):,} bytes)"
                     )
