@@ -157,6 +157,34 @@ class ReferenceManager:
             for audio_path, text, score in refs
         ]
 
+    def select_best_for_qwen3(
+        self,
+        optimal_min: float = 5.0,
+        optimal_max: float = 15.0,
+    ) -> ReferenceAudio | None:
+        """Qwen3-TTS ICL용 최적 참조 오디오 선택
+
+        텍스트 길이 대신 voiceTitle 우선순위와 오디오 길이 기반으로 선택합니다.
+        ICL 모드에서는 하나의 대표 참조 오디오를 사용하므로
+        가장 캐릭터성이 잘 드러나는 음성을 선택합니다.
+
+        Args:
+            optimal_min: 최적 길이 최소값 (기본 5초)
+            optimal_max: 최적 길이 최대값 (기본 15초)
+
+        Returns:
+            선택된 참조 오디오 또는 None
+        """
+        audio_path, text, score = select_reference_for_qwen3(
+            self.model_dir,
+            optimal_min=optimal_min,
+            optimal_max=optimal_max,
+        )
+        if audio_path:
+            duration = get_audio_duration(audio_path)
+            return ReferenceAudio(audio_path, text, score, duration)
+        return None
+
 
 def calculate_reference_score(
     title: str,
@@ -202,6 +230,61 @@ def calculate_reference_score(
 
     score = title_priority + duration_bonus + text_bonus - short_text_penalty - long_text_penalty
     return score, is_valid_duration
+
+
+def calculate_qwen3_reference_score(
+    title: str,
+    duration: float,
+    optimal_min: float = 5.0,
+    optimal_max: float = 15.0,
+) -> tuple[int, bool]:
+    """Qwen3-TTS ICL용 참조 오디오 점수 계산
+
+    Qwen3-TTS ICL 모드는 참조 오디오의 음성 품질이 핵심입니다.
+    텍스트 길이보다 voiceTitle 우선순위와 오디오 길이가 중요합니다.
+
+    점수 구성:
+    - voiceTitle 우선순위: 0-100 (신뢰도 터치=100, 기본=10)
+    - 최적 길이 보너스: 5-15초=+50, 3-5초/15-20초=+25
+    - 길이 정밀 보너스: 7-12초 이상적, 최대 +20
+
+    Args:
+        title: 음성 타이틀
+        duration: 오디오 길이 (초)
+        optimal_min: 최적 길이 최소값 (기본 5초)
+        optimal_max: 최적 길이 최대값 (기본 15초)
+
+    Returns:
+        (점수, 최적 길이 여부) 튜플
+    """
+    # 1. voiceTitle 우선순위 (0-100)
+    title_priority = VOICE_TITLE_PRIORITY.get(title, 10)
+
+    # 2. 길이 보너스
+    #   - 5-15초 범위 (최적): +50
+    #   - 3-5초, 15-20초 (허용): +25
+    #   - 그 외: 0
+    is_optimal = optimal_min <= duration <= optimal_max
+    is_acceptable = 3.0 <= duration <= 20.0
+
+    if is_optimal:
+        duration_bonus = 50
+    elif is_acceptable:
+        duration_bonus = 25
+    else:
+        duration_bonus = 0
+
+    # 3. 길이 정밀 보너스 (7-12초가 가장 이상적, 최대 +20)
+    #    중심점 9.5초에서 멀어질수록 점수 감소
+    ideal_center = 9.5
+    if is_acceptable:
+        distance_from_ideal = abs(duration - ideal_center)
+        precision_bonus = max(0, int(20 - distance_from_ideal * 2))
+    else:
+        precision_bonus = 0
+
+    score = title_priority + duration_bonus + precision_bonus
+    return score, is_optimal
 
 
 def is_excluded_voice(title: str, text: str) -> bool:
@@ -631,3 +714,117 @@ def get_all_references_by_score(
     # 점수 내림차순 정렬
     results.sort(key=lambda x: x[2], reverse=True)
     return results
+
+
+def select_reference_for_qwen3(
+    model_dir: Path,
+    optimal_min: float = 5.0,
+    optimal_max: float = 15.0,
+) -> tuple[Path | None, str, int]:
+    """Qwen3-TTS ICL용 최적 참조 오디오 선택
+
+    텍스트 길이와 상관없이 voiceTitle 우선순위 + 오디오 길이 기반으로 선택합니다.
+    ICL 모드에서는 하나의 대표 참조 오디오를 캐싱하여 사용하므로
+    가장 캐릭터성이 잘 드러나는 음성을 선택합니다.
+
+    Args:
+        model_dir: 모델 디렉토리 경로
+        optimal_min: 최적 길이 최소값 (기본 5초)
+        optimal_max: 최적 길이 최대값 (기본 15초)
+
+    Returns:
+        (참조 오디오 경로, 참조 텍스트, 점수) 튜플
+    """
+    info = load_reference_info(model_dir)
+    candidates = []
+
+    if info and "ref_audios" in info:
+        ref_audios = info["ref_audios"]
+
+        for ref_info in ref_audios:
+            audio_name = ref_info.get("audio", "")
+            audio_path = model_dir / audio_name
+
+            if not audio_path.exists():
+                continue
+
+            # 제외 목록 체크
+            title = ref_info.get("title", "")
+            text = ref_info.get("text", "")
+            if title in EXCLUDED_VOICE_TITLES:
+                continue
+
+            # 최소 텍스트 길이만 체크 (너무 짧은 "하아" 등 제외)
+            if len(text) < 5:
+                continue
+
+            # 오디오 길이 (허용 범위: 3-20초)
+            duration = get_audio_duration(audio_path)
+            if not (3.0 <= duration <= 20.0):
+                continue
+
+            # Qwen3용 점수 계산
+            score, is_optimal = calculate_qwen3_reference_score(
+                title, duration, optimal_min, optimal_max
+            )
+
+            candidates.append({
+                "audio_path": audio_path,
+                "text": text,
+                "score": score,
+                "is_optimal": is_optimal,
+                "duration": duration,
+                "title": title,
+            })
+
+    # 폴백: preprocessed 폴더에서 탐색
+    if not candidates:
+        preprocessed_dir = model_dir / "preprocessed"
+        if preprocessed_dir.exists():
+            wav_files = sorted(preprocessed_dir.glob("*.wav"))
+            for audio_path in wav_files:
+                duration = get_audio_duration(audio_path)
+                if not (3.0 <= duration <= 20.0):
+                    continue
+
+                text_path = audio_path.with_suffix(".txt")
+                text = ""
+                if text_path.exists():
+                    text = text_path.read_text(encoding="utf-8").strip()
+
+                # 최소 텍스트 길이만 체크
+                if len(text) < 5:
+                    continue
+
+                # 제목 없음 → 기본 점수
+                score, is_optimal = calculate_qwen3_reference_score(
+                    "", duration, optimal_min, optimal_max
+                )
+
+                candidates.append({
+                    "audio_path": audio_path,
+                    "text": text,
+                    "score": score,
+                    "is_optimal": is_optimal,
+                    "duration": duration,
+                    "title": "",
+                })
+
+    if not candidates:
+        return None, "", 0
+
+    # 최적 길이 후보가 있으면 그것만 사용
+    optimal_candidates = [c for c in candidates if c["is_optimal"]]
+    if optimal_candidates:
+        candidates = optimal_candidates
+
+    # 점수 내림차순 정렬
+    candidates.sort(key=lambda x: x["score"], reverse=True)
+
+    best = candidates[0]
+    logger.debug(
+        f"Qwen3-TTS 참조 선택: {best['audio_path'].name} "
+        f"(점수={best['score']}, 길이={best['duration']:.1f}s, 제목={best['title']})"
+    )
+
+    return best["audio_path"], best["text"], best["score"]

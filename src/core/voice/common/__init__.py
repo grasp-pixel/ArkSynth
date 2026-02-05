@@ -13,11 +13,13 @@ from .reference_manager import (
     MIN_REF_TEXT_LENGTH,
     MAX_REF_TEXT_LENGTH,
     calculate_reference_score,
+    calculate_qwen3_reference_score,
     is_excluded_voice,
     select_best_references,
     load_reference_info,
     select_reference_by_score,
     select_reference_hybrid,
+    select_reference_for_qwen3,
     get_all_references_by_score,
 )
 
@@ -37,10 +39,12 @@ __all__ = [
     "MIN_REF_TEXT_LENGTH",
     "MAX_REF_TEXT_LENGTH",
     "calculate_reference_score",
+    "calculate_qwen3_reference_score",
     "is_excluded_voice",
     "select_best_references",
     "load_reference_info",
     "select_reference_by_score",
     "select_reference_hybrid",
+    "select_reference_for_qwen3",
     "get_all_references_by_score",
 ]
