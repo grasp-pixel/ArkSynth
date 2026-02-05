@@ -52,8 +52,17 @@ class UnifiedTrainingManager:
         except Exception as e:
             logger.error(f"GPT-SoVITS 학습 매니저 초기화 실패: {e}")
 
-        # Qwen3-TTS는 현재 미구현
-        # 실제 구현 시 추가
+        # Qwen3-TTS 초기화 (선택적)
+        try:
+            from ..adapters.qwen3_tts import Qwen3TTSTrainingAdapter, Qwen3TTSModelAdapter
+
+            self._adapters["qwen3_tts"] = Qwen3TTSTrainingAdapter()
+            self._model_adapters["qwen3_tts"] = Qwen3TTSModelAdapter()
+            logger.info("Qwen3-TTS 학습 어댑터 초기화 완료")
+        except ImportError as e:
+            logger.debug(f"Qwen3-TTS 학습 어댑터 초기화 스킵: {e}")
+        except Exception as e:
+            logger.warning(f"Qwen3-TTS 학습 어댑터 초기화 실패: {e}")
 
         self._initialized = True
 
