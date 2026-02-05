@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react'
 import { useAppStore } from '../stores/appStore'
 import { ttsApi, voiceApi, API_BASE } from '../services/api'
 
@@ -28,15 +28,13 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
     currentTrainingJob,
     loadTrainedModels,
     clearAllTrainedModels,
+    deleteModel,
     getModelType,
     getSegmentCount,
     gptSovitsStatus,
     checkGptSovitsStatus,
-    // 별칭 관련
-    characterAliases,
-    loadCharacterAliases,
-    addCharacterAlias,
-    removeCharacterAlias,
+    trainingQueue,
+    startFullBatchTraining,
   } = useAppStore()
 
   // 로컬 상태
@@ -52,13 +50,20 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
   const [testError, setTestError] = useState<string | null>(null)
   const testAudioRef = useRef<HTMLAudioElement | null>(null)
 
-  // 별칭 편집 상태
-  const [editingAliasCharId, setEditingAliasCharId] = useState<string | null>(null)
-  const [newAliasInput, setNewAliasInput] = useState('')
-  const [aliasError, setAliasError] = useState<string | null>(null)
-
   // 성별 데이터
   const [genders, setGenders] = useState<Record<string, string>>({})
+
+  // 스크롤 위치 유지를 위한 ref
+  const scrollTargetCharId = useRef<string | null>(null)
+  const gridContainerRef = useRef<HTMLDivElement>(null)
+
+  // 정렬용 스냅샷 (버튼 클릭 시 정렬 변경 방지)
+  const [sortSnapshot, setSortSnapshot] = useState<{
+    defaultFemale: string[]
+    defaultMale: string[]
+    trained: Set<string>
+    narrator: string | null
+  }>({ defaultFemale: [], defaultMale: [], trained: new Set(), narrator: null })
 
   // 이미지 상태
   const [imageStatus, setImageStatus] = useState<{
@@ -82,18 +87,30 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
   // 이미지 URL 생성 (백엔드에서 패턴 매칭 처리)
   const getCharImageUrl = (charId: string) => `${API_BASE}/api/voice/images/${charId}`
 
+  // 정렬 스냅샷 업데이트 함수
+  const updateSortSnapshot = () => {
+    setSortSnapshot({
+      defaultFemale: [...defaultFemaleVoices],
+      defaultMale: [...defaultMaleVoices],
+      trained: new Set(trainedCharIds),
+      narrator: narratorCharId,
+    })
+  }
+
   // 모달 열릴 때 데이터 로드
   useEffect(() => {
     if (isOpen) {
       loadVoiceCharacters()
       loadTrainedModels()
-      loadCharacterAliases()
       loadImageStatus()
 
       // 성별 데이터 로드
       voiceApi.listGenders().catch(() => ({ genders: {} })).then((res) => {
         setGenders(res.genders)
       })
+
+      // 스냅샷 업데이트
+      updateSortSnapshot()
     }
     return () => {
       // 모달 닫힐 때 테스트 오디오 정리
@@ -101,12 +118,28 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
         testAudioRef.current.pause()
         testAudioRef.current = null
       }
-      // 별칭 편집 상태 초기화
-      setEditingAliasCharId(null)
-      setNewAliasInput('')
-      setAliasError(null)
     }
-  }, [isOpen, loadVoiceCharacters, loadTrainedModels, loadCharacterAliases])
+  }, [isOpen, loadVoiceCharacters, loadTrainedModels])
+
+  // 정렬 옵션 변경 시 스냅샷 업데이트
+  useEffect(() => {
+    if (isOpen) {
+      updateSortSnapshot()
+    }
+  }, [sortBy, readyFirst, defaultFirst])
+
+  // 스크롤 위치 복원 (정렬 스냅샷 변경 시에만)
+  useLayoutEffect(() => {
+    if (scrollTargetCharId.current && gridContainerRef.current) {
+      const targetCard = gridContainerRef.current.querySelector(
+        `[data-char-id="${scrollTargetCharId.current}"]`
+      )
+      if (targetCard) {
+        targetCard.scrollIntoView({ block: 'nearest' })
+      }
+      scrollTargetCharId.current = null
+    }
+  }, [sortSnapshot])
 
   // 정렬된 캐릭터 목록
   const sortedCharacters = useMemo(() => {
@@ -141,31 +174,31 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
     }
 
     result.sort((a, b) => {
-      // 기본 음성/나레이터 우선 토글이 켜져 있으면 먼저
+      // 기본 음성/나레이터 우선 토글이 켜져 있으면 먼저 (스냅샷 사용)
       if (defaultFirst) {
         const aDefault = (
-          defaultFemaleVoices.includes(a.char_id) ||
-          defaultMaleVoices.includes(a.char_id) ||
-          narratorCharId === a.char_id
+          sortSnapshot.defaultFemale.includes(a.char_id) ||
+          sortSnapshot.defaultMale.includes(a.char_id) ||
+          sortSnapshot.narrator === a.char_id
         ) ? 1 : 0
         const bDefault = (
-          defaultFemaleVoices.includes(b.char_id) ||
-          defaultMaleVoices.includes(b.char_id) ||
-          narratorCharId === b.char_id
+          sortSnapshot.defaultFemale.includes(b.char_id) ||
+          sortSnapshot.defaultMale.includes(b.char_id) ||
+          sortSnapshot.narrator === b.char_id
         ) ? 1 : 0
         if (aDefault !== bDefault) return bDefault - aDefault
       }
-      // 준비됨 우선 토글이 켜져 있으면 준비된 캐릭터 먼저
+      // 준비됨 우선 토글이 켜져 있으면 준비된 캐릭터 먼저 (스냅샷 사용)
       if (readyFirst) {
-        const aReady = trainedCharIds.has(a.char_id) ? 1 : 0
-        const bReady = trainedCharIds.has(b.char_id) ? 1 : 0
+        const aReady = sortSnapshot.trained.has(a.char_id) ? 1 : 0
+        const bReady = sortSnapshot.trained.has(b.char_id) ? 1 : 0
         if (aReady !== bReady) return bReady - aReady
       }
       return sortFn(a, b)
     })
 
     return result
-  }, [voiceCharacters, trainedCharIds, searchQuery, sortBy, readyFirst, defaultFirst, defaultFemaleVoices, defaultMaleVoices, narratorCharId])
+  }, [voiceCharacters, searchQuery, sortBy, readyFirst, defaultFirst, sortSnapshot])
 
   // 통계
   const stats = useMemo(() => ({
@@ -175,28 +208,33 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
     maleCount: defaultMaleVoices.length,
   }), [voiceCharacters, trainedCharIds, defaultFemaleVoices, defaultMaleVoices])
 
-  // 여성 기본 음성 토글
-  const handleToggleFemaleDefault = (charId: string) => {
-    const index = defaultFemaleVoices.indexOf(charId)
-    if (index >= 0) {
-      removeDefaultFemaleVoice(index)
-    } else {
-      addDefaultFemaleVoice(charId)
-    }
-  }
+  // 기본 음성 토글 (성별에 따라 자동 분기)
+  const handleToggleDefault = (charId: string) => {
+    scrollTargetCharId.current = charId
+    const charGender = genders[charId]
+    const isMale = charGender === 'male'
 
-  // 남성 기본 음성 토글
-  const handleToggleMaleDefault = (charId: string) => {
-    const index = defaultMaleVoices.indexOf(charId)
-    if (index >= 0) {
-      removeDefaultMaleVoice(index)
+    if (isMale) {
+      const index = defaultMaleVoices.indexOf(charId)
+      if (index >= 0) {
+        removeDefaultMaleVoice(index)
+      } else {
+        addDefaultMaleVoice(charId)
+      }
     } else {
-      addDefaultMaleVoice(charId)
+      // 성별 정보 없거나 female이면 여성으로 처리
+      const index = defaultFemaleVoices.indexOf(charId)
+      if (index >= 0) {
+        removeDefaultFemaleVoice(index)
+      } else {
+        addDefaultFemaleVoice(charId)
+      }
     }
   }
 
   // 나레이션 토글
   const handleToggleNarrator = (charId: string) => {
+    scrollTargetCharId.current = charId
     if (narratorCharId === charId) {
       setNarratorCharId(null)
     } else {
@@ -206,12 +244,19 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
 
   // 개별 캐릭터 준비 (Zero-shot)
   const handlePrepareCharacter = async (charId: string) => {
+    scrollTargetCharId.current = charId
     await startBatchTraining([charId], 'prepare')
   }
 
   // 개별 캐릭터 학습 (Fine-tuning)
   const handleFinetuneCharacter = async (charId: string) => {
     await startBatchTraining([charId], 'finetune')
+  }
+
+  // 개별 캐릭터 초기화
+  const handleResetCharacter = async (charId: string) => {
+    scrollTargetCharId.current = charId
+    await deleteModel(charId)
   }
 
   // 음성 테스트
@@ -266,43 +311,6 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
     setTestCharId(charId)
   }
 
-  // 별칭 편집 토글
-  const handleToggleAliasEdit = (charId: string) => {
-    if (editingAliasCharId === charId) {
-      setEditingAliasCharId(null)
-      setNewAliasInput('')
-      setAliasError(null)
-    } else {
-      setEditingAliasCharId(charId)
-      setNewAliasInput('')
-      setAliasError(null)
-    }
-  }
-
-  // 별칭 추가
-  const handleAddAlias = async (charId: string) => {
-    const alias = newAliasInput.trim()
-    if (!alias) return
-
-    try {
-      setAliasError(null)
-      await addCharacterAlias(charId, alias)
-      setNewAliasInput('')
-    } catch (error: any) {
-      setAliasError(error?.response?.data?.detail || '별칭 추가 실패')
-    }
-  }
-
-  // 별칭 삭제
-  const handleRemoveAlias = async (alias: string) => {
-    try {
-      setAliasError(null)
-      await removeCharacterAlias(alias)
-    } catch (error: any) {
-      setAliasError(error?.response?.data?.detail || '별칭 삭제 실패')
-    }
-  }
-
   if (!isOpen) return null
 
   return (
@@ -314,17 +322,39 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
       <div className="relative bg-ark-dark border border-ark-border rounded-lg shadow-2xl w-[1100px] max-h-[85vh] flex flex-col">
         {/* 헤더 */}
         <div className="flex items-center justify-between p-4 border-b border-ark-border">
-          <h2 className="text-lg font-bold text-ark-white flex items-center gap-2">
-            <svg viewBox="0 0 24 24" className="w-5 h-5 text-ark-orange" fill="currentColor">
-              <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-            </svg>
-            캐릭터 음성 관리
-          </h2>
-          <button onClick={onClose} className="text-ark-gray hover:text-ark-white">
-            <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
-              <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-            </svg>
-          </button>
+          <div className="flex items-center gap-4">
+            <h2 className="text-lg font-bold text-ark-white flex items-center gap-2">
+              <svg viewBox="0 0 24 24" className="w-5 h-5 text-ark-orange" fill="currentColor">
+                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+              </svg>
+              캐릭터 음성 관리
+            </h2>
+            {/* 학습 진행 상황 표시 */}
+            {isTrainingActive && currentTrainingJob && (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-ark-orange/20 border border-ark-orange/30">
+                <span className="w-2 h-2 rounded-full bg-ark-orange ark-pulse" />
+                <span className="text-sm text-ark-orange">
+                  {currentTrainingJob.mode === 'finetune' ? '학습' : '준비'}: {currentTrainingJob.char_name}
+                  {currentTrainingJob.progress != null && ` (${Math.round(currentTrainingJob.progress * 100)}%)`}
+                </span>
+                {trainingQueue.length > 1 && (
+                  <span className="text-xs text-ark-orange/70">
+                    +{trainingQueue.length - 1} 대기
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {isTrainingActive && (
+              <span className="text-xs text-ark-gray">창을 닫아도 학습은 계속됩니다</span>
+            )}
+            <button onClick={onClose} className="text-ark-gray hover:text-ark-white">
+              <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
+                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* 검색 및 정렬 */}
@@ -373,13 +403,38 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
             <span className="text-sm text-ark-gray">
               {stats.ready}/{stats.total} 준비됨
             </span>
+            {/* 일괄 준비/학습 버튼 */}
+            <button
+              onClick={() => startBatchTraining(undefined, 'prepare')}
+              disabled={isTrainingActive || stats.ready === stats.total}
+              className="text-xs px-2 py-1 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="미준비 캐릭터 일괄 준비 (Zero-shot)"
+            >
+              일괄 준비
+            </button>
+            <button
+              onClick={() => startFullBatchTraining()}
+              disabled={isTrainingActive}
+              className="text-xs px-2 py-1 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="미준비 캐릭터 준비 후 자동으로 학습 시작"
+            >
+              준비+학습
+            </button>
+            <button
+              onClick={() => startBatchTraining(undefined, 'finetune')}
+              disabled={isTrainingActive}
+              className="text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="준비된 캐릭터 일괄 학습 (Fine-tuning)"
+            >
+              일괄 학습
+            </button>
             {stats.ready > 0 && (
               <button
                 onClick={clearAllTrainedModels}
                 className="text-xs px-2 py-1 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
                 title="모든 준비 데이터 초기화"
               >
-                준비 초기화
+                초기화
               </button>
             )}
           </div>
@@ -488,15 +543,13 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
               {searchQuery ? '검색 결과가 없습니다' : '캐릭터가 없습니다'}
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-4">
+            <div ref={gridContainerRef} className="grid grid-cols-3 gap-4">
               {sortedCharacters.map((char) => {
                 const isReady = trainedCharIds.has(char.char_id)
                 const isFemaleDefault = defaultFemaleVoices.includes(char.char_id)
                 const isMaleDefault = defaultMaleVoices.includes(char.char_id)
                 const isNarrator = narratorCharId === char.char_id
                 const isTraining = isTrainingActive && currentTrainingJob?.char_id === char.char_id
-                const aliases = characterAliases[char.char_id] || []
-                const isEditingAlias = editingAliasCharId === char.char_id
 
                 const charGender = genders[char.char_id]
                 const charImage = getCharImageUrl(char.char_id)
@@ -504,6 +557,7 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
                 return (
                   <div
                     key={char.char_id}
+                    data-char-id={char.char_id}
                     className={`relative rounded-lg border overflow-hidden min-h-[180px] ${
                       isReady
                         ? 'border-green-500/50'
@@ -589,57 +643,6 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
                           )}
                         </div>
 
-                        {/* 별칭 표시 */}
-                        {aliases.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mb-2">
-                            {aliases.map((alias) => (
-                              <span
-                                key={alias}
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] bg-amber-500/40 text-amber-200 rounded"
-                                title={`별칭: ${alias}`}
-                              >
-                                {alias}
-                                {isEditingAlias && (
-                                  <button
-                                    onClick={() => handleRemoveAlias(alias)}
-                                    className="hover:text-red-300"
-                                  >
-                                    ×
-                                  </button>
-                                )}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* 별칭 편집 UI */}
-                        {isEditingAlias && (
-                          <div className="mb-2 space-y-1">
-                            <div className="flex gap-1">
-                              <input
-                                type="text"
-                                value={newAliasInput}
-                                onChange={(e) => setNewAliasInput(e.target.value)}
-                                placeholder="별칭 추가..."
-                                className="ark-input text-[10px] py-0.5 px-1.5 flex-1 bg-black/50"
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') handleAddAlias(char.char_id)
-                                }}
-                              />
-                              <button
-                                onClick={() => handleAddAlias(char.char_id)}
-                                disabled={!newAliasInput.trim()}
-                                className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/40 text-amber-200 hover:bg-amber-500/60 disabled:opacity-50"
-                              >
-                                추가
-                              </button>
-                            </div>
-                            {aliasError && editingAliasCharId === char.char_id && (
-                              <p className="text-[9px] text-red-300">{aliasError}</p>
-                            )}
-                          </div>
-                        )}
-
                         {/* 상태 */}
                         <div className="flex items-center gap-1 mb-2">
                           {isReady ? (
@@ -688,129 +691,97 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
 
                         {/* 액션 버튼 */}
                         <div className="flex flex-wrap gap-1">
-                          {isReady ? (
-                            <>
-                              <button
-                                onClick={() => handleToggleFemaleDefault(char.char_id)}
-                                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                                  isFemaleDefault
-                                    ? 'bg-pink-500/50 text-pink-200'
-                                    : 'bg-white/10 text-white/70 hover:bg-white/20'
-                                }`}
-                              >
-                                {isFemaleDefault ? '여성 해제' : '여성'}
-                              </button>
-                              <button
-                                onClick={() => handleToggleMaleDefault(char.char_id)}
-                                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                                  isMaleDefault
-                                    ? 'bg-blue-500/50 text-blue-200'
-                                    : 'bg-white/10 text-white/70 hover:bg-white/20'
-                                }`}
-                              >
-                                {isMaleDefault ? '남성 해제' : '남성'}
-                              </button>
-                              <button
-                                onClick={() => handleToggleNarrator(char.char_id)}
-                                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                                  isNarrator
-                                    ? 'bg-purple-500/50 text-purple-200'
-                                    : 'bg-white/10 text-white/70 hover:bg-white/20'
-                                }`}
-                              >
-                                {isNarrator ? '나레이션 해제' : '나레이션'}
-                              </button>
-                              <button
-                                onClick={() => handleToggleAliasEdit(char.char_id)}
-                                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                                  isEditingAlias
-                                    ? 'bg-amber-500/50 text-amber-200'
-                                    : 'bg-white/10 text-white/70 hover:bg-white/20'
-                                }`}
-                                title="NPC 이름을 이 캐릭터에 매핑"
-                              >
-                                {isEditingAlias ? '별칭 닫기' : `별칭${aliases.length > 0 ? `(${aliases.length})` : ''}`}
-                              </button>
-                              <button
-                                onClick={() => handleSelectForTest(char.char_id)}
-                                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                                  testCharId === char.char_id
-                                    ? 'bg-cyan-500/50 text-cyan-200'
-                                    : 'bg-white/10 text-white/70 hover:bg-white/20'
-                                }`}
-                              >
-                                테스트
-                              </button>
-                              {getModelType(char.char_id) !== 'finetuned' && (
-                                <button
-                                  onClick={() => handleFinetuneCharacter(char.char_id)}
-                                  disabled={isTrainingActive}
-                                  className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/40 text-purple-200 hover:bg-purple-500/60 disabled:opacity-50"
-                                  title="실제 모델 학습 (시간 소요)"
-                                >
-                                  학습
-                                </button>
-                              )}
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                onClick={() => handlePrepareCharacter(char.char_id)}
-                                disabled={isTrainingActive}
-                                className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/40 text-green-200 hover:bg-green-500/60 disabled:opacity-50"
-                              >
-                                준비
-                              </button>
-                              <button
-                                disabled={true}
-                                className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300/40 cursor-not-allowed"
-                                title="먼저 '준비'를 완료해야 학습할 수 있습니다"
-                              >
-                                학습
-                              </button>
-                              <button
-                                onClick={() => handleToggleFemaleDefault(char.char_id)}
-                                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                                  isFemaleDefault
-                                    ? 'bg-pink-500/50 text-pink-200'
-                                    : 'bg-white/10 text-white/70 hover:bg-white/20'
-                                }`}
-                              >
-                                {isFemaleDefault ? '여성 해제' : '여성'}
-                              </button>
-                              <button
-                                onClick={() => handleToggleMaleDefault(char.char_id)}
-                                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                                  isMaleDefault
-                                    ? 'bg-blue-500/50 text-blue-200'
-                                    : 'bg-white/10 text-white/70 hover:bg-white/20'
-                                }`}
-                              >
-                                {isMaleDefault ? '남성 해제' : '남성'}
-                              </button>
-                              <button
-                                onClick={() => handleToggleNarrator(char.char_id)}
-                                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                                  isNarrator
-                                    ? 'bg-purple-500/50 text-purple-200'
-                                    : 'bg-white/10 text-white/70 hover:bg-white/20'
-                                }`}
-                              >
-                                {isNarrator ? '나레이션 해제' : '나레이션'}
-                              </button>
-                              <button
-                                onClick={() => handleToggleAliasEdit(char.char_id)}
-                                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                                  isEditingAlias
-                                    ? 'bg-amber-500/50 text-amber-200'
-                                    : 'bg-white/10 text-white/70 hover:bg-white/20'
-                                }`}
-                                title="NPC 이름을 이 캐릭터에 매핑"
-                              >
-                                {isEditingAlias ? '별칭 닫기' : `별칭${aliases.length > 0 ? `(${aliases.length})` : ''}`}
-                              </button>
-                            </>
-                          )}
+                          {(() => {
+                            const isDefault = isFemaleDefault || isMaleDefault
+                            const defaultColor = charGender === 'male'
+                              ? (isDefault ? 'bg-blue-500/50 text-blue-200' : 'bg-white/10 text-white/70 hover:bg-white/20')
+                              : (isDefault ? 'bg-pink-500/50 text-pink-200' : 'bg-white/10 text-white/70 hover:bg-white/20')
+                            return (
+                              <>
+                                {isReady ? (
+                                  <>
+                                    <button
+                                      onClick={() => handleToggleDefault(char.char_id)}
+                                      className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${defaultColor}`}
+                                    >
+                                      {isDefault ? '기본 해제' : '기본'}
+                                    </button>
+                                    <button
+                                      onClick={() => handleToggleNarrator(char.char_id)}
+                                      className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                                        isNarrator
+                                          ? 'bg-purple-500/50 text-purple-200'
+                                          : 'bg-white/10 text-white/70 hover:bg-white/20'
+                                      }`}
+                                    >
+                                      {isNarrator ? '나레이션 해제' : '나레이션'}
+                                    </button>
+                                    <button
+                                      onClick={() => handleSelectForTest(char.char_id)}
+                                      className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                                        testCharId === char.char_id
+                                          ? 'bg-cyan-500/50 text-cyan-200'
+                                          : 'bg-white/10 text-white/70 hover:bg-white/20'
+                                      }`}
+                                    >
+                                      테스트
+                                    </button>
+                                    {getModelType(char.char_id) !== 'finetuned' && (
+                                      <button
+                                        onClick={() => handleFinetuneCharacter(char.char_id)}
+                                        disabled={isTrainingActive}
+                                        className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/40 text-purple-200 hover:bg-purple-500/60 disabled:opacity-50"
+                                        title="실제 모델 학습 (시간 소요)"
+                                      >
+                                        학습
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => handleResetCharacter(char.char_id)}
+                                      disabled={isTrainingActive}
+                                      className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/30 text-red-300 hover:bg-red-500/50 disabled:opacity-50"
+                                      title="준비/학습 데이터 삭제"
+                                    >
+                                      초기화
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => handlePrepareCharacter(char.char_id)}
+                                      disabled={isTrainingActive}
+                                      className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/40 text-green-200 hover:bg-green-500/60 disabled:opacity-50"
+                                    >
+                                      준비
+                                    </button>
+                                    <button
+                                      disabled={true}
+                                      className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300/40 cursor-not-allowed"
+                                      title="먼저 '준비'를 완료해야 학습할 수 있습니다"
+                                    >
+                                      학습
+                                    </button>
+                                    <button
+                                      onClick={() => handleToggleDefault(char.char_id)}
+                                      className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${defaultColor}`}
+                                    >
+                                      {isDefault ? '기본 해제' : '기본'}
+                                    </button>
+                                    <button
+                                      onClick={() => handleToggleNarrator(char.char_id)}
+                                      className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                                        isNarrator
+                                          ? 'bg-purple-500/50 text-purple-200'
+                                          : 'bg-white/10 text-white/70 hover:bg-white/20'
+                                      }`}
+                                    >
+                                      {isNarrator ? '나레이션 해제' : '나레이션'}
+                                    </button>
+                                  </>
+                                )}
+                              </>
+                            )
+                          })()}
                         </div>
                       </div>
                     </div>
