@@ -29,11 +29,6 @@ export default function DubbingControlBar() {
     })
   }, [windows])
 
-  // 선택된 윈도우 미리보기 URL
-  const previewImageUrl = selectedWindowHwnd
-    ? ocrApi.getWindowImageUrl(selectedWindowHwnd)
-    : null
-
   // 준비 안 됐으면 렌더링 안 함 (훅 호출 이후에 조건부 return)
   if (!isPrepared) return null
 
@@ -81,15 +76,33 @@ export default function DubbingControlBar() {
           </button>
         </div>
 
-        {/* 미리보기 썸네일 (대사 영역 비율 ~8:1) */}
-        {previewImageUrl && (
-          <div className="flex-1 min-w-0 bg-ark-black/50 border border-ark-border rounded overflow-hidden">
-            <img
-              src={previewImageUrl}
-              alt="윈도우 미리보기"
-              className="w-full h-auto object-contain"
-              key={`preview-${selectedWindowHwnd}-${Date.now()}`}
-            />
+        {/* 미리보기 썸네일 - 대사 영역 + 자막 영역 */}
+        {selectedWindowHwnd && (
+          <div className="flex-1 min-w-0 flex gap-2">
+            {/* 대사 영역 */}
+            <div className="flex-1 bg-ark-black/50 border border-ark-border rounded overflow-hidden">
+              <div className="px-1.5 py-0.5 bg-ark-panel/50 border-b border-ark-border">
+                <span className="text-[10px] text-ark-orange">대사</span>
+              </div>
+              <img
+                src={ocrApi.getWindowRegionImageUrl(selectedWindowHwnd, 'dialogue')}
+                alt="대사 영역"
+                className="w-full h-auto object-contain"
+                key={`dialogue-${selectedWindowHwnd}-${Date.now()}`}
+              />
+            </div>
+            {/* 자막 영역 */}
+            <div className="flex-1 bg-ark-black/50 border border-ark-border rounded overflow-hidden">
+              <div className="px-1.5 py-0.5 bg-ark-panel/50 border-b border-ark-border">
+                <span className="text-[10px] text-purple-400">자막</span>
+              </div>
+              <img
+                src={ocrApi.getWindowRegionImageUrl(selectedWindowHwnd, 'subtitle')}
+                alt="자막 영역"
+                className="w-full h-auto object-contain"
+                key={`subtitle-${selectedWindowHwnd}-${Date.now()}`}
+              />
+            </div>
           </div>
         )}
 
