@@ -336,8 +336,8 @@ class RenderManager:
                 # 따옴표는 게임 내 역할극 강조 표시이므로 유지 (예: '오니')
                 mapping_key = char_id or (f"name:{speaker_name}" if speaker_name else None)
 
-                # 별칭 매핑 확인 (speaker_name으로 음성 있는 캐릭터 찾기)
-                alias_char_id = resolve_voice_char_id(speaker_name=speaker_name, char_id=char_id)
+                # 별칭 매핑 확인 (char_id 또는 speaker_name으로 음성 있는 캐릭터 찾기)
+                alias_char_id = resolve_voice_char_id(char_id or speaker_name)
 
                 logger.info(f"[RenderManager] 대사 {index}: char_id={char_id}, speaker_name={speaker_name}, alias={alias_char_id}")
 
