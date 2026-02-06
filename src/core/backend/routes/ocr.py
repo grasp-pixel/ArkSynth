@@ -341,13 +341,13 @@ async def detect_window_dialogue_stable(
     hwnd: Annotated[int, Query(description="윈도우 핸들")],
     lang: Annotated[str, Query(description="OCR 언어")] = "ko",
     min_confidence: Annotated[float, Query(description="최소 신뢰도")] = 0.2,
-    ignore_top_ratio: Annotated[float, Query(description="상단 무시 비율")] = 0.15,
     stability_threshold: Annotated[int, Query(description="안정화 판단 횟수")] = 3,
 ):
     """윈도우에서 대사 감지 - 타이핑 안정화 적용
 
     화면이 안정화될 때만 OCR을 수행합니다.
     타이핑 효과 중에는 is_stable=False를 반환합니다.
+    대사 영역(하단 72-89%)만 OCR합니다.
     """
     import traceback
 
@@ -369,20 +369,18 @@ async def detect_window_dialogue_stable(
         if image is None:
             raise HTTPException(status_code=400, detail="Failed to capture window")
 
-        # 상단 UI 영역 제외
-        if ignore_top_ratio > 0:
-            top_margin = int(image.height * ignore_top_ratio)
-            image = image.crop(
-                (
-                    0,
-                    top_margin,
-                    image.width,
-                    image.height,
-                )
-            )
+        # 대사 영역만 크롭
+        from ...ocr import get_dialogue_region
+        dialogue_region = get_dialogue_region(image.width, image.height)
+        dialogue_image = image.crop((
+            dialogue_region.x,
+            dialogue_region.y,
+            dialogue_region.x + dialogue_region.width,
+            dialogue_region.y + dialogue_region.height,
+        ))
 
         # 안정화 체크
-        current_hash = _compute_image_hash(image)
+        current_hash = _compute_image_hash(dialogue_image)
 
         if current_hash == state.last_image_hash:
             state.stability_count += 1
@@ -414,9 +412,9 @@ async def detect_window_dialogue_stable(
 
         state.last_stable_hash = current_hash
 
-        # OCR 실행
+        # OCR 실행 (대사 영역만)
         ocr = EasyOCRProvider(language=lang)
-        results = await ocr.recognize(image)
+        results = await ocr.recognize(dialogue_image)
 
         if results:
             sorted_results = sorted(
@@ -1007,7 +1005,6 @@ async def stream_window_dialogue(
     hwnd: Annotated[int, Query(description="윈도우 핸들")],
     lang: Annotated[str, Query(description="OCR 언어")] = "ko",
     min_confidence: Annotated[float, Query(description="최소 신뢰도")] = 0.2,
-    ignore_top_ratio: Annotated[float, Query(description="상단 무시 비율")] = 0.15,
     poll_interval: Annotated[float, Query(description="폴링 간격 (초)")] = 0.3,
     stability_threshold: Annotated[int, Query(description="안정화 임계값")] = 3,
 ):
@@ -1015,6 +1012,7 @@ async def stream_window_dialogue(
 
     새로운 대사가 감지될 때만 이벤트를 전송합니다.
     타이핑 효과가 끝난 후 안정화된 텍스트만 전송합니다.
+    대사 영역(하단 72-89%)만 OCR합니다.
     """
     import traceback
 
@@ -1079,13 +1077,18 @@ async def stream_window_dialogue(
                         await asyncio.sleep(poll_interval * 2)
                         continue
 
-                    # 상단 UI 영역 제외
-                    if ignore_top_ratio > 0:
-                        top_margin = int(image.height * ignore_top_ratio)
-                        image = image.crop((0, top_margin, image.width, image.height))
+                    # 대사 영역만 크롭
+                    from ...ocr import get_dialogue_region
+                    dialogue_region = get_dialogue_region(image.width, image.height)
+                    dialogue_image = image.crop((
+                        dialogue_region.x,
+                        dialogue_region.y,
+                        dialogue_region.x + dialogue_region.width,
+                        dialogue_region.y + dialogue_region.height,
+                    ))
 
                     # 안정화 체크
-                    current_hash = _compute_image_hash(image)
+                    current_hash = _compute_image_hash(dialogue_image)
 
                     if current_hash == state.last_image_hash:
                         state.stability_count += 1
@@ -1125,8 +1128,8 @@ async def stream_window_dialogue(
                         async with gpu_semaphore_context():
                             print(f"[SSE] GPU 세마포어 통과", flush=True)
                             results = await asyncio.wait_for(
-                                ocr.recognize(image),
-                                timeout=10.0,  # 10초 타임아웃
+                                ocr.recognize(dialogue_image),
+                                timeout=10.0,
                             )
                         print(
                             f"[SSE] OCR 완료: {len(results) if results else 0}개 결과, {time.time() - ocr_start:.2f}초",

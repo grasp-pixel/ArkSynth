@@ -378,8 +378,10 @@ class EasyOCRProvider(OCRProvider):
             upper = np.array([180, 50, 180])
         else:  # white
             # 흰색/밝은 글자: 채도가 낮고 밝기가 높음 (대사 본문)
-            lower = np.array([0, 0, 180])
-            upper = np.array([180, 50, 255])
+            # V 하한 180→150 (반투명 배경 위 텍스트도 포함)
+            # 채도 상한 50→60 (약간의 색상 허용)
+            lower = np.array([0, 0, 150])
+            upper = np.array([180, 60, 255])
 
         mask = cv2.inRange(img_hsv, lower, upper)
 
