@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react'
 import { useAppStore } from '../stores/appStore'
-import { ttsApi, voiceApi, API_BASE, type TTSEngine } from '../services/api'
+import { ttsApi, voiceApi, API_BASE } from '../services/api'
 
 type SortBy = 'dialogues' | 'files' | 'name' | 'id'
 
@@ -46,7 +46,6 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
   // 테스트 관련 상태
   const [testCharId, setTestCharId] = useState<string | null>(null)
   const [testText, setTestText] = useState('의학 테스트 보고서 참고 결과 비감염자로 확인.')
-  const [testEngine, setTestEngine] = useState<TTSEngine>('gpt_sovits')
   const [isTesting, setIsTesting] = useState(false)
   const [testError, setTestError] = useState<string | null>(null)
   const testAudioRef = useRef<HTMLAudioElement | null>(null)
@@ -277,7 +276,7 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
     }
 
     try {
-      const audioBlob = await ttsApi.synthesize(testText.trim(), testCharId, testEngine)
+      const audioBlob = await ttsApi.synthesize(testText.trim(), testCharId, 'gpt_sovits')
       const audioUrl = URL.createObjectURL(audioBlob)
 
       const audio = new Audio(audioUrl)
@@ -859,14 +858,6 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
                 .map(c => (
                   <option key={c.char_id} value={c.char_id}>{c.name}</option>
                 ))}
-            </select>
-            <select
-              value={testEngine}
-              onChange={(e) => setTestEngine(e.target.value as TTSEngine)}
-              className="ark-input text-sm w-36"
-              title="TTS 엔진 선택"
-            >
-              <option value="gpt_sovits">GPT-SoVITS</option>
             </select>
           </div>
           <div className="flex items-center gap-3">
