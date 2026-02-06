@@ -41,7 +41,7 @@ export default function DubbingControlBar() {
     <div className="bg-ark-dark border-t-2 border-ark-orange/30">
       <div className="flex items-center gap-4 px-4 py-4">
         {/* 윈도우 선택 */}
-        <div className={`flex items-center gap-2 flex-1 min-w-0 px-3 py-2 rounded-lg transition-all duration-300 ${
+        <div className={`flex items-center gap-2 flex-[2] min-w-0 px-3 py-2 rounded-lg transition-all duration-300 ${
           !selectedWindowHwnd && !isDubbingMode
             ? 'bg-ark-orange/10 border-2 border-ark-orange/60 ark-pulse'
             : 'border-2 border-transparent'
