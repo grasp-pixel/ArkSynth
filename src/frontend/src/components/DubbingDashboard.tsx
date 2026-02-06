@@ -26,6 +26,8 @@ export default function DubbingDashboard() {
     isRendering,
     renderProgress,
     cancelRender,
+    // 경고
+    dubbingWarning,
   } = useAppStore()
 
   if (!isDubbingMode) {
@@ -167,7 +169,7 @@ export default function DubbingDashboard() {
         <div className="w-px h-10 bg-ark-border" />
 
         {/* 재생 상태 */}
-        <div className="flex items-center gap-3 min-w-40">
+        <div className="flex items-center gap-3 min-w-48">
           {isPlaying && currentDialogue ? (
             <div className="flex items-center gap-2">
               <span className="text-ark-orange ark-pulse">▶</span>
@@ -175,6 +177,8 @@ export default function DubbingDashboard() {
                 {currentDialogue.speaker_name || '나레이터'}
               </span>
             </div>
+          ) : dubbingWarning ? (
+            <span className="text-yellow-500 text-xs">{dubbingWarning}</span>
           ) : (
             <span className="text-ark-gray text-sm">재생 대기</span>
           )}

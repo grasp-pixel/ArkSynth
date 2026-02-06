@@ -86,6 +86,7 @@ interface AppState {
   matchedIndex: number  // 매칭된 대사 인덱스
   matchSimilarity: number  // 매칭 유사도
   isMatching: boolean  // 매칭 진행 중
+  dubbingWarning: string | null  // 더빙 모드 경고 (캐시 없음 등)
   showCapturePreview: boolean  // 캡처 미리보기 표시
 
   // 더빙 준비 관련
@@ -452,6 +453,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   matchedIndex: -1,
   matchSimilarity: 0,
   isMatching: false,
+  dubbingWarning: null,
   showCapturePreview: false,
 
   // 더빙 준비 초기 상태
@@ -772,7 +774,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
 
-    set({ isPlaying: true, currentDialogue: dialogue })
+    set({ isPlaying: true, currentDialogue: dialogue, dubbingWarning: null })
 
     if ((isCached || isRendered) && selectedEpisodeId && dialogueIndex >= 0) {
       const cachedAudioUrl = renderApi.getAudioUrl(selectedEpisodeId, dialogueIndex)
@@ -803,8 +805,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         // 더빙 모드 또는 렌더링 중이면 실시간 합성 차단
         const { isDubbingMode: inDubbingMode } = get()
         if (inDubbingMode || isRendering) {
-          console.log(`[playDialogue] 실시간 합성 차단 (더빙모드=${inDubbingMode}, 렌더링중=${isRendering})`)
-          set({ isPlaying: false, currentDialogue: null })
+          set({
+            isPlaying: false,
+            currentDialogue: null,
+            dubbingWarning: '사전 더빙이 필요합니다. 먼저 에피소드 더빙을 진행하세요.',
+          })
           isPlayStarting = false
           return
         }
@@ -822,8 +827,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     // 캐시 URL이 없는 경우 (더빙 모드 또는 렌더링 중이면 차단)
     const { isDubbingMode } = get()
     if (isDubbingMode || isRendering) {
-      console.log(`[playDialogue] 캐시 없음 - 실시간 합성 차단 (더빙모드=${isDubbingMode}, 렌더링중=${isRendering})`)
-      set({ isPlaying: false, currentDialogue: null })
+      set({
+        isPlaying: false,
+        currentDialogue: null,
+        dubbingWarning: '사전 더빙이 필요합니다. 먼저 에피소드 더빙을 진행하세요.',
+      })
       isPlayStarting = false
       return
     }
@@ -931,8 +939,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   getSpeakerVoice: (speakerId: string, speakerName?: string): string | null => {
     const { trainedCharIds, speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices, defaultVoices, voiceCharacters, episodeCharacters } = get()
 
-    console.log('[getSpeakerVoice] 입력:', { speakerId, speakerName })
-
     // 1. 수동 매핑 (사용자가 명시적으로 설정한 매핑이 최우선)
     const mapping = speakerVoiceMap[speakerId]
     if (mapping) {
@@ -940,20 +946,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (mapping === AUTO_VOICE_FEMALE) {
         if (defaultFemaleVoices.length > 0) {
           const hash = simpleHash(speakerId)
-          const result = defaultFemaleVoices[hash % defaultFemaleVoices.length]
-          console.log('[getSpeakerVoice] 결과: 수동 매핑 (자동 여성) ->', result)
-          return result
+          return defaultFemaleVoices[hash % defaultFemaleVoices.length]
         }
       } else if (mapping === AUTO_VOICE_MALE) {
         if (defaultMaleVoices.length > 0) {
           const hash = simpleHash(speakerId)
-          const result = defaultMaleVoices[hash % defaultMaleVoices.length]
-          console.log('[getSpeakerVoice] 결과: 수동 매핑 (자동 남성) ->', result)
-          return result
+          return defaultMaleVoices[hash % defaultMaleVoices.length]
         }
       } else {
-        // 일반 캐릭터 매핑
-        console.log('[getSpeakerVoice] 결과: 수동 매핑 ->', mapping)
         return mapping
       }
     }
@@ -969,18 +969,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     const voiceCharId = episodeChar?.voice_char_id || speakerId
 
-    console.log('[getSpeakerVoice] voiceCharId:', voiceCharId, 'hasVoice:', episodeChar?.has_voice)
-
     // 3. voice_char_id가 음성 파일을 가지고 있으면 사용 (별칭 기반 "올바른" 음성)
     const hasOwnVoice = voiceCharacters.some(v => v.char_id === voiceCharId)
     if (hasOwnVoice) {
-      console.log('[getSpeakerVoice] 결과: 캐릭터 음성 사용 ->', voiceCharId)
       return voiceCharId
     }
 
     // 4. 학습된 음성 있으면 사용
     if (trainedCharIds.has(voiceCharId)) {
-      console.log('[getSpeakerVoice] 결과: 학습된 음성 사용 ->', voiceCharId)
       return voiceCharId
     }
 
@@ -993,28 +989,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     // 남성이고 남성 음성이 있으면 남성 음성 사용
     if (isMale && defaultMaleVoices.length > 0) {
       const hash = simpleHash(speakerId)
-      const result = defaultMaleVoices[hash % defaultMaleVoices.length]
-      console.log('[getSpeakerVoice] 결과: 기본 남성 음성 ->', result)
-      return result
+      return defaultMaleVoices[hash % defaultMaleVoices.length]
     }
 
     // 여성 음성이 있으면 여성 음성 사용 (기본)
     if (defaultFemaleVoices.length > 0) {
       const hash = simpleHash(speakerId)
-      const result = defaultFemaleVoices[hash % defaultFemaleVoices.length]
-      console.log('[getSpeakerVoice] 결과: 기본 여성 음성 ->', result)
-      return result
+      return defaultFemaleVoices[hash % defaultFemaleVoices.length]
     }
 
     // 하위 호환: 기존 defaultVoices 사용
     if (defaultVoices.length > 0) {
       const hash = simpleHash(speakerId)
-      const result = defaultVoices[hash % defaultVoices.length]
-      console.log('[getSpeakerVoice] 결과: 기본 음성 (레거시) ->', result)
-      return result
+      return defaultVoices[hash % defaultVoices.length]
     }
-
-    console.log('[getSpeakerVoice] 결과: 음성 없음 (null)')
 
     return null
   },
@@ -1369,7 +1357,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     // 중복 텍스트 스킵 (이미 매칭한 텍스트)
     if (detectedText === lastMatchedText) {
-      console.log('[Match] Skipping - same text already matched')
       return null
     }
 
@@ -1396,7 +1383,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       // 이미 매칭 중이면 스킵
       if (state.isMatching) {
-        console.log('[Match] Skipping - already matching')
         return null
       }
 
@@ -1423,19 +1409,16 @@ export const useAppStore = create<AppState>((set, get) => ({
 
           // 자동 재생 (새 대사이면 현재 재생 중단 후 재생)
           if (autoPlayOnMatch && isNewDialogue) {
-            console.log('[Match] 새 대사 자동 재생:', result.dialogue.id)
+            console.log('[Match] 새 대사:', result.dialogue.id)
             if (isPlaying) {
               stopPlayback()
             }
             playDialogue(result.dialogue)
           }
         } else {
-          set({
-            matchedDialogue: null,
-            matchedIndex: -1,
-            matchSimilarity: 0,
-            isMatching: false,
-          })
+          // 매칭 실패 시 기존 결과 유지 (OCR 불안정성 대응)
+          // 새 대사로 전환 시에만 결과 교체됨
+          set({ isMatching: false })
         }
 
         return result
