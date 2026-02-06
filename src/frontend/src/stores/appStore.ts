@@ -598,10 +598,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectStoryGroup: async (groupId: string) => {
     const { selectedGroupId: prevGroupId, isPrepared, isDubbingMode, stopDubbing, cancelPrepare } = get()
 
-    // 다른 그룹 선택 시 더빙/준비 상태 취소
+    // 다른 그룹 선택 시 더빙/준비 상태 취소 + 에피소드 선택 초기화
     if (prevGroupId !== groupId) {
       if (isDubbingMode) stopDubbing()
       if (isPrepared) cancelPrepare()
+      // 에피소드 선택 초기화 → GroupSetupPanel 표시되도록
+      set({ selectedEpisodeId: null, selectedEpisode: null })
     }
 
     set({ selectedGroupId: groupId, isLoadingGroupEpisodes: true })

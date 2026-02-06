@@ -13,6 +13,7 @@ export default function VoiceSetupPanel() {
     autoPlayOnMatch,
     toggleAutoPlay,
     cancelPrepare,
+    clearEpisode,
     // 학습 관련
     isTrainingActive,
     currentTrainingJob,
@@ -37,14 +38,6 @@ export default function VoiceSetupPanel() {
     cancelRender,
     deleteRenderCache,
     loadRenderStatus,
-    // 그룹 렌더링
-    isGroupRendering,
-    groupRenderProgress,
-    groupRenderError,
-    startGroupRender,
-    cancelGroupRender,
-    // 그룹 정보
-    selectedGroupId,
     // 음성 매핑
     speakerVoiceMap,
     defaultFemaleVoices,
@@ -53,6 +46,7 @@ export default function VoiceSetupPanel() {
     // 모델 타입 조회
     trainedModels,
     canFinetune,
+    getModelType,
     // 나레이션
     narratorCharId,
   } = useAppStore()
@@ -256,12 +250,20 @@ export default function VoiceSetupPanel() {
           </svg>
           더빙 설정
         </h3>
-        <button
-          onClick={cancelPrepare}
-          className="text-ark-gray hover:text-ark-white text-sm"
-        >
-          취소
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={clearEpisode}
+            className="text-ark-cyan hover:text-ark-white text-sm"
+          >
+            ← 그룹
+          </button>
+          <button
+            onClick={cancelPrepare}
+            className="text-ark-gray hover:text-ark-white text-sm"
+          >
+            취소
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -297,6 +299,10 @@ export default function VoiceSetupPanel() {
                     {(() => {
                       const voiceId = char.voice_char_id || char.char_id
                       if (voiceId && trainedCharIds.has(voiceId)) {
+                        const modelType = getModelType(voiceId)
+                        if (modelType === 'finetuned') {
+                          return <span className="text-xs text-purple-400 font-medium">학습됨</span>
+                        }
                         return <span className="text-xs text-green-400 font-medium">준비됨</span>
                       } else if (char.has_voice) {
                         return <span className="text-xs text-ark-yellow">준비 필요</span>
@@ -456,6 +462,9 @@ export default function VoiceSetupPanel() {
               <p className="text-xs text-ark-gray/50 text-center">
                 * 준비: Zero-shot / 학습: 모델 Fine-tuning
               </p>
+              <p className="text-xs text-green-400/70 text-center mt-1">
+                * 음성 학습 없이 준비만으로도 더빙 실행 가능
+              </p>
             </div>
           ) : characterStats.withVoice > 0 ? (
             // 모든 캐릭터 준비 완료
@@ -594,9 +603,12 @@ export default function VoiceSetupPanel() {
                   {renderProgress.current_text.substring(0, 40)}...
                 </p>
               )}
+              <p className="text-xs text-ark-cyan/70 mt-1">
+                * 사전 더빙 중에도 더빙 시작으로 실시간 재생 가능
+              </p>
               <button
                 onClick={cancelRender}
-                className="w-full ark-btn text-sm text-red-400 hover:text-red-300 border-red-400/30"
+                className="w-full ark-btn text-sm text-red-400 hover:text-red-300 border-red-400/30 mt-2"
               >
                 렌더링 취소
               </button>
@@ -710,96 +722,6 @@ export default function VoiceSetupPanel() {
           )}
         </div>
 
-        {/* 그룹 사전 더빙 */}
-        <div className="p-4 border-b border-ark-border">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-medium text-ark-gray">그룹 사전 더빙</h4>
-            {groupRenderProgress?.status === 'completed' && (
-              <span className="text-xs text-green-400">완료됨</span>
-            )}
-          </div>
-
-          {!selectedGroupId ? (
-            <p className="text-xs text-ark-gray/70">
-              스토리 그룹을 먼저 선택하세요
-            </p>
-          ) : isGroupRendering && groupRenderProgress ? (
-            // 그룹 렌더링 진행 중
-            <div className="space-y-3">
-              {/* 전체 진행률 */}
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-ark-white">
-                  에피소드 {groupRenderProgress.completed_episodes}/{groupRenderProgress.total_episodes}
-                </span>
-                <span className="text-ark-orange">
-                  {groupRenderProgress.overall_progress.toFixed(0)}%
-                </span>
-              </div>
-              <div className="w-full bg-ark-black rounded-full h-2 overflow-hidden">
-                <div
-                  className="bg-ark-orange h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${groupRenderProgress.overall_progress}%` }}
-                />
-              </div>
-
-              {/* 현재 에피소드 */}
-              {groupRenderProgress.current_episode_id && (
-                <div className="bg-ark-black/50 rounded p-2 border border-ark-border">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-ark-gray">현재:</span>
-                    <span className="text-ark-white truncate ml-2 flex-1 text-right">
-                      {groupRenderProgress.current_episode_id.split('/').pop()}
-                    </span>
-                  </div>
-                  <div className="w-full bg-ark-black rounded-full h-1 mt-2 overflow-hidden">
-                    <div
-                      className="bg-cyan-500 h-1 rounded-full transition-all duration-300"
-                      style={{ width: `${(groupRenderProgress.current_episode_progress || 0) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              <button
-                onClick={cancelGroupRender}
-                className="w-full ark-btn text-sm text-red-400 hover:text-red-300 border-red-400/30"
-              >
-                그룹 렌더링 취소
-              </button>
-            </div>
-          ) : (
-            // 그룹 렌더링 시작 가능
-            <div className="space-y-2">
-              <p className="text-xs text-ark-gray/70">
-                선택된 그룹의 모든 에피소드를 한번에 렌더링합니다
-              </p>
-              <button
-                onClick={() => startGroupRender(selectedGroupId)}
-                disabled={!gptSovitsStatus?.api_running || isRendering}
-                className={`w-full ark-btn ark-btn-primary text-sm ${
-                  (!gptSovitsStatus?.api_running || isRendering) ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-              >
-                그룹 전체 사전 더빙
-              </button>
-              {!gptSovitsStatus?.api_running && (
-                <p className="text-xs text-ark-yellow">
-                  * GPT-SoVITS를 먼저 시작하세요
-                </p>
-              )}
-              {isRendering && (
-                <p className="text-xs text-ark-yellow">
-                  * 현재 에피소드 렌더링이 완료된 후 시작 가능합니다
-                </p>
-              )}
-              {groupRenderError && (
-                <p className="text-xs text-red-400">
-                  {groupRenderError}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   )

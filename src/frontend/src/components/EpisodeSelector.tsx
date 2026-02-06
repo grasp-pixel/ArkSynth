@@ -14,6 +14,7 @@ export default function EpisodeSelector() {
     isLoadingGroupEpisodes,
     selectStoryGroup,
     selectEpisode,
+    clearEpisode,
   } = useAppStore()
 
   const [searchTerm, setSearchTerm] = useState('')
@@ -21,7 +22,8 @@ export default function EpisodeSelector() {
   // 그룹 토글 (한 번에 하나만 펼쳐짐)
   const toggleGroup = (groupId: string) => {
     if (selectedGroupId === groupId) {
-      // 이미 선택된 그룹 클릭 시 접기 (선택 해제하지 않음, 에피소드는 유지)
+      // 이미 선택된 그룹 클릭 시 → 에피소드 선택 해제 (그룹 설정으로 돌아감)
+      clearEpisode()
       return
     }
     // 새 그룹 펼치기 + 에피소드 로드 (이전 그룹은 자동으로 접힘)

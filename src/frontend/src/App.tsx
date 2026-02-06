@@ -3,6 +3,7 @@ import { useAppStore } from './stores/appStore'
 import EpisodeSelector from './components/EpisodeSelector'
 import DialogueViewer from './components/DialogueViewer'
 import VoiceSetupPanel from './components/VoiceSetupPanel'
+import GroupSetupPanel from './components/GroupSetupPanel'
 import DubbingDashboard from './components/DubbingDashboard'
 import DubbingControlBar from './components/DubbingControlBar'
 import StatusBar from './components/StatusBar'
@@ -12,6 +13,7 @@ import CharacterManagerModal from './components/CharacterManagerModal'
 function App() {
   const {
     selectedEpisode,
+    selectedEpisodeId,
     selectedGroupId,
     backendStatus,
     checkBackendStatus,
@@ -45,6 +47,8 @@ function App() {
     isRightPanelCollapsed,
     toggleLeftPanel,
     toggleRightPanel,
+    // 에피소드 선택 해제
+    clearEpisode,
   } = useAppStore()
 
   useEffect(() => {
@@ -305,72 +309,82 @@ function App() {
             isRightPanelCollapsed ? 'w-0' : 'w-[400px]'
           }`}>
             <div className="w-[400px] h-full overflow-y-auto flex flex-col">
-              {isPrepared ? (
-                <VoiceSetupPanel />
+              {selectedGroupId ? (
+                selectedEpisodeId ? (
+                  isPrepared ? (
+                    <VoiceSetupPanel />
+                  ) : (
+                    <div className="flex flex-col h-full">
+                      {/* 더빙 준비 버튼 */}
+                      <div className="p-4 border-b border-ark-border bg-ark-panel/50">
+                        <button
+                          onClick={handlePrepare}
+                          disabled={isLoadingCharacters}
+                          className={`w-full flex items-center justify-center gap-2 px-4 py-3 ark-corner-cut font-bold transition-all ${
+                            !isLoadingCharacters
+                              ? 'ark-btn-dual'
+                              : 'bg-ark-panel border border-ark-border text-ark-gray/50 cursor-not-allowed'
+                          }`}
+                        >
+                          {isLoadingCharacters ? (
+                            <span className="ark-pulse">로딩 중...</span>
+                          ) : (
+                            <>
+                              <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
+                                <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                              </svg>
+                              <span>에피소드 더빙 설정</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <div className="flex-1 p-4 space-y-4">
+                        <p className="text-xs text-ark-gray text-center">
+                          에피소드별 상세 설정을 하려면 위 버튼을 누르세요
+                        </p>
+                        <button
+                          onClick={clearEpisode}
+                          className="w-full ark-btn text-sm text-ark-cyan hover:text-ark-white border-ark-cyan/30"
+                        >
+                          ← 그룹 설정으로
+                        </button>
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  <GroupSetupPanel />
+                )
               ) : (
-              <div className="flex flex-col h-full">
-                {/* 준비 버튼 */}
-                <div className="p-4 border-b border-ark-border bg-ark-panel/50">
-                  <button
-                    onClick={handlePrepare}
-                    disabled={!selectedGroupId || isLoadingCharacters}
-                    className={`w-full flex items-center justify-center gap-2 px-4 py-3 ark-corner-cut font-bold transition-all ${
-                      selectedGroupId && !isLoadingCharacters
-                        ? 'ark-btn-dual'
-                        : 'bg-ark-panel border border-ark-border text-ark-gray/50 cursor-not-allowed'
-                    }`}
-                  >
-                    {isLoadingCharacters ? (
-                      <span className="ark-pulse">로딩 중...</span>
-                    ) : (
-                      <>
-                        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
-                          <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                <div className="flex flex-col h-full">
+                  {/* 안내 */}
+                  <div className="flex-1 p-4 space-y-4">
+                    <div className="ark-info-box ark-corner-cut text-xs text-ark-gray space-y-3">
+                      <h4 className="font-medium text-ark-cyan flex items-center gap-2">
+                        <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
                         </svg>
-                        <span>더빙 준비</span>
-                      </>
-                    )}
-                  </button>
-                  {!selectedGroupId && (
-                    <p className="mt-2 text-xs text-ark-gray text-center">
-                      스토리 그룹을 먼저 선택하세요
-                    </p>
-                  )}
-                </div>
-
-                {/* 안내 */}
-                <div className="flex-1 p-4 space-y-4">
-                  <div className="ark-info-box ark-corner-cut text-xs text-ark-gray space-y-3">
-                    <h4 className="font-medium text-ark-cyan flex items-center gap-2">
-                      <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
-                      </svg>
-                      사용 방법
-                    </h4>
-                    <p className="flex items-start gap-2">
-                      <span className="text-ark-orange font-bold">1.</span>
-                      상단의 "GPT-SoVITS 시작" 버튼을 눌러 TTS 엔진을 시작하세요
-                    </p>
-                    <p className="flex items-start gap-2">
-                      <span className="text-ark-orange font-bold">2.</span>
-                      왼쪽에서 스토리 그룹을 선택하세요
-                    </p>
-                    <p className="flex items-start gap-2">
-                      <span className="text-ark-orange font-bold">3.</span>
-                      에피소드를 선택하여 대사를 확인하세요
-                    </p>
-                    <p className="flex items-start gap-2">
-                      <span className="text-ark-orange font-bold">4.</span>
-                      "더빙 준비" 버튼을 눌러 설정을 시작하세요
-                    </p>
-                    <p className="flex items-start gap-2">
-                      <span className="text-ark-orange font-bold">5.</span>
-                      캐릭터 음성을 준비하고 더빙을 시작하세요
-                    </p>
+                        사용 방법
+                      </h4>
+                      <p className="flex items-start gap-2">
+                        <span className="text-ark-orange font-bold">1.</span>
+                        상단의 "GPT-SoVITS 시작" 버튼을 눌러 TTS 엔진을 시작하세요
+                      </p>
+                      <p className="flex items-start gap-2">
+                        <span className="text-ark-orange font-bold">2.</span>
+                        왼쪽에서 스토리 그룹을 선택하세요
+                      </p>
+                      <p className="flex items-start gap-2">
+                        <span className="text-ark-orange font-bold">3.</span>
+                        그룹 설정에서 일괄 작업을 실행하거나
+                      </p>
+                      <p className="flex items-start gap-2">
+                        <span className="text-ark-orange font-bold">4.</span>
+                        에피소드를 선택하여 개별 설정을 하세요
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
             </div>
           </aside>
         </div>
