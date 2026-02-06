@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from dataclasses import dataclass
 
+from ..common.language_codes import LOCALE_TO_SERVER
+
 
 @dataclass
 class VoiceInfo:
@@ -25,14 +27,17 @@ class CharacterVoiceMapper:
         self,
         extracted_path: str | Path,
         gamedata_path: str | Path | None = None,
+        default_lang: str = "voice_kr",
     ):
         """
         Args:
             extracted_path: 추출된 음성 파일 루트 경로 (extracted/)
             gamedata_path: ArknightsGameData 경로 (캐릭터 이름 로드용)
+            default_lang: 기본 음성 언어 폴더 (voice_kr, voice_cn 등)
         """
         self.extracted_path = Path(extracted_path)
         self.gamedata_path = Path(gamedata_path) if gamedata_path else None
+        self.default_lang = default_lang
 
         # 캐시
         self._voice_info_cache: dict[str, VoiceInfo] | None = None
@@ -49,7 +54,8 @@ class CharacterVoiceMapper:
         # 캐릭터 이름 캐시만 초기화
         self._character_names = None
 
-    def scan_voice_folders(self, lang: str = "voice") -> dict[str, VoiceInfo]:
+    def scan_voice_folders(self, lang: str | None = None) -> dict[str, VoiceInfo]:
+        lang = lang or self.default_lang
         """음성 폴더 스캔하여 캐릭터별 정보 수집
 
         Args:
@@ -89,16 +95,17 @@ class CharacterVoiceMapper:
         self._voice_info_cache = result
         return result
 
-    def get_voice_files(self, char_id: str, lang: str = "voice") -> list[Path]:
+    def get_voice_files(self, char_id: str, lang: str | None = None) -> list[Path]:
         """캐릭터의 음성 파일 목록 반환
 
         Args:
             char_id: 캐릭터 ID
-            lang: 언어 폴더명
+            lang: 언어 폴더명 (None이면 default_lang 사용)
 
         Returns:
             list[Path]: 음성 파일 경로 목록
         """
+        lang = lang or self.default_lang
         voice_folder = self.extracted_path / lang / char_id
 
         if not voice_folder.exists():
@@ -110,13 +117,15 @@ class CharacterVoiceMapper:
 
         return sorted(files)
 
-    def has_voice(self, char_id: str, lang: str = "voice") -> bool:
+    def has_voice(self, char_id: str, lang: str | None = None) -> bool:
         """캐릭터 음성 존재 여부 확인"""
+        lang = lang or self.default_lang
         voice_folder = self.extracted_path / lang / char_id
         return voice_folder.exists() and any(voice_folder.iterdir())
 
-    def get_available_characters(self, lang: str = "voice") -> list[str]:
+    def get_available_characters(self, lang: str | None = None) -> list[str]:
         """음성이 있는 캐릭터 목록 반환"""
+        lang = lang or self.default_lang
         voice_info = self.scan_voice_folders(lang)
         return sorted(voice_info.keys())
 
@@ -132,10 +141,8 @@ class CharacterVoiceMapper:
         if self.gamedata_path is None:
             return {}
 
-        # arkprts 경로와 기존 경로 모두 시도
-        # 언어 코드 매핑: ko_KR -> kr, en_US -> en, ja_JP -> jp, zh_CN -> cn
-        lang_to_server = {"ko_KR": "kr", "en_US": "en", "ja_JP": "jp", "zh_CN": "cn"}
-        server_code = lang_to_server.get(game_lang, game_lang)
+        # arkprts 경로와 기존 경로 모두 시도 (공통 모듈 사용)
+        server_code = LOCALE_TO_SERVER.get(game_lang, game_lang)
 
         # 후보 경로들 (우선순위 순)
         candidates = [
@@ -171,8 +178,9 @@ class CharacterVoiceMapper:
         names = self.load_character_names(game_lang)
         return names.get(char_id, char_id)
 
-    def get_voice_summary(self, lang: str = "voice") -> dict:
+    def get_voice_summary(self, lang: str | None = None) -> dict:
         """음성 데이터 요약 정보 반환"""
+        lang = lang or self.default_lang
         voice_info = self.scan_voice_folders(lang)
 
         total_files = sum(v.file_count for v in voice_info.values())
@@ -189,8 +197,9 @@ class CharacterVoiceMapper:
             },
         }
 
-    def export_mapping(self, output_path: str | Path, lang: str = "voice") -> None:
+    def export_mapping(self, output_path: str | Path, lang: str | None = None) -> None:
         """캐릭터-음성 매핑을 JSON으로 내보내기"""
+        lang = lang or self.default_lang
         voice_info = self.scan_voice_folders(lang)
         names = self.load_character_names()
 

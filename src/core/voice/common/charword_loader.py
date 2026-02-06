@@ -9,6 +9,8 @@ import logging
 import re
 from pathlib import Path
 
+from ...common.language_codes import SHORT_LANG_MAP
+
 logger = logging.getLogger(__name__)
 
 
@@ -57,14 +59,8 @@ def load_charword_transcripts(
         예: {"CN_001": {"text": "기본 대사...", "title": "어시스턴트 임명"},
              "CN_001_boc6": {"text": "스킨 대사...", "title": "어시스턴트 임명"}}
     """
-    # 언어 코드 매핑
-    lang_map = {
-        "ko": ("ko_KR", "kr"),
-        "ja": ("ja_JP", "jp"),
-        "zh": ("zh_CN", "zh"),
-        "en": ("en_US", "en"),
-    }
-    game_lang, server_code = lang_map.get(language, ("ko_KR", "kr"))
+    # 언어 코드 매핑 (공통 모듈 사용)
+    game_lang, server_code = SHORT_LANG_MAP.get(language, ("ko_KR", "kr"))
 
     # 후보 경로들 (우선순위 순)
     candidates = [

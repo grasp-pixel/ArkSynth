@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Iterator
 
 from ..character import CharacterIdNormalizer
+from ..common.language_codes import LOCALE_TO_SERVER
 from ..models.story import Character, Episode, StoryCategory, StoryGroup
 from .parser import StoryParser
 
@@ -57,15 +58,8 @@ class StoryLoader:
         """
         paths = {}
 
-        # 언어 코드 매핑 (표준 코드 -> arkprts 서버 코드)
-        lang_to_server = {
-            "ko_KR": "kr",
-            "en_US": "en",
-            "ja_JP": "jp",
-            "zh_CN": "cn",
-        }
-
-        for lang, server in lang_to_server.items():
+        # 언어 코드 매핑 (공통 모듈 사용)
+        for lang, server in LOCALE_TO_SERVER.items():
             # arkprts 경로 (우선)
             arkprts_path = self.data_root / "gamedata" / server / "gamedata"
 
