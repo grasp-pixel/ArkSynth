@@ -356,6 +356,7 @@ export const simpleHash = (str: string): number => {
 let currentAudio: HTMLAudioElement | null = null
 let lastPlayStartTime = 0  // 마지막 재생 시작 시간 (중복 방지)
 let lastPlayedDialogueId: string | null = null  // 마지막 재생한 대사 ID
+let isPlayStarting = false  // 재생 시작 중 플래그 (중복 요청 방지)
 
 // 실시간 TTS 합성 및 재생 헬퍼 함수
 async function synthesizeAndPlayDialogue(
@@ -679,18 +680,27 @@ export const useAppStore = create<AppState>((set, get) => ({
     } = get()
 
     // === 중복 재생 방지 ===
-    // 1. 이미 같은 대사를 재생 중이면 스킵
+    // 1. 재생 시작 중이면 스킵 (비동기 처리 중 중복 호출 방지)
+    if (isPlayStarting) {
+      console.log('[playDialogue] 중복 스킵 - 재생 시작 중')
+      return
+    }
+
+    // 2. 이미 같은 대사를 재생 중이면 스킵
     if (isPlaying && currentDialogue?.id === dialogue.id) {
       console.log('[playDialogue] 중복 스킵 - 이미 재생 중:', dialogue.id)
       return
     }
 
-    // 2. 마지막 재생 시작으로부터 0.5초 이내면 스킵 (빠른 연속 호출 방지)
+    // 3. 마지막 재생 시작으로부터 0.5초 이내면 스킵 (빠른 연속 호출 방지)
     const now = Date.now()
     if (now - lastPlayStartTime < 500) {
       console.log('[playDialogue] 중복 스킵 - 0.5초 이내 연속 호출')
       return
     }
+
+    // 즉시 플래그 설정 (비동기 처리 전)
+    isPlayStarting = true
     lastPlayStartTime = now
     lastPlayedDialogueId = dialogue.id
 
@@ -734,6 +744,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // char_id 없으면 재생 불가
     if (!charIdToUse) {
       console.warn('[playDialogue] 캐릭터 ID 없음 - 재생 불가')
+      isPlayStarting = false
       return
     }
 
@@ -756,6 +767,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!isRendered) {
         // 아직 렌더링되지 않은 대사 - 재생 불가
         console.log('[playDialogue] 렌더링 중 - 아직 완료되지 않은 대사, 스킵:', dialogueIndex)
+        isPlayStarting = false
         return
       }
     }
@@ -776,46 +788,53 @@ export const useAppStore = create<AppState>((set, get) => ({
           set({ isPlaying: false, currentDialogue: null })
         }
 
-        // 캐시 재생 실패 시 - 더빙 모드 또는 렌더링 중이면 실시간 합성 차단
-        currentAudio.onerror = async () => {
-          console.warn('[playDialogue] 캐시 재생 실패')
-          currentAudio = null
-          const { isRendering: stillRendering, isDubbingMode: inDubbingMode } = get()
-          if (inDubbingMode || stillRendering) {
-            console.log(`[playDialogue] 실시간 합성 차단 (더빙모드=${inDubbingMode}, 렌더링중=${stillRendering})`)
-            set({ isPlaying: false, currentDialogue: null })
-            return
-          }
-          // 테스트 모드에서만 실시간 합성으로 폴백
-          await synthesizeAndPlayDialogue(dialogue.text, charIdToUse!, set, get)
+        // 캐시 재생 실패 시 로깅 (실제 폴백은 catch 블록에서 처리)
+        currentAudio.onerror = () => {
+          console.warn('[playDialogue] 캐시 재생 실패 (onerror)')
         }
 
         await currentAudio.play()
         console.log('[playDialogue] 캐시 재생 성공')
+        isPlayStarting = false
         return
       } catch (error) {
         console.warn('[playDialogue] 캐시 로드 실패:', error)
-        set({ isPlaying: false, currentDialogue: null })
+        currentAudio = null
         // 더빙 모드 또는 렌더링 중이면 실시간 합성 차단
         const { isDubbingMode: inDubbingMode } = get()
         if (inDubbingMode || isRendering) {
           console.log(`[playDialogue] 실시간 합성 차단 (더빙모드=${inDubbingMode}, 렌더링중=${isRendering})`)
+          set({ isPlaying: false, currentDialogue: null })
+          isPlayStarting = false
           return
         }
+        // 테스트 모드: 캐시 실패 시 실시간 합성으로 폴백
+        console.log('[playDialogue] 캐시 실패 → 실시간 합성 폴백')
+        try {
+          await synthesizeAndPlayDialogue(dialogue.text, charIdToUse!, set, get)
+        } finally {
+          isPlayStarting = false
+        }
+        return
       }
     }
 
-    // 더빙 모드 또는 렌더링 중이면 실시간 합성 차단
-    // 더빙 모드에서는 사전 렌더링된 캐시만 사용
+    // 캐시 URL이 없는 경우 (더빙 모드 또는 렌더링 중이면 차단)
     const { isDubbingMode } = get()
     if (isDubbingMode || isRendering) {
       console.log(`[playDialogue] 캐시 없음 - 실시간 합성 차단 (더빙모드=${isDubbingMode}, 렌더링중=${isRendering})`)
       set({ isPlaying: false, currentDialogue: null })
+      isPlayStarting = false
       return
     }
 
     // 실시간 GPT-SoVITS 합성 (테스트 용도 - 더빙 모드가 아닐 때만)
-    await synthesizeAndPlayDialogue(dialogue.text, charIdToUse, set, get)
+    console.log('[playDialogue] 캐시 없음 → 실시간 합성')
+    try {
+      await synthesizeAndPlayDialogue(dialogue.text, charIdToUse, set, get)
+    } finally {
+      isPlayStarting = false
+    }
   },
 
   // 재생 중지
