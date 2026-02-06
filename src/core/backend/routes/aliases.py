@@ -207,6 +207,133 @@ def _split_name_parts(realname: str) -> list[str]:
     return unique_parts
 
 
+@router.get("/suggestions/{char_id}")
+async def get_alias_suggestions(char_id: str):
+    """프로필 패턴에서 별칭 후보 추출
+
+    프로필 첫 문장에서 "이름, 설명..." 패턴을 감지하여 제안
+    """
+    gamedata_path = Path(config.data_path) / "gamedata" / "kr" / "gamedata" / "excel"
+    handbook_path = gamedata_path / "handbook_info_table.json"
+    char_table_path = gamedata_path / "character_table.json"
+
+    if not handbook_path.exists() or not char_table_path.exists():
+        return {"suggestions": [], "char_id": char_id}
+
+    with open(handbook_path, "r", encoding="utf-8") as f:
+        handbook = json.load(f)
+    with open(char_table_path, "r", encoding="utf-8") as f:
+        char_table = json.load(f)
+
+    handbook_dict = handbook.get("handbookDict", {})
+    char_data = handbook_dict.get(char_id)
+    if not char_data:
+        return {"suggestions": [], "char_id": char_id}
+
+    codename = char_table.get(char_id, {}).get("name", "")
+    provider = get_official_data_provider()
+    existing_aliases = set(provider.get_aliases_for_char(char_id))
+
+    suggestions = []
+
+    # 프로필 섹션에서 "이름, 설명..." 패턴 검색
+    for audio in char_data.get("storyTextAudio", []):
+        title = audio.get("storyTitle", "")
+        if title != "프로필":
+            continue
+
+        for story in audio.get("stories", []):
+            text = story.get("storyText", "")
+            if not text:
+                continue
+
+            # 프로필 첫 줄에서 "이름, " 패턴 검색
+            # 예: "아르투리아 잘로, 저명한 음악가..."
+            # 예: "잉그리드, 불피스폴리아..."
+            match = re.match(r"^([가-힣a-zA-Z·\-\s]{2,20}),\s", text)
+            if match:
+                name = match.group(1).strip()
+                # 코드네임과 동일하거나 이미 등록된 별칭은 제외
+                if name != codename and name not in existing_aliases:
+                    # 이름 부분들도 추가
+                    parts = _split_name_parts(name)
+                    for part in parts:
+                        if part != codename and part not in existing_aliases and part not in [s["name"] for s in suggestions]:
+                            suggestions.append({
+                                "name": part,
+                                "source": "profile",
+                                "context": text[:50] + "..." if len(text) > 50 else text
+                            })
+            break
+        break
+
+    return {
+        "suggestions": suggestions,
+        "char_id": char_id,
+        "codename": codename
+    }
+
+
+@router.get("/suggestions")
+async def get_all_suggestions():
+    """모든 캐릭터의 별칭 제안 목록"""
+    gamedata_path = Path(config.data_path) / "gamedata" / "kr" / "gamedata" / "excel"
+    handbook_path = gamedata_path / "handbook_info_table.json"
+    char_table_path = gamedata_path / "character_table.json"
+
+    if not handbook_path.exists() or not char_table_path.exists():
+        return {"suggestions": [], "total": 0}
+
+    with open(handbook_path, "r", encoding="utf-8") as f:
+        handbook = json.load(f)
+    with open(char_table_path, "r", encoding="utf-8") as f:
+        char_table = json.load(f)
+
+    provider = get_official_data_provider()
+    all_aliases = provider.get_all_aliases()
+
+    handbook_dict = handbook.get("handbookDict", {})
+    all_suggestions = []
+
+    for char_id, char_data in handbook_dict.items():
+        if not char_id.startswith("char_") or "_npc_" in char_id:
+            continue
+
+        codename = char_table.get(char_id, {}).get("name", "")
+        existing_aliases = {alias for alias, cid in all_aliases.items() if cid == char_id}
+
+        for audio in char_data.get("storyTextAudio", []):
+            title = audio.get("storyTitle", "")
+            if title != "프로필":
+                continue
+
+            for story in audio.get("stories", []):
+                text = story.get("storyText", "")
+                if not text:
+                    continue
+
+                match = re.match(r"^([가-힣a-zA-Z·\-\s]{2,20}),\s", text)
+                if match:
+                    name = match.group(1).strip()
+                    if name != codename and name not in existing_aliases:
+                        parts = _split_name_parts(name)
+                        for part in parts:
+                            if part != codename and part not in existing_aliases:
+                                all_suggestions.append({
+                                    "char_id": char_id,
+                                    "codename": codename,
+                                    "name": part,
+                                    "context": text[:50] + "..." if len(text) > 50 else text
+                                })
+                break
+            break
+
+    return {
+        "suggestions": all_suggestions,
+        "total": len(all_suggestions)
+    }
+
+
 @router.post("/extract-realnames")
 async def extract_realnames(dry_run: bool = False):
     """handbook에서 본명 추출하여 별칭으로 등록

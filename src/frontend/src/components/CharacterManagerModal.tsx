@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react'
 import { useAppStore } from '../stores/appStore'
-import { ttsApi, voiceApi, aliasesApi, API_BASE } from '../services/api'
+import { ttsApi, voiceApi, aliasesApi, API_BASE, AliasSuggestion } from '../services/api'
 
 type SortBy = 'dialogues' | 'files' | 'name' | 'id'
 
@@ -81,6 +81,8 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
   const [aliasEditCharId, setAliasEditCharId] = useState<string | null>(null)
   const [newAliasInput, setNewAliasInput] = useState('')
   const [isAddingAlias, setIsAddingAlias] = useState(false)
+  const [aliasSuggestions, setAliasSuggestions] = useState<AliasSuggestion[]>([])
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
 
   // 이미지 상태 로드 함수
   const loadImageStatus = async () => {
@@ -341,6 +343,28 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
     setTestCharId(charId)
   }
 
+  // 별칭 제안 로드
+  const loadAliasSuggestions = async (charId: string) => {
+    setIsLoadingSuggestions(true)
+    try {
+      const res = await aliasesApi.getSuggestions(charId)
+      setAliasSuggestions(res.suggestions)
+    } catch {
+      setAliasSuggestions([])
+    } finally {
+      setIsLoadingSuggestions(false)
+    }
+  }
+
+  // 별칭 편집 모달 열 때 제안 로드
+  useEffect(() => {
+    if (aliasEditCharId) {
+      loadAliasSuggestions(aliasEditCharId)
+    } else {
+      setAliasSuggestions([])
+    }
+  }, [aliasEditCharId])
+
   // 별칭 추가
   const handleAddAlias = async (charId: string) => {
     if (!newAliasInput.trim()) return
@@ -355,6 +379,24 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
     } finally {
       setIsAddingAlias(false)
     }
+  }
+
+  // 제안된 별칭 수락
+  const handleAcceptSuggestion = async (charId: string, name: string) => {
+    try {
+      await aliasesApi.addAlias(name, charId)
+      await loadCharacterAliases()
+      // 제안 목록에서 제거
+      setAliasSuggestions(prev => prev.filter(s => s.name !== name))
+    } catch (error: any) {
+      console.error('별칭 추가 실패:', error)
+      alert(error?.response?.data?.detail || '별칭 추가 실패')
+    }
+  }
+
+  // 제안 무시
+  const handleDismissSuggestion = (name: string) => {
+    setAliasSuggestions(prev => prev.filter(s => s.name !== name))
   }
 
   // 별칭 삭제
@@ -1013,24 +1055,66 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
             </div>
 
             {/* 별칭 목록 */}
-            <div className="flex-1 overflow-y-auto p-4">
-              {characterAliases[aliasEditCharId]?.length > 0 ? (
-                <div className="space-y-2">
-                  {characterAliases[aliasEditCharId].map(alias => (
-                    <div key={alias} className="flex items-center justify-between px-3 py-2 bg-ark-black/50 rounded">
-                      <span className="text-sm text-ark-white">{alias}</span>
-                      <button
-                        onClick={() => handleRemoveAlias(alias)}
-                        className="text-red-400 hover:text-red-300 text-xs"
-                      >
-                        삭제
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-ark-gray text-center py-4">등록된 별칭이 없습니다</p>
-              )}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* 등록된 별칭 */}
+              <div>
+                <h4 className="text-xs text-ark-gray mb-2">등록된 별칭</h4>
+                {characterAliases[aliasEditCharId]?.length > 0 ? (
+                  <div className="space-y-2">
+                    {characterAliases[aliasEditCharId].map(alias => (
+                      <div key={alias} className="flex items-center justify-between px-3 py-2 bg-ark-black/50 rounded">
+                        <span className="text-sm text-ark-white">{alias}</span>
+                        <button
+                          onClick={() => handleRemoveAlias(alias)}
+                          className="text-red-400 hover:text-red-300 text-xs"
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-ark-gray/50 text-center py-2">없음</p>
+                )}
+              </div>
+
+              {/* 제안된 별칭 */}
+              <div>
+                <h4 className="text-xs text-ark-gray mb-2">
+                  제안 (프로필에서 감지)
+                  {isLoadingSuggestions && <span className="ml-2 text-ark-gray/50">로딩...</span>}
+                </h4>
+                {aliasSuggestions.length > 0 ? (
+                  <div className="space-y-2">
+                    {aliasSuggestions.map(suggestion => (
+                      <div key={suggestion.name} className="px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-amber-200 font-medium">{suggestion.name}</span>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => handleAcceptSuggestion(aliasEditCharId, suggestion.name)}
+                              className="text-[10px] px-2 py-0.5 rounded bg-green-500/30 text-green-300 hover:bg-green-500/50"
+                            >
+                              수락
+                            </button>
+                            <button
+                              onClick={() => handleDismissSuggestion(suggestion.name)}
+                              className="text-[10px] px-2 py-0.5 rounded bg-red-500/20 text-red-300 hover:bg-red-500/40"
+                            >
+                              무시
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-ark-gray/60 mt-1 truncate" title={suggestion.context}>
+                          {suggestion.context}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : !isLoadingSuggestions ? (
+                  <p className="text-sm text-ark-gray/50 text-center py-2">없음</p>
+                ) : null}
+              </div>
             </div>
 
             {/* 별칭 추가 */}

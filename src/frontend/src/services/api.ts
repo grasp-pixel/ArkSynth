@@ -1772,6 +1772,18 @@ export interface ExtractRealnamesResponse {
   conflicts: Record<string, string[]>
 }
 
+export interface AliasSuggestion {
+  name: string
+  source: string
+  context: string
+}
+
+export interface AliasSuggestionsResponse {
+  suggestions: AliasSuggestion[]
+  char_id: string
+  codename?: string
+}
+
 export const aliasesApi = {
   // 전체 별칭 목록
   listAliases: async (): Promise<AliasListResponse> => {
@@ -1810,6 +1822,12 @@ export const aliasesApi = {
     const res = await api.post('/api/aliases/extract-realnames', null, {
       params: { dry_run: dryRun }
     })
+    return res.data
+  },
+
+  // 프로필 패턴에서 별칭 제안 조회
+  getSuggestions: async (charId: string): Promise<AliasSuggestionsResponse> => {
+    const res = await api.get<AliasSuggestionsResponse>(`/api/aliases/suggestions/${charId}`)
     return res.data
   },
 }
