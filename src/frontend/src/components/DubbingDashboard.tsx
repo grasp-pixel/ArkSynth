@@ -305,7 +305,7 @@ export default function DubbingDashboard() {
             <div className="flex-1 bg-ark-black/50 border border-ark-border rounded overflow-hidden">
               <div className="px-2 py-1 bg-ark-panel/50 border-b border-ark-border">
                 <span className="text-xs text-purple-400 font-medium">자막 영역</span>
-                <span className="text-xs text-ark-gray ml-2">(중앙 30~60%)</span>
+                <span className="text-xs text-ark-gray ml-2">(중앙 40~70%)</span>
               </div>
               <img
                 src={ocrApi.getWindowRegionImageUrl(selectedWindowHwnd, 'subtitle')}
