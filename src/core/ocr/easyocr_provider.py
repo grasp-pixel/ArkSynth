@@ -391,6 +391,31 @@ class EasyOCRProvider(OCRProvider):
 
         return Image.fromarray(result)
 
+    def _is_valid_speaker(self, text: str | None) -> bool:
+        """화자 텍스트가 유효한지 검증
+
+        - 너무 길면 쓰레기 (화자 이름은 보통 10자 이내)
+        - 특수문자가 많으면 쓰레기
+        - 공백이 너무 많으면 쓰레기
+        """
+        if not text:
+            return False
+
+        # 너무 길면 쓰레기 (화자 이름은 보통 짧음)
+        if len(text) > 20:
+            return False
+
+        # 특수문자 비율 체크
+        special_chars = sum(1 for c in text if c in '@{}[]<>|\\~`')
+        if special_chars > 2:
+            return False
+
+        # 공백 비율 체크 (너무 많은 공백은 쓰레기)
+        if text.count(' ') > len(text) * 0.3:
+            return False
+
+        return True
+
     async def recognize_dialogue(
         self, image: Image.Image, region: BoundingBox
     ) -> tuple[str | None, str | None, float]:
@@ -399,6 +424,10 @@ class EasyOCRProvider(OCRProvider):
         명일방주 대사 영역 구조:
         - 회색 글자 + 좌측: 화자 이름
         - 흰색/밝은 글자: 대사 본문
+
+        나레이션(화자 없음)의 경우:
+        - 배경 그라데이션이 회색으로 잘못 인식될 수 있음
+        - 화자 텍스트 검증으로 쓰레기 필터링
 
         Args:
             image: PIL Image 객체
@@ -429,7 +458,7 @@ class EasyOCRProvider(OCRProvider):
 
             speaker = None
             dialogue = None
-            confidences = []
+            dialogue_confidences = []
 
             # 화자: 회색 글자 중 좌측에 있는 것
             if gray_results:
@@ -438,19 +467,25 @@ class EasyOCRProvider(OCRProvider):
                     if r.bounding_box and r.bounding_box.x < speaker_x_threshold
                 ]
                 if speaker_parts:
-                    speaker = " ".join(r.text for r in speaker_parts)
-                    confidences.extend(r.confidence for r in speaker_parts)
+                    raw_speaker = " ".join(r.text for r in speaker_parts)
+                    # 화자 텍스트 검증 (쓰레기 필터링)
+                    if self._is_valid_speaker(raw_speaker):
+                        speaker = raw_speaker
+                        print(f"[EasyOCR] Valid speaker: {speaker}", flush=True)
+                    else:
+                        print(f"[EasyOCR] Invalid speaker (garbage filtered): {raw_speaker[:30]}...", flush=True)
 
             # 대사: 흰색 글자 (y좌표 순서로 정렬)
             if white_results:
                 # y좌표 순서로 정렬 후 합침
                 white_results.sort(key=lambda r: r.bounding_box.y if r.bounding_box else 0)
                 dialogue = " ".join(r.text for r in white_results)
-                confidences.extend(r.confidence for r in white_results)
+                dialogue_confidences.extend(r.confidence for r in white_results)
 
-            avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+            # confidence는 대사만으로 계산 (화자는 선택사항이므로 제외)
+            avg_confidence = sum(dialogue_confidences) / len(dialogue_confidences) if dialogue_confidences else 0.0
 
-            print(f"[EasyOCR] Color+Position separated - Speaker: {speaker}, Dialogue: {dialogue[:50] if dialogue else 'None'}...", flush=True)
+            print(f"[EasyOCR] Color separated - Speaker: {speaker}, Dialogue: {dialogue[:50] if dialogue else 'None'}... (conf: {avg_confidence:.2f})", flush=True)
 
             return speaker, dialogue, avg_confidence
 
