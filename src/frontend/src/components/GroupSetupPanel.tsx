@@ -586,7 +586,7 @@ export default function GroupSetupPanel() {
       <VoiceMappingModal
         isOpen={isVoiceMappingModalOpen}
         onClose={() => setIsVoiceMappingModalOpen(false)}
-        characters={groupCharacters}
+        characters={actualCharacters}
       />
     </div>
   )
