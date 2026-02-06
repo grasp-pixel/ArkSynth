@@ -26,6 +26,8 @@ REALNAME_PATTERNS = [
     r"본명은\s+([가-힣a-zA-Z·\-\s]{2,30}?)라고",
     # "본명은 XXX이다/였다" 패턴
     r"본명은\s+([가-힣a-zA-Z·\-\s]{2,30}?)(?:이다|였다)",
+    # "본명인 'XXX'" 패턴 (예: 나이트메어의 글로리아)
+    r"본명인\s*'([가-힣a-zA-Z·\-\s]{2,20}?)'",
 ]
 
 
@@ -147,13 +149,14 @@ def split_name_parts(realname: str) -> list[str]:
 
 def build_aliases_with_conflict_check(
     realnames: dict[str, dict],
-) -> tuple[dict[str, str], dict[str, list[str]]]:
+) -> tuple[dict[str, str], dict[str, list[str]], list[str]]:
     """충돌 체크하여 별칭 딕셔너리 생성
 
     Returns:
-        (aliases, conflicts)
+        (aliases, conflicts, skipped_same_as_codename)
         aliases: {별칭: char_id}
         conflicts: {별칭: [char_id1, char_id2, ...]}
+        skipped_same_as_codename: 콜사인과 동일하여 스킵된 별칭 목록
     """
     # 1단계: 모든 부분 이름이 어떤 캐릭터들에서 나오는지 수집
     part_to_chars: dict[str, list[str]] = defaultdict(list)
@@ -167,16 +170,22 @@ def build_aliases_with_conflict_check(
     # 2단계: 고유한 부분만 별칭으로 등록, 충돌은 기록
     aliases = {}
     conflicts = {}
+    skipped_same_as_codename = []
 
     for part, char_ids in part_to_chars.items():
         if len(char_ids) == 1:
-            # 고유함 → 별칭 등록
-            aliases[part] = char_ids[0]
+            char_id = char_ids[0]
+            codename = realnames[char_id]["codename"]
+            # 콜사인과 동일하면 스킵 (예: 안젤리나 = 안젤리나)
+            if part == codename:
+                skipped_same_as_codename.append(part)
+                continue
+            aliases[part] = char_id
         else:
             # 충돌 → 등록 안 함, 충돌 기록
             conflicts[part] = char_ids
 
-    return aliases, conflicts
+    return aliases, conflicts, skipped_same_as_codename
 
 
 def load_existing_aliases() -> dict:
@@ -244,7 +253,7 @@ def main():
         return
 
     # 별칭 생성 (충돌 체크)
-    aliases, conflicts = build_aliases_with_conflict_check(realnames)
+    aliases, conflicts, skipped_same = build_aliases_with_conflict_check(realnames)
 
     # 결과 출력
     print("=" * 60)
@@ -254,10 +263,15 @@ def main():
         parts = split_name_parts(data["realname"])
         print(f"\n{data['codename']} ({char_id})")
         print(f"  본명: {data['realname']}")
-        print(f"  등록될 별칭: {', '.join(p for p in parts if p in aliases)}")
-        skipped = [p for p in parts if p in conflicts]
-        if skipped:
-            print(f"  충돌로 스킵: {', '.join(skipped)}")
+        registered = [p for p in parts if p in aliases]
+        if registered:
+            print(f"  등록될 별칭: {', '.join(registered)}")
+        skipped_conflict = [p for p in parts if p in conflicts]
+        if skipped_conflict:
+            print(f"  충돌로 스킵: {', '.join(skipped_conflict)}")
+        skipped_codename = [p for p in parts if p in skipped_same]
+        if skipped_codename:
+            print(f"  콜사인과 동일: {', '.join(skipped_codename)}")
 
     # 충돌 목록
     if conflicts:
@@ -267,6 +281,13 @@ def main():
         for part, char_ids in sorted(conflicts.items()):
             codenames = [char_table.get(cid, {}).get("name", cid) for cid in char_ids]
             print(f"  '{part}' → {', '.join(codenames)}")
+
+    # 콜사인 중복으로 스킵된 목록
+    if skipped_same:
+        print("\n" + "=" * 60)
+        print("콜사인과 동일하여 스킵됨")
+        print("=" * 60)
+        print(f"  {', '.join(skipped_same)}")
 
     # 저장
     if not args.dry_run:

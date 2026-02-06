@@ -160,6 +160,7 @@ REALNAME_PATTERNS = [
     r"본명은\s+([가-힣a-zA-Z·\-\s]{2,30}?)[,\.。]",
     r"본명은\s+([가-힣a-zA-Z·\-\s]{2,30}?)라고",
     r"본명은\s+([가-힣a-zA-Z·\-\s]{2,30}?)(?:이다|였다)",
+    r"본명인\s*'([가-힣a-zA-Z·\-\s]{2,20}?)'",  # 본명인 '글로리아'
 ]
 
 SUFFIXES_TO_REMOVE = ["이다", "였다", "이며", "로서", "로써", "라고", "라는", "란", "다", "로"]
@@ -256,10 +257,17 @@ async def extract_realnames(dry_run: bool = False):
 
     aliases_to_add: dict[str, str] = {}
     conflicts: dict[str, list[str]] = {}
+    skipped_same_as_codename: list[str] = []
 
     for part, char_ids in part_to_chars.items():
         if len(char_ids) == 1:
-            aliases_to_add[part] = char_ids[0]
+            char_id = char_ids[0]
+            codename = char_table.get(char_id, {}).get("name", "")
+            # 콜사인과 동일하면 스킵 (예: 안젤리나 = 안젤리나)
+            if part == codename:
+                skipped_same_as_codename.append(part)
+                continue
+            aliases_to_add[part] = char_id
         else:
             conflicts[part] = [char_table.get(cid, {}).get("name", cid) for cid in char_ids]
 
@@ -277,6 +285,7 @@ async def extract_realnames(dry_run: bool = False):
             "alias_count": added_count,
             "total_aliases": len(provider.get_all_aliases()),
             "conflicts": conflicts,
+            "skipped_same_as_codename": skipped_same_as_codename,
         }
     else:
         return {
@@ -289,4 +298,5 @@ async def extract_realnames(dry_run: bool = False):
                 for alias, char_id in sorted(aliases_to_add.items())
             ],
             "conflicts": conflicts,
+            "skipped_same_as_codename": skipped_same_as_codename,
         }
