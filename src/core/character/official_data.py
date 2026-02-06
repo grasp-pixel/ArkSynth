@@ -227,6 +227,99 @@ class OfficialDataProvider:
         self._official_names = None
         logger.debug("공식 데이터 캐시 무효화")
 
+    def get_all_aliases(self) -> dict[str, str]:
+        """모든 사용자 정의 별칭 반환
+
+        Returns:
+            {별칭: char_id} 딕셔너리
+        """
+        return self._load_user_aliases().copy()
+
+    def get_aliases_for_char(self, char_id: str) -> list[str]:
+        """특정 캐릭터의 모든 별칭 반환 (역방향 조회)
+
+        Args:
+            char_id: 캐릭터 ID
+
+        Returns:
+            해당 캐릭터를 가리키는 별칭 목록
+        """
+        aliases = self._load_user_aliases()
+        return [alias for alias, cid in aliases.items() if cid == char_id]
+
+    def add_alias(self, alias: str, char_id: str) -> bool:
+        """별칭 추가
+
+        Args:
+            alias: 추가할 별칭 (본명, 닉네임 등)
+            char_id: 캐릭터 ID
+
+        Returns:
+            성공 여부 (이미 존재하면 False)
+        """
+        aliases = self._load_user_aliases()
+        if alias in aliases:
+            logger.warning(f"별칭 이미 존재: {alias} → {aliases[alias]}")
+            return False
+
+        aliases[alias] = char_id
+        self._save_user_aliases(aliases)
+        logger.info(f"별칭 추가: {alias} → {char_id}")
+        return True
+
+    def remove_alias(self, alias: str) -> bool:
+        """별칭 삭제
+
+        Args:
+            alias: 삭제할 별칭
+
+        Returns:
+            성공 여부 (존재하지 않으면 False)
+        """
+        aliases = self._load_user_aliases()
+        if alias not in aliases:
+            logger.warning(f"별칭 없음: {alias}")
+            return False
+
+        del aliases[alias]
+        self._save_user_aliases(aliases)
+        logger.info(f"별칭 삭제: {alias}")
+        return True
+
+    def _save_user_aliases(self, aliases: dict[str, str]) -> None:
+        """character_aliases.json 저장"""
+        aliases_path = self._data_path / "character_aliases.json"
+
+        # 기존 파일 로드 (메타데이터 유지)
+        existing = {}
+        if aliases_path.exists():
+            try:
+                with open(aliases_path, "r", encoding="utf-8") as f:
+                    existing = json.load(f)
+            except Exception:
+                pass
+
+        # 메타데이터 유지, aliases만 업데이트
+        data = {
+            "_version": existing.get("_version", 1),
+            "_comment": existing.get(
+                "_comment",
+                "캐릭터 별칭 매핑 (화자 이름 → char_id)",
+            ),
+            "aliases": aliases,
+        }
+
+        # _conflicts가 있으면 유지
+        if "_conflicts" in existing:
+            data["_conflicts"] = existing["_conflicts"]
+
+        with open(aliases_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+        # 캐시 무효화
+        self._user_aliases = aliases
+        logger.debug(f"사용자 별칭 저장: {len(aliases)}개")
+
 
 # 모듈 레벨 싱글톤 인스턴스
 _provider: OfficialDataProvider | None = None
