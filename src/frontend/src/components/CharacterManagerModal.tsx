@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react'
 import { useAppStore } from '../stores/appStore'
-import { ttsApi, voiceApi, API_BASE } from '../services/api'
+import { ttsApi, voiceApi, aliasesApi, API_BASE } from '../services/api'
 
 type SortBy = 'dialogues' | 'files' | 'name' | 'id'
 
@@ -74,6 +74,9 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
   // 기본 음성 섹션 접기/펼치기
   const [isDefaultsExpanded, setIsDefaultsExpanded] = useState(false)
 
+  // 캐릭터별 별칭 데이터
+  const [characterAliases, setCharacterAliases] = useState<Record<string, string[]>>({})
+
   // 이미지 상태 로드 함수
   const loadImageStatus = async () => {
     try {
@@ -82,6 +85,24 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
         total_images: status.total_images,
         total_folders: status.total_folders,
       })
+    } catch {
+      // 무시
+    }
+  }
+
+  // 별칭 데이터 로드 함수
+  const loadCharacterAliases = async () => {
+    try {
+      const res = await aliasesApi.listAliases()
+      // char_id별로 별칭 그룹화
+      const aliasesByChar: Record<string, string[]> = {}
+      for (const { alias, char_id } of res.aliases) {
+        if (!aliasesByChar[char_id]) {
+          aliasesByChar[char_id] = []
+        }
+        aliasesByChar[char_id].push(alias)
+      }
+      setCharacterAliases(aliasesByChar)
     } catch {
       // 무시
     }
@@ -106,6 +127,7 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
       loadVoiceCharacters()
       loadTrainedModels()
       loadImageStatus()
+      loadCharacterAliases()
 
       // 성별 데이터 로드
       voiceApi.listGenders().catch(() => ({ genders: {} })).then((res) => {
@@ -667,6 +689,14 @@ export default function CharacterManagerModal({ isOpen, onClose }: CharacterMana
                           {isNarrator && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/40 text-purple-200">
                               나레이션
+                            </span>
+                          )}
+                          {characterAliases[char.char_id]?.length > 0 && (
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/40 text-amber-200"
+                              title={`별칭: ${characterAliases[char.char_id].join(', ')}`}
+                            >
+                              별칭 {characterAliases[char.char_id].length}개
                             </span>
                           )}
                         </div>

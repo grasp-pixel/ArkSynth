@@ -9,6 +9,7 @@ import {
   gamedataApi,
   createGamedataUpdateStream,
   voiceApi,
+  aliasesApi,
   type SettingsResponse,
   type DependencyStatus,
   type FFmpegInstallGuide,
@@ -22,6 +23,7 @@ import {
   type GamedataUpdateProgress,
   type TTSEngine,
   type TTSEngineSetting,
+  type AliasListResponse,
 } from "../services/api";
 import GPTSoVITSInstallDialog from "./GPTSoVITSInstallDialog";
 
@@ -83,6 +85,15 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   );
   const gamedataStreamRef = useRef<{ close: () => void } | null>(null);
 
+  // 별칭 추출 관련 상태
+  const [aliasesInfo, setAliasesInfo] = useState<AliasListResponse | null>(null);
+  const [isExtractingAliases, setIsExtractingAliases] = useState(false);
+  const [aliasExtractResult, setAliasExtractResult] = useState<{
+    success: boolean;
+    extracted_count: number;
+    alias_count: number;
+  } | null>(null);
+
   useEffect(() => {
     if (isOpen) {
       loadSettings();
@@ -90,6 +101,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       checkImageAssets();
       checkGamedataStatus();
       loadTTSEngineSetting();
+      loadAliasesInfo();
     }
     return () => {
       // 모달 닫힐 때 스트림 정리
@@ -257,6 +269,34 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setGamedataStatus(status);
     } catch (err) {
       console.error("게임 데이터 상태 확인 실패:", err);
+    }
+  };
+
+  const loadAliasesInfo = async () => {
+    try {
+      const info = await aliasesApi.listAliases();
+      setAliasesInfo(info);
+    } catch (err) {
+      console.error("별칭 정보 로드 실패:", err);
+    }
+  };
+
+  const handleExtractAliases = async () => {
+    setIsExtractingAliases(true);
+    setAliasExtractResult(null);
+    try {
+      const result = await aliasesApi.extractRealnames(false);
+      setAliasExtractResult({
+        success: result.success,
+        extracted_count: result.extracted_count,
+        alias_count: result.alias_count,
+      });
+      // 별칭 목록 새로고침
+      await loadAliasesInfo();
+    } catch (err) {
+      console.error("본명 추출 실패:", err);
+    } finally {
+      setIsExtractingAliases(false);
     }
   };
 
@@ -1140,6 +1180,49 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         {settings.gpt_sovits_language}
                       </p>
                     </div>
+                  </div>
+                </section>
+
+                {/* 캐릭터 별칭 */}
+                <section>
+                  <h3 className="text-sm font-medium text-ark-white mb-3">
+                    캐릭터 별칭 (본명)
+                  </h3>
+                  <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
+                    <p className="text-xs text-ark-gray mb-3">
+                      스토리에서 본명으로 등장하는 캐릭터를 오퍼레이터와 연결합니다.
+                      <br />
+                      예: "조르디" → 루멘, "안젤리나" → 안젤리나
+                    </p>
+
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="flex-1">
+                        <span className="text-sm text-ark-white">
+                          등록된 별칭: {aliasesInfo?.total ?? 0}개
+                        </span>
+                      </div>
+                      <button
+                        onClick={handleExtractAliases}
+                        disabled={isExtractingAliases}
+                        className={`px-4 py-2 rounded border transition-colors ${
+                          isExtractingAliases
+                            ? "bg-ark-panel/50 border-ark-border/50 text-ark-gray/50 cursor-not-allowed"
+                            : "bg-ark-panel border-ark-border text-ark-gray hover:text-ark-white hover:border-ark-orange"
+                        }`}
+                      >
+                        {isExtractingAliases ? "추출 중..." : "본명 자동 추출"}
+                      </button>
+                    </div>
+
+                    {aliasExtractResult && (
+                      <div className="p-2 bg-green-500/10 border border-green-500/30 rounded text-xs text-green-400">
+                        ✓ {aliasExtractResult.extracted_count}명의 캐릭터에서 {aliasExtractResult.alias_count}개 별칭 추가됨
+                      </div>
+                    )}
+
+                    <p className="text-[10px] text-ark-gray/60 mt-2">
+                      * handbook 데이터에서 "본명은 XXX" 패턴을 추출합니다
+                    </p>
                   </div>
                 </section>
 

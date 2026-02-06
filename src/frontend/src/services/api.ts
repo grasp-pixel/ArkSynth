@@ -1741,4 +1741,77 @@ export function createImageExtractStream(
   }
 }
 
+// ===== 별칭(Aliases) API =====
+
+export interface AliasInfo {
+  alias: string
+  char_id: string
+}
+
+export interface AliasListResponse {
+  total: number
+  aliases: AliasInfo[]
+}
+
+export interface AliasSearchResponse {
+  found: boolean
+  query: string
+  char_id: string | null
+  codename: string | null
+}
+
+export interface CharacterAliasesResponse {
+  char_id: string
+  aliases: string[]
+}
+
+export interface ExtractRealnamesResponse {
+  success: boolean
+  extracted_count: number
+  alias_count: number
+  conflicts: Record<string, string[]>
+}
+
+export const aliasesApi = {
+  // 전체 별칭 목록
+  listAliases: async (): Promise<AliasListResponse> => {
+    const res = await api.get<AliasListResponse>('/api/aliases')
+    return res.data
+  },
+
+  // 별칭으로 캐릭터 검색
+  searchByAlias: async (query: string): Promise<AliasSearchResponse> => {
+    const res = await api.get<AliasSearchResponse>('/api/aliases/search', {
+      params: { q: query }
+    })
+    return res.data
+  },
+
+  // 특정 캐릭터의 별칭 목록
+  getCharacterAliases: async (charId: string): Promise<CharacterAliasesResponse> => {
+    const res = await api.get<CharacterAliasesResponse>(`/api/aliases/character/${charId}`)
+    return res.data
+  },
+
+  // 별칭 추가
+  addAlias: async (alias: string, charId: string): Promise<{ success: boolean; alias: string; char_id: string }> => {
+    const res = await api.post('/api/aliases', { alias, char_id: charId })
+    return res.data
+  },
+
+  // 별칭 삭제
+  removeAlias: async (alias: string): Promise<{ success: boolean; alias: string }> => {
+    const res = await api.delete(`/api/aliases/${encodeURIComponent(alias)}`)
+    return res.data
+  },
+
+  // 본명 추출 실행
+  extractRealnames: async (dryRun: boolean = false): Promise<ExtractRealnamesResponse> => {
+    const res = await api.post('/api/aliases/extract-realnames', null, {
+      params: { dry_run: dryRun }
+    })
+    return res.data
+  },
+}
+
 export default api

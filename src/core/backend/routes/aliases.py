@@ -1,11 +1,16 @@
 """별칭 관리 API 라우터"""
 
+import json
 import logging
+import re
+from collections import defaultdict
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from ...character.official_data import get_official_data_provider
+from ..config import config
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -147,3 +152,141 @@ async def delete_alias(alias: str):
         "alias": alias,
         "char_id": existing,
     }
+
+
+# ===== 본명 추출 관련 =====
+
+REALNAME_PATTERNS = [
+    r"본명은\s+([가-힣a-zA-Z·\-\s]{2,30}?)[,\.。]",
+    r"본명은\s+([가-힣a-zA-Z·\-\s]{2,30}?)라고",
+    r"본명은\s+([가-힣a-zA-Z·\-\s]{2,30}?)(?:이다|였다)",
+]
+
+SUFFIXES_TO_REMOVE = ["이다", "였다", "이며", "로서", "로써", "라고", "라는", "란", "다", "로"]
+
+
+def _clean_realname(realname: str) -> str:
+    """본명에서 조사 제거"""
+    cleaned = realname.strip()
+    for suffix in SUFFIXES_TO_REMOVE:
+        if cleaned.endswith(suffix) and len(cleaned) > len(suffix) + 2:
+            cleaned = cleaned[: -len(suffix)].strip()
+            break
+    return cleaned
+
+
+def _extract_realname_from_text(text: str) -> str | None:
+    """텍스트에서 본명 추출"""
+    for pattern in REALNAME_PATTERNS:
+        match = re.search(pattern, text)
+        if match:
+            realname = match.group(1).strip()
+            realname = _clean_realname(realname)
+            if 2 <= len(realname) <= 20:
+                return realname
+    return None
+
+
+def _split_name_parts(realname: str) -> list[str]:
+    """본명을 부분으로 분리"""
+    parts = [realname]
+    words = realname.split()
+    if len(words) >= 2:
+        parts.extend(words)
+    if "·" in realname:
+        parts.extend(realname.split("·"))
+    unique_parts = []
+    seen = set()
+    for part in parts:
+        part = part.strip()
+        if part and len(part) >= 2 and part not in seen:
+            unique_parts.append(part)
+            seen.add(part)
+    return unique_parts
+
+
+@router.post("/extract-realnames")
+async def extract_realnames(dry_run: bool = False):
+    """handbook에서 본명 추출하여 별칭으로 등록
+
+    Args:
+        dry_run: True면 실제 저장 없이 결과만 반환
+    """
+    gamedata_path = Path(config.data_path) / "gamedata" / "kr" / "gamedata" / "excel"
+    handbook_path = gamedata_path / "handbook_info_table.json"
+    char_table_path = gamedata_path / "character_table.json"
+
+    if not handbook_path.exists():
+        raise HTTPException(status_code=404, detail="handbook_info_table.json을 찾을 수 없습니다")
+    if not char_table_path.exists():
+        raise HTTPException(status_code=404, detail="character_table.json을 찾을 수 없습니다")
+
+    # 데이터 로드
+    with open(handbook_path, "r", encoding="utf-8") as f:
+        handbook = json.load(f)
+    with open(char_table_path, "r", encoding="utf-8") as f:
+        char_table = json.load(f)
+
+    # 본명 추출
+    realnames: dict[str, dict] = {}
+    handbook_dict = handbook.get("handbookDict", {})
+
+    for char_id, char_data in handbook_dict.items():
+        if not char_id.startswith("char_") or "_npc_" in char_id:
+            continue
+
+        for audio in char_data.get("storyTextAudio", []):
+            for story in audio.get("stories", []):
+                text = story.get("storyText", "")
+                if "본명" in text:
+                    realname = _extract_realname_from_text(text)
+                    if realname:
+                        codename = char_table.get(char_id, {}).get("name", "")
+                        realnames[char_id] = {"realname": realname, "codename": codename}
+                        break
+            if char_id in realnames:
+                break
+
+    # 충돌 체크하여 별칭 생성
+    part_to_chars: dict[str, list[str]] = defaultdict(list)
+    for char_id, data in realnames.items():
+        parts = _split_name_parts(data["realname"])
+        for part in parts:
+            part_to_chars[part].append(char_id)
+
+    aliases_to_add: dict[str, str] = {}
+    conflicts: dict[str, list[str]] = {}
+
+    for part, char_ids in part_to_chars.items():
+        if len(char_ids) == 1:
+            aliases_to_add[part] = char_ids[0]
+        else:
+            conflicts[part] = [char_table.get(cid, {}).get("name", cid) for cid in char_ids]
+
+    # 저장
+    if not dry_run:
+        provider = get_official_data_provider()
+        added_count = 0
+        for alias, char_id in aliases_to_add.items():
+            if provider.add_alias(alias, char_id):
+                added_count += 1
+
+        return {
+            "success": True,
+            "extracted_count": len(realnames),
+            "alias_count": added_count,
+            "total_aliases": len(provider.get_all_aliases()),
+            "conflicts": conflicts,
+        }
+    else:
+        return {
+            "success": True,
+            "dry_run": True,
+            "extracted_count": len(realnames),
+            "alias_count": len(aliases_to_add),
+            "aliases_preview": [
+                {"alias": alias, "char_id": char_id, "codename": char_table.get(char_id, {}).get("name", "")}
+                for alias, char_id in sorted(aliases_to_add.items())
+            ],
+            "conflicts": conflicts,
+        }
