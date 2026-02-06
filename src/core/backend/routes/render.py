@@ -81,14 +81,17 @@ async def get_render_status():
     manager = get_render_manager()
     cache = get_render_cache()
 
-    cached_episodes = cache.list_cached_episodes()
+    cached_episodes = cache.list_cached_episodes(complete_only=True)
+    partial_episodes = cache.list_partial_episodes()
     current_progress = manager.get_progress()
 
     return {
         "is_rendering": manager.is_rendering,
         "current_episode_id": manager.current_episode_id,
         "cached_episodes": cached_episodes,
+        "partial_episodes": partial_episodes,
         "cached_count": len(cached_episodes),
+        "partial_count": len(partial_episodes),
         "current_progress": (
             {
                 "episode_id": current_progress.episode_id,

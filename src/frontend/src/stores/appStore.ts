@@ -120,7 +120,8 @@ interface AppState {
   // 렌더링 관련
   isRendering: boolean  // 렌더링 진행 중
   renderProgress: RenderProgress | null  // 현재 렌더링 진행률
-  cachedEpisodes: string[]  // 캐시된 에피소드 목록
+  cachedEpisodes: string[]  // 완료된 에피소드 목록
+  partialEpisodes: string[]  // 부분 완료된 에피소드 목록
   renderError: string | null  // 렌더링 오류
 
   // 그룹 렌더링 관련
@@ -488,6 +489,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   isRendering: false,
   renderProgress: null,
   cachedEpisodes: [],
+  partialEpisodes: [],
   renderError: null,
 
   // 그룹 렌더링 초기 상태
@@ -1937,6 +1939,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         isRendering: status.is_rendering,
         renderProgress: status.current_progress,
         cachedEpisodes: status.cached_episodes,
+        partialEpisodes: status.partial_episodes || [],
         renderError: null,
       })
     } catch (error) {

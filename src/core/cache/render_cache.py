@@ -203,8 +203,12 @@ class RenderCache:
             logger.error(f"캐시 삭제 실패 ({episode_id}): {e}")
             return False
 
-    def list_cached_episodes(self) -> list[str]:
-        """캐시된 에피소드 목록"""
+    def list_cached_episodes(self, complete_only: bool = True) -> list[str]:
+        """캐시된 에피소드 목록
+
+        Args:
+            complete_only: True면 완료된 에피소드만, False면 부분 완료 포함
+        """
         if not self.cache_path.exists():
             return []
 
@@ -213,7 +217,39 @@ class RenderCache:
             if episode_dir.is_dir():
                 meta_path = episode_dir / "meta.json"
                 if meta_path.exists():
-                    episodes.append(episode_dir.name)
+                    if complete_only:
+                        # 완료 여부 확인
+                        try:
+                            with open(meta_path, "r", encoding="utf-8") as f:
+                                data = json.load(f)
+                            if data.get("rendered_count", 0) >= data.get("total_dialogues", 0):
+                                episodes.append(episode_dir.name)
+                        except Exception:
+                            pass  # 오류 시 스킵
+                    else:
+                        episodes.append(episode_dir.name)
+
+        return sorted(episodes)
+
+    def list_partial_episodes(self) -> list[str]:
+        """부분 완료된 에피소드 목록 (캐시 있지만 완료되지 않은 것)"""
+        if not self.cache_path.exists():
+            return []
+
+        episodes = []
+        for episode_dir in self.cache_path.iterdir():
+            if episode_dir.is_dir():
+                meta_path = episode_dir / "meta.json"
+                if meta_path.exists():
+                    try:
+                        with open(meta_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        rendered = data.get("rendered_count", 0)
+                        total = data.get("total_dialogues", 0)
+                        if rendered > 0 and rendered < total:
+                            episodes.append(episode_dir.name)
+                    except Exception:
+                        pass  # 오류 시 스킵
 
         return sorted(episodes)
 

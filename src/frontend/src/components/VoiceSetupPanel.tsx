@@ -32,6 +32,7 @@ export default function VoiceSetupPanel() {
     isRendering,
     renderProgress,
     cachedEpisodes,
+    partialEpisodes,
     startRender,
     cancelRender,
     deleteRenderCache,
@@ -171,17 +172,18 @@ export default function VoiceSetupPanel() {
       }
     }
 
-    // cachedEpisodes만 있는 경우 - 실제 완료 여부는 renderProgress로 확인해야 정확함
-    // 여기에 도달했다면 renderProgress가 없거나 다른 에피소드이므로 none 반환
-    // (cachedEpisodes는 완료된 것만 포함하지만, 부분 완료도 있을 수 있으므로 신뢰하지 않음)
+    // 부분 완료 에피소드 목록 확인
+    if (partialEpisodes.includes(safeId)) {
+      return 'partial'
+    }
+
+    // 완료된 에피소드 목록 확인
     if (cachedEpisodes.includes(safeId)) {
-      // renderProgress가 이 에피소드를 위한 것이 아니면 API 호출이 필요
-      // 일단 완료로 표시하되, 에피소드 선택 시 항상 progress API를 호출하도록 함
       return 'completed'
     }
 
     return 'none'
-  }, [selectedEpisodeId, cachedEpisodes, renderProgress])
+  }, [selectedEpisodeId, cachedEpisodes, partialEpisodes, renderProgress])
 
   // 사전 더빙 시작
   const handleStartRender = async (force: boolean = false) => {

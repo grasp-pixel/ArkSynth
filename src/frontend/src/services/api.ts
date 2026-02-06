@@ -820,7 +820,9 @@ export interface RenderStatusResponse {
   is_rendering: boolean
   current_episode_id: string | null
   cached_episodes: string[]
+  partial_episodes: string[]
   cached_count: number
+  partial_count: number
   current_progress: RenderProgress | null
 }
 
