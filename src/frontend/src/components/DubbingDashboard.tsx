@@ -291,7 +291,7 @@ export default function DubbingDashboard() {
             <img
               src={captureImageUrl}
               alt="캡처 미리보기"
-              className="w-full h-48 object-contain"
+              className="w-full object-contain"
               key={Date.now()}  // 강제 새로고침
             />
           </div>

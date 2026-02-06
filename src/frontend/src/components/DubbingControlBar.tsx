@@ -12,6 +12,7 @@ export default function DubbingControlBar() {
     setWindow,
     startDubbing,
     stopDubbing,
+    isRendering,
   } = useAppStore()
 
   // 게임 관련 윈도우 우선 정렬 (훅은 조건부 return 전에 호출해야 함)
@@ -80,13 +81,13 @@ export default function DubbingControlBar() {
           </button>
         </div>
 
-        {/* 미리보기 썸네일 */}
+        {/* 미리보기 썸네일 (대사 영역 비율 ~8:1) */}
         {previewImageUrl && (
-          <div className="w-24 h-14 bg-ark-black/50 border border-ark-border rounded overflow-hidden flex-shrink-0">
+          <div className="flex-1 min-w-0 bg-ark-black/50 border border-ark-border rounded overflow-hidden">
             <img
               src={previewImageUrl}
               alt="윈도우 미리보기"
-              className="w-full h-full object-contain"
+              className="w-full h-auto object-contain"
               key={`preview-${selectedWindowHwnd}-${Date.now()}`}
             />
           </div>
@@ -132,6 +133,19 @@ export default function DubbingControlBar() {
           <span className="text-sm text-ark-orange font-medium">
             더빙을 시작하려면 캡처할 윈도우를 먼저 선택하세요
           </span>
+        </div>
+      )}
+
+      {/* VRAM 경고 - 사전 더빙 + 실시간 더빙 동시 실행 */}
+      {isDubbingMode && isRendering && (
+        <div className="mx-4 mb-3 bg-ark-yellow/10 border border-ark-yellow/30 rounded px-3 py-2 flex items-start gap-2">
+          <svg viewBox="0 0 24 24" className="w-5 h-5 text-ark-yellow flex-shrink-0 mt-0.5" fill="currentColor">
+            <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+          </svg>
+          <div className="text-xs text-ark-yellow">
+            <p className="font-medium">사전 더빙과 실시간 더빙 동시 실행 중</p>
+            <p className="text-ark-yellow/70 mt-0.5">VRAM 부족 시 OCR 품질 저하 또는 크래시가 발생할 수 있습니다</p>
+          </div>
         </div>
       )}
     </div>

@@ -291,9 +291,9 @@ def get_dialogue_region(screen_width: int, screen_height: int) -> BoundingBox:
         return DIALOGUE_REGION_PRESETS[key]
 
     # 동적 계산 (16:9 기준)
-    margin_x = int(screen_width * 0.10)
-    y_start = int(screen_height * 0.72)
-    y_end = int(screen_height * 0.89)
+    margin_x = int(screen_width * 0.01)  # 좌우 1% 여백
+    y_start = int(screen_height * 0.80)  # 하단 80%부터
+    y_end = screen_height                # 하단 끝까지
 
     return BoundingBox(
         x=margin_x,

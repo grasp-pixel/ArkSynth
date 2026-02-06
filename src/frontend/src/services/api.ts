@@ -14,12 +14,15 @@ const ocrApiClient = axios.create({
 })
 
 // 에피소드 관련 API
+export type DialogueType = 'dialogue' | 'narration' | 'subtitle'
+
 export interface DialogueInfo {
   id: string
   speaker_id: string | null
   speaker_name: string
   text: string
   line_number: number
+  dialogue_type: DialogueType
 }
 
 export interface EpisodeSummary {
@@ -598,9 +601,9 @@ export const ocrApi = {
     return res.data
   },
 
-  // 윈도우 캡처 이미지 URL (상단 15% UI 영역 제외)
-  getWindowImageUrl: (hwnd: number, ignoreTopRatio: number = 0.15) => {
-    return `${API_BASE}/api/ocr/capture/window/image?hwnd=${hwnd}&ignore_top_ratio=${ignoreTopRatio}&t=${Date.now()}`
+  // 윈도우 캡처 이미지 URL (대사 영역만)
+  getWindowImageUrl: (hwnd: number) => {
+    return `${API_BASE}/api/ocr/capture/window/image?hwnd=${hwnd}&t=${Date.now()}`
   },
 
   // 윈도우에서 대사 감지

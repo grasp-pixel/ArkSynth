@@ -16,6 +16,54 @@ from .. import gpu_semaphore_context
 
 router = APIRouter()
 
+
+# --- 공통 함수 ---
+
+
+def crop_dialogue_region(image: Image.Image) -> Image.Image:
+    """이미지에서 대사 영역만 크롭하는 공통 함수
+
+    Args:
+        image: 전체 윈도우 이미지
+
+    Returns:
+        대사 영역만 크롭된 PIL Image
+    """
+    from ...ocr import get_dialogue_region
+
+    dialogue_region = get_dialogue_region(image.width, image.height)
+    return image.crop((
+        dialogue_region.x,
+        dialogue_region.y,
+        dialogue_region.x + dialogue_region.width,
+        dialogue_region.y + dialogue_region.height,
+    ))
+
+
+async def capture_dialogue_region(hwnd: int) -> Image.Image:
+    """윈도우에서 대사 영역만 캡처하는 공통 함수
+
+    Args:
+        hwnd: 윈도우 핸들
+
+    Returns:
+        대사 영역만 크롭된 PIL Image
+
+    Raises:
+        HTTPException: 캡처 실패 시
+    """
+    from ...ocr import ScreenCapture
+
+    capture = ScreenCapture()
+    image = await capture.capture_window_async(hwnd)
+    capture.close()
+
+    if image is None:
+        raise HTTPException(status_code=400, detail="Failed to capture window")
+
+    return crop_dialogue_region(image)
+
+
 # 캡처된 이미지 캐시 (간단한 메모리 캐시)
 _capture_cache: dict[str, tuple[bytes, float]] = {}
 _CACHE_TTL = 30.0  # 30초
@@ -149,30 +197,11 @@ async def list_windows():
 @router.get("/capture/window/image")
 async def capture_window_image(
     hwnd: Annotated[int, Query(description="윈도우 핸들")],
-    ignore_top_ratio: Annotated[float, Query(description="상단 무시 비율")] = 0.0,
 ):
-    """특정 윈도우 캡처 - 직접 JPEG 이미지 반환 (Windows 전용)"""
+    """특정 윈도우 캡처 - 대사 영역만 JPEG 이미지 반환 (Windows 전용)"""
+    import traceback
     try:
-        from ...ocr import ScreenCapture
-
-        capture = ScreenCapture()
-        image = await capture.capture_window_async(hwnd)
-        capture.close()
-
-        if image is None:
-            raise HTTPException(status_code=400, detail="Failed to capture window")
-
-        # 상단 UI 영역 제외
-        if ignore_top_ratio > 0:
-            top_margin = int(image.height * ignore_top_ratio)
-            image = image.crop(
-                (
-                    0,
-                    top_margin,
-                    image.width,
-                    image.height,
-                )
-            )
+        image = await capture_dialogue_region(hwnd)
 
         buffer = io.BytesIO()
         image.save(buffer, format="JPEG", quality=85)
@@ -189,6 +218,8 @@ async def capture_window_image(
     except HTTPException:
         raise
     except Exception as e:
+        print(f"[OCR] capture_window_image error: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -354,30 +385,15 @@ async def detect_window_dialogue_stable(
     global _window_stability
 
     try:
-        from ...ocr import ScreenCapture, EasyOCRProvider
+        from ...ocr import EasyOCRProvider
 
         # 윈도우 상태 가져오기
         if hwnd not in _window_stability:
             _window_stability[hwnd] = WindowStabilityState()
         state = _window_stability[hwnd]
 
-        # 캡처
-        capture = ScreenCapture()
-        image = await capture.capture_window_async(hwnd)
-        capture.close()
-
-        if image is None:
-            raise HTTPException(status_code=400, detail="Failed to capture window")
-
-        # 대사 영역만 크롭
-        from ...ocr import get_dialogue_region
-        dialogue_region = get_dialogue_region(image.width, image.height)
-        dialogue_image = image.crop((
-            dialogue_region.x,
-            dialogue_region.y,
-            dialogue_region.x + dialogue_region.width,
-            dialogue_region.y + dialogue_region.height,
-        ))
+        # 대사 영역 캡처
+        dialogue_image = await capture_dialogue_region(hwnd)
 
         # 안정화 체크
         current_hash = _compute_image_hash(dialogue_image)
@@ -570,10 +586,10 @@ async def capture_screen(
 
 
 @router.get("/capture/dialogue", response_model=ScreenCaptureResponse)
-async def capture_dialogue_region(
+async def capture_monitor_dialogue_region(
     monitor: Annotated[int, Query(description="모니터 ID")] = 1,
 ):
-    """대사 영역만 캡처"""
+    """모니터에서 대사 영역만 캡처"""
     try:
         from ...ocr import ScreenCapture, get_dialogue_region
 
@@ -1078,14 +1094,7 @@ async def stream_window_dialogue(
                         continue
 
                     # 대사 영역만 크롭
-                    from ...ocr import get_dialogue_region
-                    dialogue_region = get_dialogue_region(image.width, image.height)
-                    dialogue_image = image.crop((
-                        dialogue_region.x,
-                        dialogue_region.y,
-                        dialogue_region.x + dialogue_region.width,
-                        dialogue_region.y + dialogue_region.height,
-                    ))
+                    dialogue_image = crop_dialogue_region(image)
 
                     # 안정화 체크
                     current_hash = _compute_image_hash(dialogue_image)
