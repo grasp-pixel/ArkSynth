@@ -392,26 +392,26 @@ class EasyOCRProvider(OCRProvider):
         return Image.fromarray(result)
 
     def _is_valid_speaker(self, text: str | None) -> bool:
-        """화자 텍스트가 유효한지 검증
+        """화자 텍스트가 유효한지 검증 (널널한 기준)
 
-        - 너무 길면 쓰레기 (화자 이름은 보통 10자 이내)
-        - 특수문자가 많으면 쓰레기
+        - 너무 길면 쓰레기 (화자 이름은 보통 15자 이내, 여유 30자)
+        - 특수문자가 많으면 쓰레기 (OCR 오류 특성)
         - 공백이 너무 많으면 쓰레기
         """
         if not text:
             return False
 
-        # 너무 길면 쓰레기 (화자 이름은 보통 짧음)
-        if len(text) > 20:
+        # 너무 길면 쓰레기 (화자 이름은 보통 짧음, 여유있게 30자)
+        if len(text) > 30:
             return False
 
-        # 특수문자 비율 체크
+        # 특수문자 비율 체크 (OCR 오류 특성: @{}[]<> 등)
         special_chars = sum(1 for c in text if c in '@{}[]<>|\\~`')
-        if special_chars > 2:
+        if special_chars > 3:
             return False
 
         # 공백 비율 체크 (너무 많은 공백은 쓰레기)
-        if text.count(' ') > len(text) * 0.3:
+        if text.count(' ') > len(text) * 0.4:
             return False
 
         return True

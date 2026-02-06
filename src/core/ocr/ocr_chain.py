@@ -97,12 +97,25 @@ class OCRFallbackChain:
     async def _try_region(
         self, image: Image.Image, config: OCRRegionConfig
     ) -> OCRRegionResult:
-        """단일 영역 OCR 시도"""
+        """단일 영역 OCR 시도
+
+        dialogue 모드:
+        1. 색상 분리 (화자/대사) 시도
+        2. 실패 시 단순 전체 텍스트 OCR로 폴백 (대사만 매칭)
+        """
         bbox = self._get_region_bbox(config.type, image.width, image.height)
+
+        # 영역 크롭
+        cropped = image.crop((
+            bbox.x,
+            bbox.y,
+            bbox.x + bbox.width,
+            bbox.y + bbox.height,
+        ))
 
         try:
             if config.mode == "dialogue":
-                # 화자/대사 분리 인식
+                # 1차: 화자/대사 분리 인식
                 speaker, dialogue, confidence = await self._ocr.recognize_dialogue(
                     image, bbox
                 )
@@ -122,14 +135,27 @@ class OCRFallbackChain:
                         confidence=confidence,
                         region=bbox,
                     )
+
+                # 2차: 색상 분리 실패 시 전체 텍스트 OCR 폴백
+                print(f"[OCRChain] 색상 분리 실패, 전체 텍스트 OCR 폴백 시도...", flush=True)
+                fallback_text = await self._ocr.recognize_all_text(cropped)
+
+                if (
+                    fallback_text
+                    and len(fallback_text) >= config.min_text_length
+                ):
+                    # 폴백 성공: 화자 없이 대사만 반환
+                    print(f"[OCRChain] 폴백 성공: '{fallback_text[:30]}...'", flush=True)
+                    return OCRRegionResult(
+                        success=True,
+                        region_type=config.type,
+                        text=fallback_text,
+                        speaker=None,  # 폴백이므로 화자 없음
+                        confidence=0.6,  # 폴백 신뢰도
+                        region=bbox,
+                    )
             else:
                 # 단순 텍스트 인식 (자막용)
-                cropped = image.crop((
-                    bbox.x,
-                    bbox.y,
-                    bbox.x + bbox.width,
-                    bbox.y + bbox.height,
-                ))
                 text = await self._ocr.recognize_all_text(cropped)
 
                 # 신뢰도 계산 (recognize_all_text는 신뢰도 미반환)
