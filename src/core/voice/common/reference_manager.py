@@ -586,7 +586,8 @@ def select_reference_hybrid(
     # 3. 가중 랜덤 선택
     total_score = sum(c["final_score"] for c in top_candidates)
     if total_score <= 0:
-        selected = top_candidates[0]
+        # final_score가 가장 높은 후보 선택 (음수여도 상대적으로 높은 것 선택)
+        selected = max(top_candidates, key=lambda x: x["final_score"])
     else:
         # 가중치 기반 랜덤 선택
         rand_val = random.uniform(0, total_score)

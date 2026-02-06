@@ -11,6 +11,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -140,16 +141,50 @@ def cleanup_training_data(output_dir: Path) -> int:
     return cleaned_size
 
 
+def _extract_voice_key_with_skin(key: str, char_id: str) -> str | None:
+    """charword_table 키에서 voice_id 추출 (스킨 접미사 포함)
+
+    Args:
+        key: charword_table 키 (예: "char_003_kalts_boc#6_CN_001")
+        char_id: 기본 캐릭터 ID (예: "char_003_kalts")
+
+    Returns:
+        voice_id (예: "CN_001_boc6") 또는 None
+    """
+    if not key.startswith(char_id + "_"):
+        return None
+
+    # char_id 이후 부분 추출
+    remainder = key[len(char_id) + 1:]  # "boc#6_CN_001" 또는 "CN_001"
+
+    # 스킨 패턴 확인: boc#6_CN_001, epoque#34_CN_001, iteration#2_CN_001 등
+    skin_match = re.match(r'^([a-z]+)#(\d+)_(.+)$', remainder)
+    if skin_match:
+        skin_type = skin_match.group(1)  # boc, epoque, iteration 등
+        skin_num = skin_match.group(2)   # 6, 34, 2 등
+        voice_id = skin_match.group(3)   # CN_001
+        # 스킨 접미사 추가 (추출기와 동일한 형식)
+        return f"{voice_id}_{skin_type}{skin_num}"
+
+    # 기본 캐릭터 (스킨 없음)
+    return remainder
+
+
 def load_charword_texts(gamedata_path: Path, char_id: str, language: str = "ko") -> dict[str, str]:
-    """charword_table.json에서 캐릭터 대사 텍스트 로드
+    """charword_table.json에서 캐릭터 대사 텍스트 로드 (스킨/이격 포함)
 
     여러 gamedata 경로를 시도합니다:
     1. gamedata_yostar/{lang}/gamedata/excel/charword_table.json
     2. gamedata/{lang_short}/gamedata/excel/charword_table.json
 
+    스킨/이격 대사도 포함하여 로드합니다:
+    - 기본: CN_001 → "기본 대사..."
+    - 스킨: CN_001_boc6 → "스킨 대사..."
+    - 이격: CN_001_iteration2 → "이격 대사..."
+
     Returns:
-        {voice_title: text} 형태의 딕셔너리
-        예: {"CN_001": "의학 테스트 보고서...", "CN_002": "박사, 저예요..."}
+        {voice_id: text} 형태의 딕셔너리
+        예: {"CN_001": "기본 대사...", "CN_001_boc6": "스킨 대사..."}
     """
     # 언어별 charword_table 경로 매핑
     lang_map = {
@@ -178,19 +213,28 @@ def load_charword_texts(gamedata_path: Path, char_id: str, language: str = "ko")
             with open(charword_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-            # charWords에서 해당 캐릭터의 대사 추출
+            # charWords에서 해당 캐릭터의 대사 추출 (스킨/이격 포함)
             char_words = data.get("charWords", {})
 
             for key, value in char_words.items():
-                # key 형식: "char_002_amiya_CN_001"
-                if key.startswith(char_id + "_"):
-                    voice_title = key[len(char_id) + 1:]  # "CN_001"
-                    voice_text = value.get("voiceText", "")
-                    if voice_text and voice_title not in texts:
-                        texts[voice_title] = voice_text
+                # 스킨 접미사 포함하여 voice_id 추출
+                voice_id = _extract_voice_key_with_skin(key, char_id)
+                if voice_id is None:
+                    continue
+
+                voice_text = value.get("voiceText", "")
+                if voice_text and voice_id not in texts:
+                    texts[voice_id] = voice_text
 
             if texts:
-                logger.info(f"캐릭터 대사 로드: {char_id}, {len(texts)}개 (from {charword_path})")
+                # 스킨 대사 수 계산 (CN_001_boc6 형태)
+                skin_pattern = re.compile(r'_[a-z]+\d+$')
+                skin_count = sum(1 for k in texts if skin_pattern.search(k))
+                base_count = len(texts) - skin_count
+                logger.info(
+                    f"캐릭터 대사 로드: {char_id}, {len(texts)}개 "
+                    f"(기본: {base_count}, 스킨/이격: {skin_count}) from {charword_path}"
+                )
                 return texts
 
         except Exception as e:

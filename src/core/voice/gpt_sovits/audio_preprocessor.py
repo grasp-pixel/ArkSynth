@@ -526,11 +526,14 @@ class AudioPreprocessor:
                 else:
                     logger.debug(f"텍스트 검증 통과: {voice_id} (유사도: {best_sim:.2f})")
             else:
+                # 매칭 실패: 오디오와 텍스트 불일치 → 건너뛰기
+                # (스킨/이격 오디오가 기본 대사 텍스트와 불일치하는 경우)
                 logger.warning(
-                    f"텍스트 매칭 실패: {voice_id} (최고 유사도: {best_sim:.2f})\n"
+                    f"텍스트 매칭 실패, 건너뜀: {voice_id} (최고 유사도: {best_sim:.2f})\n"
                     f"  Whisper: {whisper_text[:50]}...\n"
                     f"  Expected: {expected_text[:50]}..."
                 )
+                return []
 
         # 텍스트 정렬 확인
         similarity, _ = self.align_texts(whisper_text, expected_text)
@@ -813,11 +816,14 @@ class AudioPreprocessor:
                         else:
                             logger.debug(f"텍스트 검증 통과: {voice_id} (유사도: {best_sim:.2f})")
                     else:
+                        # 매칭 실패: 오디오와 텍스트 불일치 → 건너뛰기
+                        # (스킨/이격 오디오가 기본 대사 텍스트와 불일치하는 경우)
                         logger.warning(
-                            f"텍스트 매칭 실패: {voice_id} (최고 유사도: {best_sim:.2f})\n"
+                            f"텍스트 매칭 실패, 건너뜀: {voice_id} (최고 유사도: {best_sim:.2f})\n"
                             f"  Whisper: {whisper_text[:50]}...\n"
                             f"  Expected: {expected_text[:50]}..."
                         )
+                        return []
 
             output_path = output_dir / f"{voice_id}.wav"
             text_path = output_dir / f"{voice_id}.txt"

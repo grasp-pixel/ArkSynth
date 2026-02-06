@@ -16,6 +16,29 @@ from .lz4ak import decompress_lz4ak
 CompressionHelper.DECOMPRESSION_MAP[CompressionFlags.LZHAM] = decompress_lz4ak
 
 
+def _extract_skin_suffix(char_name: str) -> tuple[str, str]:
+    """캐릭터 이름에서 스킨 접미사 추출
+
+    Args:
+        char_name: 캐릭터 이름 (예: char_003_kalts_boc#6)
+
+    Returns:
+        (기본 캐릭터 이름, 스킨 접미사) 튜플
+        예: ("char_003_kalts", "_boc6")
+        스킨이 없으면 ("char_003_kalts", "")
+    """
+    # 스킨 패턴: _boc#6, _epoque#34, _iteration#2 등
+    match = re.search(r'_([a-z]+)#(\d+)$', char_name)
+    if match:
+        base_char = char_name[:match.start()]
+        skin_type = match.group(1)  # boc, epoque, iteration 등
+        skin_num = match.group(2)   # 6, 34, 2 등
+        # # 제거하여 파일명 안전하게
+        skin_suffix = f"_{skin_type}{skin_num}"
+        return base_char, skin_suffix
+    return char_name, ""
+
+
 def extract_audio_from_bundle(
     ab_path: Path,
     output_dir: Path,
@@ -40,11 +63,11 @@ def extract_audio_from_bundle(
         print(f"Failed to load {ab_path}: {e}")
         return extracted
 
-    # Get character folder name from ab filename
+    # 캐릭터 이름과 스킨 접미사 추출
     char_name = ab_path.stem
-    # Remove skin suffixes like _boc#6, _iteration#2, _epoque#34
-    base_char = re.sub(r'_[a-z]+#\d+$', '', char_name)
+    base_char, skin_suffix = _extract_skin_suffix(char_name)
 
+    # 기본 캐릭터 폴더에 저장 (스킨도 같은 폴더)
     char_dir = output_dir / base_char
     char_dir.mkdir(parents=True, exist_ok=True)
 
@@ -65,9 +88,9 @@ def extract_audio_from_bundle(
                     if data:
                         # 실제 이름 사용 (sample_name 또는 audio.m_Name)
                         actual_name = sample_name or audio_name or "unknown"
-                        # 확장자 제거 후 새 확장자 추가
+                        # 확장자 제거 후 스킨 접미사 + 새 확장자 추가
                         base_name = Path(actual_name).stem
-                        out_name = f"{base_name}.{output_format}"
+                        out_name = f"{base_name}{skin_suffix}.{output_format}"
                         out_path = char_dir / out_name
 
                         with open(out_path, 'wb') as f:
@@ -77,10 +100,10 @@ def extract_audio_from_bundle(
             else:
                 m_AudioData = getattr(audio, 'm_AudioData', None)
                 if m_AudioData:
-                    # 실제 이름 사용
+                    # 실제 이름 사용 + 스킨 접미사
                     actual_name = audio_name or "unknown"
                     base_name = Path(actual_name).stem
-                    out_name = f"{base_name}.{output_format}"
+                    out_name = f"{base_name}{skin_suffix}.{output_format}"
                     out_path = char_dir / out_name
 
                     with open(out_path, 'wb') as f:
