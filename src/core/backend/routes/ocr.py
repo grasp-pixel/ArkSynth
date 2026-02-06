@@ -119,6 +119,8 @@ class DetectDialogueResponse(BaseModel):
     text: str | None
     confidence: float
     timestamp: float
+    region_type: str | None = None  # "dialogue" | "subtitle"
+    speaker: str | None = None
 
 
 class WindowInfoResponse(BaseModel):
@@ -228,18 +230,19 @@ async def detect_window_dialogue(
     hwnd: Annotated[int, Query(description="윈도우 핸들")],
     lang: Annotated[str, Query(description="OCR 언어")] = "ko",
     min_confidence: Annotated[float, Query(description="최소 신뢰도")] = 0.2,
-    ignore_top_ratio: Annotated[
-        float, Query(description="상단 무시 비율 (UI 제외)")
-    ] = 0.15,
+    use_fallback: Annotated[bool, Query(description="폴백 체인 사용")] = True,
 ):
-    """윈도우에서 대사 감지 (캡처 + OCR)"""
+    """윈도우에서 대사 감지 (캡처 + OCR, 폴백 체인 지원)
+
+    use_fallback=True: 하단 대사 영역 실패 시 화면 중앙 자막 영역도 시도
+    """
     import traceback
 
     total_start = time.time()
-    print(f"[OCR-API] detect_window_dialogue 시작: hwnd={hwnd}, lang={lang}")
+    print(f"[OCR-API] detect_window_dialogue 시작: hwnd={hwnd}, lang={lang}, fallback={use_fallback}")
 
     try:
-        from ...ocr import ScreenCapture, EasyOCRProvider
+        from ...ocr import ScreenCapture, EasyOCRProvider, OCRFallbackChain
 
         # 1. 캡처
         capture_start = time.time()
@@ -254,62 +257,56 @@ async def detect_window_dialogue(
 
         print(f"[OCR-API] 캡처 이미지: {image.width}x{image.height}")
 
-        # 상단 UI 영역 제외 (LOG, AUTO, SKIP 등)
-        if ignore_top_ratio > 0:
-            top_margin = int(image.height * ignore_top_ratio)
-            image = image.crop(
-                (
-                    0,
-                    top_margin,
-                    image.width,
-                    image.height,
-                )
-            )
-            print(
-                f"[OCR-API] 상단 {ignore_top_ratio * 100:.0f}% 제외 후: {image.width}x{image.height}"
-            )
-
-        # 2. OCR
+        # 2. OCR (폴백 체인 사용)
         ocr_start = time.time()
         ocr = EasyOCRProvider(language=lang)
-        results = await ocr.recognize(image)
-        print(f"[OCR-API] OCR 완료: {time.time() - ocr_start:.2f}초")
 
-        if results:
-            # 디버깅: 모든 OCR 결과 출력
-            print(f"[OCR] Raw results ({len(results)} items):")
-            for i, r in enumerate(results):
-                bbox = r.bounding_box
-                pos = f"({bbox.x}, {bbox.y})" if bbox else "?"
-                print(f"  [{i}] conf={r.confidence:.2f} pos={pos} text='{r.text}'")
+        if use_fallback:
+            # 폴백 체인: 대사 영역 → 자막 영역
+            chain = OCRFallbackChain(ocr)
+            result = await chain.recognize(image)
+            print(f"[OCR-API] OCR 완료: {time.time() - ocr_start:.2f}초")
 
-            # 모든 결과를 y좌표 순으로 정렬하여 합치기
-            sorted_results = sorted(
-                [r for r in results if r.confidence >= min_confidence],
-                key=lambda r: r.bounding_box.y if r.bounding_box else 0,
-            )
-
-            # 디버깅: 필터링 후 결과
-            filtered_count = len(results) - len(sorted_results)
-            if filtered_count > 0:
-                print(
-                    f"[OCR] Filtered out {filtered_count} results (confidence < {min_confidence})"
-                )
-
-            if sorted_results:
-                combined_text = "\n".join(r.text for r in sorted_results)
-                avg_confidence = sum(r.confidence for r in sorted_results) / len(
-                    sorted_results
-                )
+            if result.success:
                 total_elapsed = time.time() - total_start
                 print(
-                    f"[OCR-API] 완료: '{combined_text[:50]}...' (총 {total_elapsed:.2f}초)"
+                    f"[OCR-API] 완료: '{result.text[:50]}...' "
+                    f"(영역: {result.region_type.value}, 총 {total_elapsed:.2f}초)"
                 )
                 return DetectDialogueResponse(
-                    text=combined_text,
-                    confidence=avg_confidence,
+                    text=result.text,
+                    confidence=result.confidence,
                     timestamp=time.time(),
+                    region_type=result.region_type.value,
+                    speaker=result.speaker,
                 )
+        else:
+            # 기존 방식: 대사 영역만
+            dialogue_image = crop_dialogue_region(image)
+            results = await ocr.recognize(dialogue_image)
+            print(f"[OCR-API] OCR 완료: {time.time() - ocr_start:.2f}초")
+
+            if results:
+                sorted_results = sorted(
+                    [r for r in results if r.confidence >= min_confidence],
+                    key=lambda r: r.bounding_box.y if r.bounding_box else 0,
+                )
+
+                if sorted_results:
+                    combined_text = "\n".join(r.text for r in sorted_results)
+                    avg_confidence = sum(r.confidence for r in sorted_results) / len(
+                        sorted_results
+                    )
+                    total_elapsed = time.time() - total_start
+                    print(
+                        f"[OCR-API] 완료: '{combined_text[:50]}...' (총 {total_elapsed:.2f}초)"
+                    )
+                    return DetectDialogueResponse(
+                        text=combined_text,
+                        confidence=avg_confidence,
+                        timestamp=time.time(),
+                        region_type="dialogue",
+                    )
 
         total_elapsed = time.time() - total_start
         print(f"[OCR-API] 완료: 텍스트 없음 (총 {total_elapsed:.2f}초)")
@@ -1001,6 +998,84 @@ async def reset_matcher(episode_id: str | None = None):
         return {"reset": True, "message": "All matchers cleared"}
 
 
+# --- 영역 미리보기 엔드포인트 ---
+
+
+class RegionPreviewResponse(BaseModel):
+    dialogue: BoundingBoxResponse
+    subtitle: BoundingBoxResponse
+
+
+@router.get("/regions", response_model=RegionPreviewResponse)
+async def get_ocr_regions(
+    width: Annotated[int, Query(description="화면 너비")] = 1920,
+    height: Annotated[int, Query(description="화면 높이")] = 1080,
+):
+    """OCR 영역 좌표 반환 (대사 + 자막)"""
+    from ...ocr import get_dialogue_region, get_subtitle_region
+
+    dialogue = get_dialogue_region(width, height)
+    subtitle = get_subtitle_region(width, height)
+
+    return RegionPreviewResponse(
+        dialogue=BoundingBoxResponse(
+            x=dialogue.x, y=dialogue.y, width=dialogue.width, height=dialogue.height
+        ),
+        subtitle=BoundingBoxResponse(
+            x=subtitle.x, y=subtitle.y, width=subtitle.width, height=subtitle.height
+        ),
+    )
+
+
+@router.get("/capture/window/regions/image")
+async def capture_window_regions_image(
+    hwnd: Annotated[int, Query(description="윈도우 핸들")],
+    region_type: Annotated[str, Query(description="영역 타입 (dialogue/subtitle)")] = "dialogue",
+):
+    """윈도우에서 특정 영역만 캡처 - JPEG 이미지 반환"""
+    import traceback
+    try:
+        from ...ocr import ScreenCapture, get_dialogue_region, get_subtitle_region
+
+        capture = ScreenCapture()
+        image = await capture.capture_window_async(hwnd)
+        capture.close()
+
+        if image is None:
+            raise HTTPException(status_code=400, detail="Failed to capture window")
+
+        # 영역 계산
+        if region_type == "subtitle":
+            region = get_subtitle_region(image.width, image.height)
+        else:
+            region = get_dialogue_region(image.width, image.height)
+
+        # 크롭
+        cropped = image.crop((
+            region.x,
+            region.y,
+            region.x + region.width,
+            region.y + region.height,
+        ))
+
+        buffer = io.BytesIO()
+        cropped.save(buffer, format="JPEG", quality=85)
+        buffer.seek(0)
+        image_bytes = buffer.read()
+
+        return Response(
+            content=image_bytes,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "no-cache"},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[OCR] capture_window_regions_image error: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # --- SSE 스트리밍 ---
 
 import asyncio
@@ -1014,6 +1089,8 @@ class DialogueStreamEvent(BaseModel):
     confidence: float = 0.0
     timestamp: float = 0.0
     is_new: bool = False
+    region_type: str | None = None  # "dialogue" | "subtitle"
+    speaker: str | None = None
 
 
 @router.get("/stream/window")
@@ -1023,12 +1100,13 @@ async def stream_window_dialogue(
     min_confidence: Annotated[float, Query(description="최소 신뢰도")] = 0.2,
     poll_interval: Annotated[float, Query(description="폴링 간격 (초)")] = 0.3,
     stability_threshold: Annotated[int, Query(description="안정화 임계값")] = 3,
+    use_fallback: Annotated[bool, Query(description="폴백 체인 사용")] = True,
 ):
-    """윈도우 대사 감지 SSE 스트림
+    """윈도우 대사 감지 SSE 스트림 (폴백 체인 지원)
 
     새로운 대사가 감지될 때만 이벤트를 전송합니다.
     타이핑 효과가 끝난 후 안정화된 텍스트만 전송합니다.
-    대사 영역(하단 72-89%)만 OCR합니다.
+    use_fallback=True: 대사 영역 실패 시 자막 영역도 시도
     """
     import traceback
 
@@ -1037,7 +1115,7 @@ async def stream_window_dialogue(
 
         global _window_stability
 
-        print(f"[SSE] 스트림 시작: hwnd={hwnd}, lang={lang}", flush=True)
+        print(f"[SSE] 스트림 시작: hwnd={hwnd}, lang={lang}, fallback={use_fallback}", flush=True)
 
         # 상태 초기화
         if hwnd not in _window_stability:
@@ -1045,11 +1123,12 @@ async def stream_window_dialogue(
         state = _window_stability[hwnd]
 
         try:
-            from ...ocr import ScreenCapture, EasyOCRProvider
+            from ...ocr import ScreenCapture, EasyOCRProvider, OCRFallbackChain
 
             capture = ScreenCapture()
             ocr = EasyOCRProvider(language=lang)
-            print(f"[SSE] OCR Provider 초기화 완료 (하이브리드 모드)", flush=True)
+            chain = OCRFallbackChain(ocr) if use_fallback else None
+            print(f"[SSE] OCR Provider 초기화 완료 (폴백: {use_fallback})", flush=True)
 
             # 연결 성공 알림
             yield {
@@ -1136,51 +1215,88 @@ async def stream_window_dialogue(
                     try:
                         async with gpu_semaphore_context():
                             print(f"[SSE] GPU 세마포어 통과", flush=True)
-                            results = await asyncio.wait_for(
-                                ocr.recognize(dialogue_image),
-                                timeout=10.0,
-                            )
-                        print(
-                            f"[SSE] OCR 완료: {len(results) if results else 0}개 결과, {time.time() - ocr_start:.2f}초",
-                            flush=True,
-                        )
+
+                            if chain:
+                                # 폴백 체인 사용
+                                result = await asyncio.wait_for(
+                                    chain.recognize(image),
+                                    timeout=10.0,
+                                )
+                                print(
+                                    f"[SSE] OCR 완료 (폴백): {result.region_type.value if result.success else 'N/A'}, {time.time() - ocr_start:.2f}초",
+                                    flush=True,
+                                )
+
+                                if result.success:
+                                    is_new = result.text != state.last_text
+                                    if is_new:
+                                        state.last_text = result.text
+                                        print(
+                                            f"[SSE] 새 대사 감지 ({result.region_type.value}): '{result.text[:50]}...'",
+                                            flush=True,
+                                        )
+                                        yield {
+                                            "event": "dialogue",
+                                            "data": json.dumps(
+                                                {
+                                                    "type": "dialogue",
+                                                    "text": result.text,
+                                                    "confidence": result.confidence,
+                                                    "timestamp": time.time(),
+                                                    "is_new": True,
+                                                    "region_type": result.region_type.value,
+                                                    "speaker": result.speaker,
+                                                }
+                                            ),
+                                        }
+                            else:
+                                # 기존 방식: 대사 영역만
+                                results = await asyncio.wait_for(
+                                    ocr.recognize(dialogue_image),
+                                    timeout=10.0,
+                                )
+                                print(
+                                    f"[SSE] OCR 완료: {len(results) if results else 0}개 결과, {time.time() - ocr_start:.2f}초",
+                                    flush=True,
+                                )
+
+                                if results:
+                                    sorted_results = sorted(
+                                        [r for r in results if r.confidence >= min_confidence],
+                                        key=lambda r: r.bounding_box.y if r.bounding_box else 0,
+                                    )
+
+                                    if sorted_results:
+                                        combined_text = "\n".join(r.text for r in sorted_results)
+                                        avg_confidence = sum(
+                                            r.confidence for r in sorted_results
+                                        ) / len(sorted_results)
+
+                                        is_new = combined_text != state.last_text
+                                        if is_new:
+                                            state.last_text = combined_text
+                                            print(
+                                                f"[SSE] 새 대사 감지: '{combined_text[:50]}...' (신뢰도: {avg_confidence:.2f})",
+                                                flush=True,
+                                            )
+                                            yield {
+                                                "event": "dialogue",
+                                                "data": json.dumps(
+                                                    {
+                                                        "type": "dialogue",
+                                                        "text": combined_text,
+                                                        "confidence": avg_confidence,
+                                                        "timestamp": time.time(),
+                                                        "is_new": True,
+                                                        "region_type": "dialogue",
+                                                    }
+                                                ),
+                                            }
+
                     except asyncio.TimeoutError:
                         print("[SSE] OCR 타임아웃 (10초)", flush=True)
                         await asyncio.sleep(poll_interval)
                         continue
-
-                    if results:
-                        sorted_results = sorted(
-                            [r for r in results if r.confidence >= min_confidence],
-                            key=lambda r: r.bounding_box.y if r.bounding_box else 0,
-                        )
-
-                        if sorted_results:
-                            combined_text = "\n".join(r.text for r in sorted_results)
-                            avg_confidence = sum(
-                                r.confidence for r in sorted_results
-                            ) / len(sorted_results)
-
-                            # 새로운 대사인지 확인
-                            is_new = combined_text != state.last_text
-                            if is_new:
-                                state.last_text = combined_text
-                                print(
-                                    f"[SSE] 새 대사 감지: '{combined_text[:50]}...' (신뢰도: {avg_confidence:.2f})",
-                                    flush=True,
-                                )
-                                yield {
-                                    "event": "dialogue",
-                                    "data": json.dumps(
-                                        {
-                                            "type": "dialogue",
-                                            "text": combined_text,
-                                            "confidence": avg_confidence,
-                                            "timestamp": time.time(),
-                                            "is_new": True,
-                                        }
-                                    ),
-                                }
 
                 except asyncio.CancelledError:
                     print(f"[SSE] 스트림 취소됨", flush=True)

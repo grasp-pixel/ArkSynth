@@ -2,12 +2,20 @@
 
 import asyncio
 from dataclasses import dataclass
+from enum import Enum
 
 import mss
 import mss.tools
 from PIL import Image
 
 from ..interfaces.ocr import BoundingBox
+
+
+class OCRRegionType(Enum):
+    """OCR 영역 타입"""
+
+    DIALOGUE = "dialogue"  # 하단 대사 영역
+    SUBTITLE = "subtitle"  # 화면 중앙 자막 영역
 
 # Windows 전용 모듈 (조건부 임포트)
 try:
@@ -301,3 +309,40 @@ def get_dialogue_region(screen_width: int, screen_height: int) -> BoundingBox:
         width=screen_width - (margin_x * 2),
         height=y_end - y_start,
     )
+
+
+def get_subtitle_region(screen_width: int, screen_height: int) -> BoundingBox:
+    """화면 중앙 자막 영역 반환
+
+    자막은 화면 중앙 (상단 30% ~ 60%) 영역에 표시.
+    좌우 5% 여백.
+
+    Args:
+        screen_width: 화면 너비
+        screen_height: 화면 높이
+
+    Returns:
+        자막 영역 바운딩 박스
+    """
+    margin_x = int(screen_width * 0.05)  # 좌우 5% 여백
+    y_start = int(screen_height * 0.30)  # 상단 30%부터
+    y_end = int(screen_height * 0.60)    # 60%까지
+
+    return BoundingBox(
+        x=margin_x,
+        y=y_start,
+        width=screen_width - (margin_x * 2),
+        height=y_end - y_start,
+    )
+
+
+def get_region_by_type(
+    region_type: OCRRegionType, screen_width: int, screen_height: int
+) -> BoundingBox:
+    """영역 타입에 따른 바운딩 박스 반환"""
+    if region_type == OCRRegionType.DIALOGUE:
+        return get_dialogue_region(screen_width, screen_height)
+    elif region_type == OCRRegionType.SUBTITLE:
+        return get_subtitle_region(screen_width, screen_height)
+    else:
+        raise ValueError(f"Unknown region type: {region_type}")

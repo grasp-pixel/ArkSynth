@@ -33,7 +33,20 @@ class CommandType(Enum):
     DECISION = "Decision"
     PREDICATE = "Predicate"
     SUBTITLE = "Subtitle"
+    STICKER = "Sticker"
+    POPUP_DIALOG = "PopupDialog"
+    MULTILINE = "multiline"
     UNKNOWN = "Unknown"
+
+
+class DialogueType(Enum):
+    """대사 유형"""
+
+    DIALOGUE = "dialogue"  # 일반 대사 (화자 있음)
+    NARRATION = "narration"  # 나레이션 (화자 없음, 대사창에 표시)
+    SUBTITLE = "subtitle"  # 자막 ([Subtitle] 커맨드, 화면 중앙)
+    STICKER = "sticker"  # 스티커 ([Sticker] 커맨드, 화면 중앙)
+    POPUP = "popup"  # 팝업 대화 (아바타 + 짧은 메시지)
 
 
 @dataclass
@@ -89,11 +102,17 @@ class Dialogue:
     speaker_name: str  # 표시되는 이름
     text: str  # 대사 내용
     line_number: int  # 원본 파일 라인 번호
+    dialogue_type: DialogueType = DialogueType.DIALOGUE  # 대사 유형
 
     @property
     def is_narration(self) -> bool:
         """나레이션 여부 (화자 이름이 없는 경우)"""
-        return self.speaker_name == ""
+        return self.speaker_name == "" and self.dialogue_type != DialogueType.SUBTITLE
+
+    @property
+    def is_subtitle(self) -> bool:
+        """자막 여부 (화면 중앙 연출)"""
+        return self.dialogue_type == DialogueType.SUBTITLE
 
 
 @dataclass

@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 from ..character import CharacterIdNormalizer
-from ..models.story import CommandType, Dialogue, Episode, StoryCommand
+from ..models.story import CommandType, Dialogue, DialogueType, Episode, StoryCommand
 
 
 class StoryParser:
@@ -43,6 +43,9 @@ class StoryParser:
         "Decision": CommandType.DECISION,
         "Predicate": CommandType.PREDICATE,
         "Subtitle": CommandType.SUBTITLE,
+        "Sticker": CommandType.STICKER,
+        "PopupDialog": CommandType.POPUP_DIALOG,
+        "multiline": CommandType.MULTILINE,
     }
 
     def __init__(self):
@@ -114,6 +117,7 @@ class StoryParser:
                     speaker_name=speaker_name,
                     text=text,
                     line_number=line_num,
+                    dialogue_type=DialogueType.DIALOGUE,
                 )
                 dialogues.append(dialogue)
                 dialogue_index += 1
@@ -141,6 +145,81 @@ class StoryParser:
                 if cmd.type == CommandType.CHARACTER:
                     self._update_current_characters(cmd.params)
 
+                # Subtitle 커맨드에서 Dialogue 생성 (화면 중앙 연출)
+                if cmd.type == CommandType.SUBTITLE and "text" in cmd.params:
+                    subtitle_text = cmd.params["text"]
+                    dialogue = Dialogue(
+                        id=f"{episode_id}_{dialogue_index:04d}",
+                        speaker_id=None,
+                        speaker_name="",
+                        text=subtitle_text,
+                        line_number=line_num,
+                        dialogue_type=DialogueType.SUBTITLE,
+                    )
+                    dialogues.append(dialogue)
+                    dialogue_index += 1
+
+                # Sticker 커맨드에서 Dialogue 생성 (화면 중앙 연출)
+                if cmd.type == CommandType.STICKER and "text" in cmd.params:
+                    sticker_text = cmd.params["text"]
+                    # HTML 태그 제거 (<i>, </i> 등)
+                    sticker_text = re.sub(r"<[^>]+>", "", sticker_text)
+                    # 리터럴 \n 제거 (줄바꿈 아닌 백슬래시+n)
+                    sticker_text = sticker_text.replace("\\n", "")
+                    # 앞뒤 공백/줄바꿈 제거
+                    sticker_text = sticker_text.strip()
+                    # 빈 텍스트는 무시 (스티커 제거 커맨드)
+                    if sticker_text:
+                        dialogue = Dialogue(
+                            id=f"{episode_id}_{dialogue_index:04d}",
+                            speaker_id=None,
+                            speaker_name="",
+                            text=sticker_text,
+                            line_number=line_num,
+                            dialogue_type=DialogueType.STICKER,
+                        )
+                        dialogues.append(dialogue)
+                        dialogue_index += 1
+
+                # PopupDialog 커맨드 (아바타 + 짧은 팝업 대사)
+                # 형식: [PopupDialog(dialogHead="$avatar_grani")] 텍스트
+                if cmd.type == CommandType.POPUP_DIALOG:
+                    # ] 뒤의 텍스트 추출
+                    end_pos = line.find("]")
+                    if end_pos != -1 and end_pos + 1 < len(line):
+                        popup_text = line[end_pos + 1:].strip()
+                        if popup_text:
+                            dialogue = Dialogue(
+                                id=f"{episode_id}_{dialogue_index:04d}",
+                                speaker_id=None,
+                                speaker_name="",
+                                text=popup_text,
+                                line_number=line_num,
+                                dialogue_type=DialogueType.POPUP,
+                            )
+                            dialogues.append(dialogue)
+                            dialogue_index += 1
+
+                # multiline 커맨드 (여러 줄 대사, 화자 있음)
+                # 형식: [multiline(name="라바")] 텍스트
+                if cmd.type == CommandType.MULTILINE:
+                    speaker_name = cmd.params.get("name", "")
+                    # ] 뒤의 텍스트 추출
+                    end_pos = line.find("]")
+                    if end_pos != -1 and end_pos + 1 < len(line):
+                        multiline_text = line[end_pos + 1:].strip()
+                        if multiline_text:
+                            dialogue = Dialogue(
+                                id=f"{episode_id}_{dialogue_index:04d}",
+                                speaker_id=None,
+                                speaker_name=speaker_name,
+                                text=multiline_text,
+                                line_number=line_num,
+                                dialogue_type=DialogueType.DIALOGUE,
+                            )
+                            dialogues.append(dialogue)
+                            dialogue_index += 1
+
                 continue
 
             # 순수 텍스트 줄 = 나레이션 (커맨드로 시작하지 않는 줄)
@@ -152,6 +231,7 @@ class StoryParser:
                     speaker_name="",
                     text=line.strip(),
                     line_number=line_num,
+                    dialogue_type=DialogueType.NARRATION,
                 )
                 dialogues.append(dialogue)
                 dialogue_index += 1

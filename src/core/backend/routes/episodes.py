@@ -36,6 +36,7 @@ class DialogueInfo(BaseModel):
     speaker_name: str
     text: str
     line_number: int
+    dialogue_type: str = "dialogue"  # "dialogue" | "narration" | "subtitle"
 
 
 class EpisodeDetail(BaseModel):
@@ -115,6 +116,7 @@ async def get_episode(episode_id: str, lang: str | None = None):
                 speaker_name=d.speaker_name,
                 text=d.text,
                 line_number=d.line_number,
+                dialogue_type=d.dialogue_type.value,
             )
             for d in episode.dialogues
         ],
@@ -151,6 +153,7 @@ async def get_episode_dialogues(
                 speaker_name=d.speaker_name,
                 text=d.text,
                 line_number=d.line_number,
+                dialogue_type=d.dialogue_type.value,
             )
             for d in dialogues
         ],

@@ -14,7 +14,7 @@ const ocrApiClient = axios.create({
 })
 
 // 에피소드 관련 API
-export type DialogueType = 'dialogue' | 'narration' | 'subtitle'
+export type DialogueType = 'dialogue' | 'narration' | 'subtitle' | 'sticker' | 'popup'
 
 export interface DialogueInfo {
   id: string
@@ -466,10 +466,19 @@ export interface MonitorInfo {
   height: number
 }
 
+export type OCRRegionType = 'dialogue' | 'subtitle'
+
 export interface DetectDialogueResponse {
   text: string | null
   confidence: number
   timestamp: number
+  region_type?: OCRRegionType
+  speaker?: string | null
+}
+
+export interface OCRRegionsResponse {
+  dialogue: BoundingBox
+  subtitle: BoundingBox
 }
 
 export interface StableDetectResponse {
@@ -542,6 +551,17 @@ export const ocrApi = {
 
   getCustomRegionImageUrl: (region: BoundingBox) => {
     return `${API_BASE}/api/ocr/capture/region/image?x=${region.x}&y=${region.y}&width=${region.width}&height=${region.height}&t=${Date.now()}`
+  },
+
+  // OCR 영역 좌표 (대사 + 자막)
+  getOCRRegions: async (width: number, height: number) => {
+    const res = await api.get<OCRRegionsResponse>('/api/ocr/regions', { params: { width, height } })
+    return res.data
+  },
+
+  // 윈도우에서 특정 영역 캡처 이미지 URL
+  getWindowRegionImageUrl: (hwnd: number, regionType: OCRRegionType) => {
+    return `${API_BASE}/api/ocr/capture/window/regions/image?hwnd=${hwnd}&region_type=${regionType}&t=${Date.now()}`
   },
 
   // 사용자 지정 영역 설정

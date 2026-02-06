@@ -284,16 +284,36 @@ export default function DubbingDashboard() {
         </div>
       )}
 
-      {/* 캡처 미리보기 */}
-      {showCapturePreview && captureImageUrl && (
+      {/* 캡처 미리보기 - 대사 영역 + 자막 영역 */}
+      {showCapturePreview && selectedWindowHwnd && (
         <div className="px-4 pb-4">
-          <div className="bg-ark-black/50 border border-ark-border rounded overflow-hidden">
-            <img
-              src={captureImageUrl}
-              alt="캡처 미리보기"
-              className="w-full object-contain"
-              key={Date.now()}  // 강제 새로고침
-            />
+          <div className="flex gap-4">
+            {/* 대사 영역 (하단) */}
+            <div className="flex-1 bg-ark-black/50 border border-ark-border rounded overflow-hidden">
+              <div className="px-2 py-1 bg-ark-panel/50 border-b border-ark-border">
+                <span className="text-xs text-ark-orange font-medium">대사 영역</span>
+                <span className="text-xs text-ark-gray ml-2">(하단 20%)</span>
+              </div>
+              <img
+                src={ocrApi.getWindowRegionImageUrl(selectedWindowHwnd, 'dialogue')}
+                alt="대사 영역 미리보기"
+                className="w-full object-contain"
+                key={`dialogue-${Date.now()}`}
+              />
+            </div>
+            {/* 자막 영역 (중앙) */}
+            <div className="flex-1 bg-ark-black/50 border border-ark-border rounded overflow-hidden">
+              <div className="px-2 py-1 bg-ark-panel/50 border-b border-ark-border">
+                <span className="text-xs text-purple-400 font-medium">자막 영역</span>
+                <span className="text-xs text-ark-gray ml-2">(중앙 30~60%)</span>
+              </div>
+              <img
+                src={ocrApi.getWindowRegionImageUrl(selectedWindowHwnd, 'subtitle')}
+                alt="자막 영역 미리보기"
+                className="w-full object-contain"
+                key={`subtitle-${Date.now()}`}
+              />
+            </div>
           </div>
         </div>
       )}

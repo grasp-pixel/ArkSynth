@@ -6,9 +6,17 @@ EasyOCR 기반 - 한국어 인식 성능 우수
 """
 
 from .easyocr_provider import EasyOCRProvider, RapidOCRProvider, PaddleOCRProvider
-from .screen_capture import ScreenCapture, WindowInfo, get_dialogue_region
+from .screen_capture import (
+    ScreenCapture,
+    WindowInfo,
+    get_dialogue_region,
+    get_subtitle_region,
+    get_region_by_type,
+    OCRRegionType,
+)
 from .dialogue_detector import DialogueDetector, DialogueDetection, DetectorConfig
 from .dialogue_matcher import DialogueMatcher, MatchResult
+from .ocr_chain import OCRFallbackChain, OCRRegionConfig, OCRRegionResult
 
 __all__ = [
     "EasyOCRProvider",
@@ -17,9 +25,15 @@ __all__ = [
     "ScreenCapture",
     "WindowInfo",
     "get_dialogue_region",
+    "get_subtitle_region",
+    "get_region_by_type",
+    "OCRRegionType",
     "DialogueDetector",
     "DialogueDetection",
     "DetectorConfig",
     "DialogueMatcher",
     "MatchResult",
+    "OCRFallbackChain",
+    "OCRRegionConfig",
+    "OCRRegionResult",
 ]

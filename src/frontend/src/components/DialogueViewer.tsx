@@ -43,6 +43,7 @@ export default function DialogueViewer() {
     defaultFemaleVoices,
     defaultVoices,
     voiceCharacters,
+    getModelType,
   } = useAppStore()
 
   // 디버그: 캐릭터 ID 표시 토글
@@ -229,12 +230,16 @@ interface DialogueItemProps {
 }
 
 function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, speakerColor, isPrepared, isRendered, isRendering, onPlay, showCharId, resolvedCharId, resolvedCharName }: DialogueItemProps) {
-  const isNarration = !dialogue.speaker_name
+  const { getModelType } = useAppStore()
+  const isSubtitle = dialogue.dialogue_type === 'subtitle'
+  const isSticker = dialogue.dialogue_type === 'sticker'
+  const isPopup = dialogue.dialogue_type === 'popup'
+  const isNarration = dialogue.dialogue_type === 'narration'
   const hasVoice = !!speakerColor
 
   return (
     <div
-      className={`ark-dialogue ${isPlaying ? 'playing' : ''} ${isNarration ? 'narration' : ''} ${
+      className={`ark-dialogue ${isPlaying ? 'playing' : ''} ${isNarration ? 'narration' : ''} ${isSubtitle || isSticker ? 'subtitle' : ''} ${isPopup ? 'popup' : ''} ${
         isMatched ? 'ring-2 ring-ark-orange bg-ark-orange/10' : ''
       }`}
     >
@@ -256,6 +261,27 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
         <div className="flex-1 min-w-0">
           {/* 화자 + 캐릭터 ID + 매칭 표시 */}
           <div className="flex items-center gap-2 mb-1 flex-wrap">
+            {/* 특수 대사 타입 라벨 */}
+            {isNarration && (
+              <span className="text-xs px-1.5 py-0.5 bg-ark-cyan/20 text-ark-cyan rounded font-medium">
+                나레이션
+              </span>
+            )}
+            {isSubtitle && (
+              <span className="text-xs px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded font-medium">
+                자막
+              </span>
+            )}
+            {isSticker && (
+              <span className="text-xs px-1.5 py-0.5 bg-pink-500/20 text-pink-400 rounded font-medium">
+                스티커
+              </span>
+            )}
+            {isPopup && (
+              <span className="text-xs px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 rounded font-medium">
+                팝업
+              </span>
+            )}
             {dialogue.speaker_name && (
               <>
                 <span
@@ -274,14 +300,22 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
               </>
             )}
             {/* 캐릭터 ID 표시 (디버그) */}
-            {showCharId && resolvedCharId && (
-              <span
-                className="text-xs px-1.5 py-0.5 bg-ark-cyan/20 text-ark-cyan rounded font-mono"
-                title={`음성: ${resolvedCharId}${resolvedCharName ? ` (${resolvedCharName})` : ''}`}
-              >
-                → {resolvedCharName || resolvedCharId}
-              </span>
-            )}
+            {showCharId && resolvedCharId && (() => {
+              const modelType = getModelType(resolvedCharId)
+              const colorClass = modelType === 'finetuned'
+                ? 'bg-purple-500/20 text-purple-400'
+                : modelType === 'prepared'
+                  ? 'bg-green-500/20 text-green-400'
+                  : 'bg-ark-cyan/20 text-ark-cyan'
+              return (
+                <span
+                  className={`text-xs px-1.5 py-0.5 ${colorClass} rounded font-mono`}
+                  title={`음성: ${resolvedCharId}${resolvedCharName ? ` (${resolvedCharName})` : ''} [${modelType}]`}
+                >
+                  → {resolvedCharName || resolvedCharId}
+                </span>
+              )
+            })()}
             {showCharId && !resolvedCharId && (
               <span className="text-xs px-1.5 py-0.5 bg-red-500/20 text-red-400 rounded">
                 음성 없음
@@ -295,7 +329,13 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
           </div>
 
           {/* 대사 */}
-          <p className={`text-sm leading-relaxed ${isNarration ? 'text-ark-cyan-dark italic' : 'text-ark-white'}`}>
+          <p className={`text-sm leading-relaxed ${
+            isSubtitle ? 'text-purple-300 italic' :
+            isSticker ? 'text-pink-300 italic' :
+            isPopup ? 'text-yellow-300' :
+            isNarration ? 'text-ark-cyan-dark italic' :
+            'text-ark-white'
+          }`}>
             {dialogue.text}
           </p>
         </div>
