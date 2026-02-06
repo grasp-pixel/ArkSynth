@@ -378,9 +378,9 @@ class EasyOCRProvider(OCRProvider):
             upper = np.array([180, 50, 180])
         else:  # white
             # 흰색/밝은 글자: 채도가 낮고 밝기가 높음 (대사 본문)
-            # V 하한 180→150 (반투명 배경 위 텍스트도 포함)
+            # V 하한 150→130 (더 어두운 텍스트도 포함, 그라데이션 배경 대응)
             # 채도 상한 50→60 (약간의 색상 허용)
-            lower = np.array([0, 0, 150])
+            lower = np.array([0, 0, 130])
             upper = np.array([180, 60, 255])
 
         mask = cv2.inRange(img_hsv, lower, upper)
@@ -479,7 +479,8 @@ class EasyOCRProvider(OCRProvider):
             if white_results:
                 # y좌표 순서로 정렬 후 합침
                 white_results.sort(key=lambda r: r.bounding_box.y if r.bounding_box else 0)
-                dialogue = " ".join(r.text for r in white_results)
+                raw_dialogue = " ".join(r.text for r in white_results)
+                dialogue = self._postprocess_text(raw_dialogue)  # 말줄임표 오인식 보정
                 dialogue_confidences.extend(r.confidence for r in white_results)
 
             # confidence는 대사만으로 계산 (화자는 선택사항이므로 제외)
@@ -494,6 +495,29 @@ class EasyOCRProvider(OCRProvider):
             import traceback
             traceback.print_exc()
             raise
+
+    def _postprocess_text(self, text: str) -> str:
+        """OCR 결과 후처리
+
+        - ":"를 "......"로 치환 (말줄임표 오인식 보정)
+        - 한국어 텍스트에서 단독 ":"는 거의 없음
+        """
+        import re
+
+        if not text:
+            return text
+
+        # ":" 또는 ": " 패턴을 "......"로 치환
+        # 단, "시간:" 같은 경우는 유지 (앞에 한글이 있으면)
+        # 게임 대사에서 ":" 단독 사용은 거의 말줄임표 오인식
+        result = re.sub(r'(?<![가-힣a-zA-Z0-9]):(?![가-힣a-zA-Z0-9])', '......', text)
+        result = re.sub(r'^:\s*', '...... ', result)  # 문장 시작 ":"
+        result = re.sub(r'\s*:$', '......', result)  # 문장 끝 ":"
+
+        if result != text:
+            print(f"[EasyOCR] Postprocess: '{text}' → '{result}'", flush=True)
+
+        return result
 
     async def recognize_all_text(self, image: Image.Image) -> str:
         """이미지에서 모든 텍스트를 단순 추출 (매칭용)
@@ -513,7 +537,8 @@ class EasyOCRProvider(OCRProvider):
 
         # y좌표 순서로 정렬 후 합침
         results.sort(key=lambda r: r.bounding_box.y if r.bounding_box else 0)
-        return " ".join(r.text for r in results)
+        text = " ".join(r.text for r in results)
+        return self._postprocess_text(text)
 
     def get_supported_languages(self) -> list[str]:
         """지원하는 언어 목록"""
