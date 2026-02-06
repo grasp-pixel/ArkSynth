@@ -76,65 +76,17 @@ def load_charword_transcripts(
     gamedata_path: Path,
     lang: str = "ko_KR",
 ) -> dict[str, dict]:
-    """charword_table.json에서 대사 텍스트 로드
+    """charword_table.json에서 대사 텍스트 로드 (스킨/이격 포함)
 
-    Args:
-        char_id: 캐릭터 ID (char_002_amiya)
-        gamedata_path: gamedata_yostar 경로
-        lang: 언어 코드
-
-    Returns:
-        {voice_id: {"text": str, "title": str}} 딕셔너리
-        예: {"CN_001": {"text": "박사님, 수고하셨어요.", "title": "어시스턴트 임명"}}
+    공통 모듈을 사용하여 로드합니다.
     """
-    # 언어 코드 매핑: ko_KR -> kr, en_US -> en, ja_JP -> jp, zh_CN -> cn
-    lang_to_server = {"ko_KR": "kr", "en_US": "en", "ja_JP": "jp", "zh_CN": "cn"}
-    server_code = lang_to_server.get(lang, lang)
+    from core.voice.common.charword_loader import load_charword_transcripts as _load
 
-    # 후보 경로들 (우선순위 순)
-    candidates = [
-        # arkprts 경로 (data/gamedata/kr/gamedata/excel/)
-        gamedata_path.parent / "gamedata" / server_code / "gamedata" / "excel" / "charword_table.json",
-        # 기존 경로 (data/gamedata_yostar/ko_KR/gamedata/excel/)
-        gamedata_path / lang / "gamedata" / "excel" / "charword_table.json",
-        # 직접 gamedata 경로 (gamedata_path가 이미 gamedata/kr 인 경우)
-        gamedata_path / "gamedata" / "excel" / "charword_table.json",
-    ]
+    # 언어 코드 변환: ko_KR -> ko
+    lang_map = {"ko_KR": "ko", "ja_JP": "ja", "zh_CN": "zh", "en_US": "en"}
+    language = lang_map.get(lang, "ko")
 
-    charword_path = None
-    for candidate in candidates:
-        if candidate.exists():
-            charword_path = candidate
-            logger.info(f"Found charword_table.json at: {charword_path}")
-            break
-
-    if charword_path is None:
-        logger.warning(f"charword_table.json not found in any of: {[str(c) for c in candidates]}")
-        return {}
-
-    try:
-        with open(charword_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        result = {}
-        for key, item in data.get("charWords", {}).items():
-            # voiceAsset으로 필터링 (char_002_amiya/CN_002 형태)
-            # charId만으로 필터링하면 같은 charId를 공유하는 다른 형태(이형/스킨)의
-            # 대사가 덮어쓰기되어 음성-텍스트 불일치 발생
-            voice_asset = item.get("voiceAsset", "")
-            if voice_asset.startswith(f"{char_id}/"):
-                voice_id = item.get("voiceId", "")  # CN_001
-                voice_text = item.get("voiceText", "")
-                voice_title = item.get("voiceTitle", "")  # 어시스턴트 임명, 대화 1 등
-                if voice_id and voice_text:
-                    result[voice_id] = {"text": voice_text, "title": voice_title}
-
-        logger.info(f"Loaded {len(result)} transcripts for {char_id}")
-        return result
-
-    except Exception as e:
-        logger.error(f"Failed to load charword_table.json: {e}")
-        return {}
+    return _load(char_id, gamedata_path, language)
 
 
 def convert_to_wav(input_path: Path, output_path: Path) -> bool:
