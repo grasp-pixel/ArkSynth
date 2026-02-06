@@ -45,7 +45,7 @@ Bundle locations (게임 클라이언트):
         type=str,
         nargs="+",
         default=None,
-        help="Languages to extract (default: voice, voice_cn, voice_en, voice_kr)",
+        help="Languages to extract (default: voice_kr)",
     )
 
     parser.add_argument(

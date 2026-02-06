@@ -96,7 +96,7 @@ def extract_images_from_bundle(
     ab_path: Path,
     output_dir: Path,
     output_format: str = "png",
-) -> list[Path]:
+) -> tuple[list[Path], list[Path]]:
     """
     Extract images from an AssetBundle.
 
@@ -106,15 +106,16 @@ def extract_images_from_bundle(
         output_format: Output format (png, jpg, webp)
 
     Returns:
-        List of extracted file paths
+        Tuple of (extracted file paths, skipped file paths)
     """
     extracted = []
+    skipped = []
 
     try:
         env = UnityPy.load(str(ab_path))
     except Exception as e:
         print(f"Failed to load {ab_path}: {e}")
-        return extracted
+        return extracted, skipped
 
     # 폴더명 추출 (분할 번호 제거)
     folder_name = get_folder_name(ab_path.stem)
@@ -152,6 +153,7 @@ def extract_images_from_bundle(
 
     # 2단계: 알파 마스크 적용, 크롭, 저장
     processed = set()
+    skipped = []
 
     for img_name, image in images.items():
         # 알파 마스크는 건너뜀 (메인 이미지에 적용할 것)
@@ -178,13 +180,15 @@ def extract_images_from_bundle(
         out_path = char_dir / f"{img_name}.{output_format}"
 
         if out_path.exists():
+            skipped.append(out_path)
+            processed.add(img_name)
             continue
 
         image.save(out_path)
         extracted.append(out_path)
         processed.add(img_name)
 
-    return extracted
+    return extracted, skipped
 
 
 def extract_image_folder(
@@ -203,7 +207,7 @@ def extract_image_folder(
     Returns:
         Dictionary with extraction statistics
     """
-    stats = {"processed": 0, "extracted": 0, "failed": 0}
+    stats = {"processed": 0, "extracted": 0, "skipped": 0, "failed": 0}
 
     ab_files = list(source_dir.glob("*.ab"))
     total = len(ab_files)
@@ -212,12 +216,13 @@ def extract_image_folder(
         print(f"[{i}/{total}] Processing {ab_path.name}...")
 
         try:
-            extracted = extract_images_from_bundle(ab_path, output_dir, output_format)
+            extracted, skipped = extract_images_from_bundle(ab_path, output_dir, output_format)
             stats["processed"] += 1
             stats["extracted"] += len(extracted)
+            stats["skipped"] += len(skipped)
 
-            if extracted:
-                print(f"  -> Extracted {len(extracted)} images")
+            if extracted or skipped:
+                print(f"  -> Extracted {len(extracted)}, Skipped {len(skipped)} images")
         except Exception as e:
             print(f"  -> Failed: {e}")
             stats["failed"] += 1

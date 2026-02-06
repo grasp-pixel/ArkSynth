@@ -147,8 +147,7 @@ def extract_voice_folder(
             stats["processed"] += 1
             stats["extracted"] += len(extracted)
 
-            if extracted:
-                print(f"  -> Extracted {len(extracted)} audio files")
+            print(f"  -> Extracted {len(extracted)} audio files")
         except Exception as e:
             print(f"  -> Failed: {e}")
             stats["failed"] += 1
@@ -175,7 +174,7 @@ def extract_all_voices(
         Dictionary with stats per language
     """
     if languages is None:
-        languages = ["voice", "voice_cn", "voice_en", "voice_kr"]
+        languages = ["voice_kr"]
 
     all_stats = {}
 
