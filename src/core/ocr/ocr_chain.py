@@ -4,8 +4,7 @@
 하단 대사 영역 실패 시 화면 중앙 자막 영역으로 폴백.
 """
 
-from dataclasses import dataclass, field
-from typing import Literal
+from dataclasses import dataclass
 
 from PIL import Image
 
@@ -25,7 +24,6 @@ class OCRRegionResult:
     success: bool
     region_type: OCRRegionType
     text: str = ""
-    speaker: str | None = None  # dialogue 타입에서만 사용
     confidence: float = 0.0
     region: BoundingBox | None = None
 
@@ -38,25 +36,12 @@ class OCRRegionConfig:
     priority: int  # 낮을수록 먼저 시도
     min_confidence: float = 0.3
     min_text_length: int = 2
-    mode: Literal["dialogue", "simple"] = "dialogue"  # dialogue: 화자/대사 분리, simple: 단순 텍스트
 
 
-# 기본 폴백 체인 설정
+# 기본 폴백 체인 설정: 대사 영역 → 자막 영역
 DEFAULT_FALLBACK_CHAIN: list[OCRRegionConfig] = [
-    OCRRegionConfig(
-        type=OCRRegionType.DIALOGUE,
-        priority=1,
-        min_confidence=0.3,
-        min_text_length=2,
-        mode="dialogue",
-    ),
-    OCRRegionConfig(
-        type=OCRRegionType.SUBTITLE,
-        priority=2,
-        min_confidence=0.3,
-        min_text_length=2,
-        mode="simple",
-    ),
+    OCRRegionConfig(type=OCRRegionType.DIALOGUE, priority=1),
+    OCRRegionConfig(type=OCRRegionType.SUBTITLE, priority=2),
 ]
 
 
@@ -99,9 +84,8 @@ class OCRFallbackChain:
     ) -> OCRRegionResult:
         """단일 영역 OCR 시도
 
-        dialogue 모드:
-        1. 색상 분리 (화자/대사) 시도
-        2. 실패 시 단순 전체 텍스트 OCR로 폴백 (대사만 매칭)
+        전체 텍스트 OCR 후 DialogueMatcher로 스토리 데이터 매칭.
+        화자 정보는 스토리 데이터에서 가져옴 (색상 분리 불필요).
         """
         bbox = self._get_region_bbox(config.type, image.width, image.height)
 
@@ -114,67 +98,25 @@ class OCRFallbackChain:
         ))
 
         try:
-            if config.mode == "dialogue":
-                # 1차: 화자/대사 분리 인식
-                speaker, dialogue, confidence = await self._ocr.recognize_dialogue(
-                    image, bbox
+            # 전체 텍스트 OCR (색상 분리 없이)
+            # 화자 정보는 DialogueMatcher가 스토리 데이터에서 가져옴
+            text = await self._ocr.recognize_all_text(cropped)
+
+            # 신뢰도: 텍스트 길이 기반 추정
+            confidence = 0.7 if text else 0.0
+
+            if (
+                text
+                and len(text) >= config.min_text_length
+                and confidence >= config.min_confidence
+            ):
+                return OCRRegionResult(
+                    success=True,
+                    region_type=config.type,
+                    text=text,
+                    confidence=confidence,
+                    region=bbox,
                 )
-                text = dialogue or ""
-
-                # 성공 여부 판단
-                if (
-                    text
-                    and len(text) >= config.min_text_length
-                    and confidence >= config.min_confidence
-                ):
-                    return OCRRegionResult(
-                        success=True,
-                        region_type=config.type,
-                        text=text,
-                        speaker=speaker,
-                        confidence=confidence,
-                        region=bbox,
-                    )
-
-                # 2차: 색상 분리 실패 시 전체 텍스트 OCR 폴백
-                print(f"[OCRChain] 색상 분리 실패, 전체 텍스트 OCR 폴백 시도...", flush=True)
-                fallback_text = await self._ocr.recognize_all_text(cropped)
-
-                if (
-                    fallback_text
-                    and len(fallback_text) >= config.min_text_length
-                ):
-                    # 폴백 성공: 화자 없이 대사만 반환
-                    print(f"[OCRChain] 폴백 성공: '{fallback_text[:30]}...'", flush=True)
-                    return OCRRegionResult(
-                        success=True,
-                        region_type=config.type,
-                        text=fallback_text,
-                        speaker=None,  # 폴백이므로 화자 없음
-                        confidence=0.6,  # 폴백 신뢰도
-                        region=bbox,
-                    )
-            else:
-                # 단순 텍스트 인식 (자막용)
-                text = await self._ocr.recognize_all_text(cropped)
-
-                # 신뢰도 계산 (recognize_all_text는 신뢰도 미반환)
-                # 텍스트 길이 기반으로 대략적 추정
-                confidence = 0.7 if text else 0.0
-
-                if (
-                    text
-                    and len(text) >= config.min_text_length
-                    and confidence >= config.min_confidence
-                ):
-                    return OCRRegionResult(
-                        success=True,
-                        region_type=config.type,
-                        text=text,
-                        speaker=None,
-                        confidence=confidence,
-                        region=bbox,
-                    )
 
         except Exception as e:
             print(f"[OCRChain] {config.type.value} 영역 OCR 실패: {e}")

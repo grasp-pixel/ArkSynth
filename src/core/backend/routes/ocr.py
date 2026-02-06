@@ -278,7 +278,7 @@ async def detect_window_dialogue(
                     confidence=result.confidence,
                     timestamp=time.time(),
                     region_type=result.region_type.value,
-                    speaker=result.speaker,
+                    speaker=None,  # 화자는 DialogueMatcher에서 처리
                 )
         else:
             # 기존 방식: 대사 영역만
@@ -1245,7 +1245,7 @@ async def stream_window_dialogue(
                                                     "timestamp": time.time(),
                                                     "is_new": True,
                                                     "region_type": result.region_type.value,
-                                                    "speaker": result.speaker,
+                                                    "speaker": None,  # 화자는 DialogueMatcher에서 처리
                                                 }
                                             ),
                                         }
