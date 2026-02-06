@@ -91,21 +91,32 @@ export default function GroupSetupPanel() {
     return storyGroups.find(g => g.id === selectedGroupId)
   }, [storyGroups, selectedGroupId])
 
-  // 캐릭터 통계 (그룹 기준)
+  // 나레이션 분리 (char_id가 null인 캐릭터)
+  const narrationInfo = useMemo(() => {
+    const narrator = groupCharacters.find(c => c.char_id === null)
+    return narrator ? narrator.dialogue_count : 0
+  }, [groupCharacters])
+
+  // 실제 캐릭터만 (나레이터 제외)
+  const actualCharacters = useMemo(() => {
+    return groupCharacters.filter(c => c.char_id !== null)
+  }, [groupCharacters])
+
+  // 캐릭터 통계 (나레이터 제외)
   const characterStats = useMemo(() => {
-    const withVoice = groupCharacters.filter(c => c.has_voice).length
-    const trained = groupCharacters.filter(c => {
+    const withVoice = actualCharacters.filter(c => c.has_voice).length
+    const trained = actualCharacters.filter(c => {
       const voiceId = c.voice_char_id || c.char_id
       return voiceId && trainedCharIds.has(voiceId)
     }).length
-    const total = groupCharacters.length
+    const total = actualCharacters.length
     return { withVoice, trained, total }
-  }, [groupCharacters, trainedCharIds])
+  }, [actualCharacters, trainedCharIds])
 
-  // 음성 없는 캐릭터 (매핑 대상)
+  // 음성 없는 캐릭터 (매핑 대상, 나레이터 제외)
   const voicelessCharacters = useMemo(() => {
-    return groupCharacters.filter(c => !c.has_voice && c.name)
-  }, [groupCharacters])
+    return actualCharacters.filter(c => !c.has_voice && c.name)
+  }, [actualCharacters])
 
   // 매핑된 음성 ID들
   const mappedVoiceIds = useMemo(() => {
@@ -117,30 +128,30 @@ export default function GroupSetupPanel() {
       .filter((id): id is string => id !== null)
   }, [voicelessCharacters, getSpeakerVoice, speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices])
 
-  // 준비 가능한 캐릭터 수 (음성 있고 미준비)
+  // 준비 가능한 캐릭터 수 (음성 있고 미준비, 나레이터 제외)
   const preparableCount = useMemo(() => {
-    const charIds = groupCharacters
+    const charIds = actualCharacters
       .filter(c => c.has_voice)
       .map(c => c.voice_char_id || c.char_id)
       .filter((id): id is string => id !== null && !trainedCharIds.has(id))
     return charIds.length
-  }, [groupCharacters, trainedCharIds])
+  }, [actualCharacters, trainedCharIds])
 
-  // 준비 완료된 캐릭터 수
+  // 준비 완료된 캐릭터 수 (나레이터 제외)
   const preparedCount = useMemo(() => {
-    return groupCharacters.filter(c => {
+    return actualCharacters.filter(c => {
       const voiceId = c.voice_char_id || c.char_id
       return voiceId && trainedCharIds.has(voiceId)
     }).length
-  }, [groupCharacters, trainedCharIds])
+  }, [actualCharacters, trainedCharIds])
 
-  // Fine-tuned 완료된 캐릭터 수
+  // Fine-tuned 완료된 캐릭터 수 (나레이터 제외)
   const finetunedCount = useMemo(() => {
-    return groupCharacters.filter(c => {
+    return actualCharacters.filter(c => {
       const voiceId = c.voice_char_id || c.char_id
       return voiceId && getModelType(voiceId) === 'finetuned'
     }).length
-  }, [groupCharacters, getModelType, trainedModels])
+  }, [actualCharacters, getModelType, trainedModels])
 
   // 에피소드 캐시 상태
   const episodeCacheStats = useMemo(() => {
@@ -172,7 +183,7 @@ export default function GroupSetupPanel() {
     try {
       // 1. 음성 준비 (prepare)
       if (batchTasks.prepare && preparableCount > 0) {
-        const charIds = groupCharacters
+        const charIds = actualCharacters
           .filter(c => c.has_voice)
           .map(c => c.voice_char_id || c.char_id)
           .filter((id): id is string => id !== null && !trainedCharIds.has(id))
@@ -191,7 +202,7 @@ export default function GroupSetupPanel() {
 
         // 등장 캐릭터 (음성 보유)
         if (finetuneTarget.appearance) {
-          const ids = groupCharacters
+          const ids = actualCharacters
             .filter(c => c.has_voice)
             .map(c => c.voice_char_id || c.char_id)
             .filter((id): id is string => id !== null && canFinetune(id))
@@ -274,13 +285,13 @@ export default function GroupSetupPanel() {
           </div>
           {isLoadingCharacters ? (
             <div className="text-center text-ark-gray py-4 ark-pulse">로딩 중...</div>
-          ) : groupCharacters.length === 0 ? (
+          ) : actualCharacters.length === 0 ? (
             <div className="text-center text-ark-gray py-4">캐릭터 없음</div>
           ) : (
             <div className="space-y-1 max-h-48 overflow-y-auto">
-              {groupCharacters.slice(0, 20).map((char, idx) => (
+              {actualCharacters.map((char, idx) => (
                 <div
-                  key={`${char.char_id ?? 'unknown'}-${char.name}-${idx}`}
+                  key={`${char.char_id}-${char.name}-${idx}`}
                   className="flex items-center justify-between p-2 bg-ark-black/30 rounded text-sm"
                 >
                   <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -307,11 +318,19 @@ export default function GroupSetupPanel() {
                   </div>
                 </div>
               ))}
-              {groupCharacters.length > 20 && (
-                <p className="text-xs text-ark-gray/70 text-center pt-2">
-                  외 {groupCharacters.length - 20}명
-                </p>
-              )}
+            </div>
+          )}
+
+          {/* 나레이션 대사 수 */}
+          {narrationInfo > 0 && (
+            <div className="mt-3 p-2 bg-purple-500/10 rounded border border-purple-500/20">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-purple-400">나레이션</span>
+                <span className="text-xs text-purple-300">{narrationInfo}대사</span>
+              </div>
+              <p className="text-[10px] text-purple-400/70 mt-1">
+                캐릭터 관리에서 설정한 나레이션 음성 사용
+              </p>
             </div>
           )}
         </div>
@@ -567,6 +586,7 @@ export default function GroupSetupPanel() {
       <VoiceMappingModal
         isOpen={isVoiceMappingModalOpen}
         onClose={() => setIsVoiceMappingModalOpen(false)}
+        characters={groupCharacters}
       />
     </div>
   )
