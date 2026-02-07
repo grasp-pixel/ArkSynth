@@ -12,7 +12,6 @@ from pydantic import BaseModel
 from ..config import config
 from ..shared_loaders import get_voice_mapper, reset_story_loader, reset_voice_mapper
 from ...voice.character_mapping import CharacterVoiceMapper
-from ...voice.charword_loader import reset_charword_loader
 from ...voice.dialogue_stats import DialogueStatsManager
 from ...voice.alias_resolver import invalidate_cache as invalidate_alias_cache
 from ...voice.gender_mapper import GenderMapper
@@ -192,9 +191,6 @@ async def refresh_character_data():
     reset_story_loader()
     reset_voice_mapper()
 
-    # charword 로더 캐시 리셋
-    reset_charword_loader()
-
     # 이미지 프로바이더 리셋
     _image_provider = None
 
@@ -353,34 +349,6 @@ async def remove_voice_mapping(sprite_id: str):
         "sprite_id": sprite_id,
         "voice_char_id": voice_char_id,
     }
-
-
-# === 하위 호환성: 기존 /aliases 엔드포인트 유지 (deprecated) ===
-# 새로운 시스템은 스프라이트 ID 기반이므로 화자 이름 기반 별칭은 더 이상 사용하지 않음
-# 프론트엔드 호환성을 위해 빈 데이터 반환
-
-
-@router.get("/aliases")
-async def list_aliases():
-    """[Deprecated] 화자 이름 별칭 목록 - 스프라이트 ID 기반 시스템으로 대체됨
-
-    새로운 시스템에서는 화자 이름 기반 매핑이 없으므로 빈 데이터를 반환합니다.
-    음성 매핑은 /voice-mappings 엔드포인트를 사용하세요.
-    """
-    return {
-        "total": 0,
-        "aliases": {},
-        "aliases_by_char": {},
-    }
-
-
-@router.post("/aliases")
-async def add_alias_legacy(alias: str, char_id: str):
-    """[Deprecated] 화자 이름 별칭 추가 - 더 이상 지원하지 않음"""
-    raise HTTPException(
-        status_code=410,
-        detail="화자 이름 기반 별칭은 더 이상 지원하지 않습니다. 스프라이트 ID 기반 /voice-mappings를 사용하세요."
-    )
 
 
 # === 캐릭터 성별/이미지 ===

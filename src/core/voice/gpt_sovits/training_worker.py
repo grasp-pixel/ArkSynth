@@ -28,14 +28,14 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 # 공통 모듈에서 import
-from core.voice.gpt_sovits.reference_selector import (
+from core.voice.common.reference_manager import (
     VOICE_TITLE_PRIORITY,
     EXCLUDED_VOICE_TITLES,
-    get_audio_duration,
     calculate_reference_score,
     is_excluded_voice,
     select_best_references,
 )
+from core.voice.common.audio_utils import get_audio_duration
 
 
 def emit_progress(stage: str, progress: float, message: str, **kwargs):

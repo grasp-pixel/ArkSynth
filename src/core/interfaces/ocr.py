@@ -30,7 +30,7 @@ class OCRProvider(ABC):
     """OCR 엔진 추상 인터페이스
 
     구현체 예시:
-    - PaddleOCRProvider: PaddleOCR 기반 (추천)
+    - EasyOCRProvider: EasyOCR 기반 (한국어 최적화)
     - TesseractProvider: Tesseract OCR
     - WindowsOCRProvider: Windows 내장 OCR
     """

@@ -4,7 +4,6 @@ GPT-SoVITS 캐릭터별 음성 클로닝 지원
 """
 
 import logging
-from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -12,7 +11,6 @@ from typing import Optional
 
 from ..config import config
 from .. import gpu_semaphore_context
-from ...voice.providers.edge_tts import EdgeTTSProvider
 from ...voice.gpt_sovits import GPTSoVITSConfig, GPTSoVITSModelManager
 from ...voice.gpt_sovits.synthesizer import GPTSoVITSSynthesizer
 from ...voice.gpt_sovits.training_worker import prepare_reference_audio
@@ -21,16 +19,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # 전역 프로바이더
-_tts_provider: EdgeTTSProvider | None = None
 _gpt_synthesizer: GPTSoVITSSynthesizer | None = None
 _gpt_model_manager: GPTSoVITSModelManager | None = None
-
-
-def get_tts_provider() -> EdgeTTSProvider:
-    global _tts_provider
-    if _tts_provider is None:
-        _tts_provider = EdgeTTSProvider(default_voice=config.default_voice)
-    return _tts_provider
 
 
 def get_gpt_synthesizer() -> GPTSoVITSSynthesizer:
@@ -62,14 +52,6 @@ class SynthesizeRequest(BaseModel):
     engine: str | None = None  # TTS 엔진 (현재 "gpt_sovits"만 지원), None이면 글로벌 설정 사용
 
 
-class SynthesizeResponse(BaseModel):
-    """TTS 합성 응답 (메타데이터)"""
-
-    sample_rate: int
-    duration_ms: float
-    audio_size: int
-
-
 @router.post("/synthesize")
 async def synthesize(request: SynthesizeRequest):
     """텍스트를 음성으로 변환 (WAV 반환)
@@ -94,7 +76,6 @@ async def synthesize(request: SynthesizeRequest):
             logger.info(f"캐릭터 준비 중: {request.char_id}")
             audio_dir = config.extracted_path / request.char_id
             output_dir = config.models_path / "gpt_sovits" / request.char_id
-            gamedata_path = Path("data/gamedata_yostar")
 
             if not audio_dir.exists():
                 raise HTTPException(
@@ -109,7 +90,7 @@ async def synthesize(request: SynthesizeRequest):
                 char_id=request.char_id,
                 audio_dir=audio_dir,
                 output_dir=output_dir,
-                gamedata_path=gamedata_path,
+                gamedata_path=config.gamedata_yostar_path,
                 language=config.gpt_sovits_language,
                 min_duration=gpt_config.min_ref_audio_length,
                 max_duration=gpt_config.max_ref_audio_length,
@@ -199,78 +180,6 @@ async def synthesize(request: SynthesizeRequest):
     except Exception as e:
         logger.error(f"GPT-SoVITS 오류: {e}")
         raise HTTPException(status_code=500, detail=f"GPT-SoVITS 오류: {str(e)}")
-
-
-@router.post("/synthesize/metadata")
-async def synthesize_metadata(request: SynthesizeRequest):
-    """텍스트를 음성으로 변환하고 메타데이터만 반환"""
-    if not request.text:
-        raise HTTPException(status_code=400, detail="Text is required")
-
-    provider = get_tts_provider()
-    result = await provider.synthesize(request.text, request.voice_id)
-
-    return SynthesizeResponse(
-        sample_rate=result.sample_rate,
-        duration_ms=result.duration_ms,
-        audio_size=len(result.audio_data),
-    )
-
-
-@router.get("/voices")
-async def list_voices():
-    """사용 가능한 음성 목록"""
-    provider = get_tts_provider()
-    voices = provider.get_available_voices()
-
-    return {
-        "default": config.default_voice,
-        "voices": voices,
-    }
-
-
-@router.get("/voices/all")
-async def list_all_voices():
-    """Edge TTS에서 사용 가능한 모든 음성 목록"""
-    voices = await EdgeTTSProvider.list_all_voices()
-
-    # 언어별로 그룹화
-    by_language = {}
-    for voice in voices:
-        locale = voice.get("Locale", "unknown")
-        if locale not in by_language:
-            by_language[locale] = []
-        by_language[locale].append(
-            {
-                "name": voice.get("ShortName"),
-                "gender": voice.get("Gender"),
-                "friendly_name": voice.get("FriendlyName"),
-            }
-        )
-
-    return by_language
-
-
-@router.get("/voices/{language}")
-async def list_voices_by_language(language: str):
-    """특정 언어의 음성 목록
-
-    Args:
-        language: 언어 코드 (ko-KR, zh-CN, ja-JP, en-US 등)
-    """
-    voices = await EdgeTTSProvider.list_voices_by_language(language)
-
-    return {
-        "language": language,
-        "voices": [
-            {
-                "name": v.get("ShortName"),
-                "gender": v.get("Gender"),
-                "friendly_name": v.get("FriendlyName"),
-            }
-            for v in voices
-        ],
-    }
 
 
 @router.get("/gpt-sovits/status")

@@ -130,7 +130,8 @@ class GPTSoVITSTrainer:
             worker_script = Path(__file__).parent / "training_worker.py"
 
         # gamedata 경로 (charword_table.json 위치)
-        gamedata_path = Path("data/gamedata_yostar")
+        from ...backend.config import config as server_config
+        gamedata_path = server_config.gamedata_yostar_path
 
         # 모든 경로를 절대 경로로 변환 (subprocess CWD와 무관하게 동작하도록)
         cmd = [

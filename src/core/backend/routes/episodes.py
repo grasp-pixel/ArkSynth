@@ -8,10 +8,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from ..config import config
-from ..shared_loaders import get_story_loader, get_voice_mapper
-from ...story.loader import StoryLoader
+from ..shared_loaders import get_story_loader, get_voice_mapper, find_operator_id_by_name
 from ...voice.alias_resolver import resolve_voice_char_id
-from ...character.official_data import get_official_data_provider
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -170,42 +168,6 @@ class EpisodeCharacterInfo(BaseModel):
     voice_char_id: str | None = None  # 실제 음성 파일이 있는 캐릭터 ID (이름 매칭 시)
 
 
-def _find_operator_id_by_name(
-    loader: StoryLoader, speaker_name: str, lang: str
-) -> str | None:
-    """speaker_name으로 오퍼레이터 ID 찾기
-
-    1. OfficialDataProvider에서 별칭(본명 등) 포함 조회
-    2. 캐릭터 테이블에서 이름이 일치하는 플레이어블 캐릭터 검색
-    정확히 일치 우선, 부분 일치(이름이 검색어로 시작)도 지원.
-    예: "조르디" → char_4042_lumen (별칭)
-        "하이디" → char_4045_heidi
-        "비나" → char_1019_siege2 (비나 빅토리아)
-    """
-    if not speaker_name:
-        return None
-
-    # 1. OfficialDataProvider에서 별칭 포함 조회 (본명, 닉네임 등)
-    provider = get_official_data_provider()
-    char_id = provider.get_char_id_by_name(speaker_name)
-    if char_id:
-        return char_id
-
-    # 2. 캐릭터 테이블에서 부분 일치 검색
-    characters = loader.load_characters(lang)
-    prefix_match: str | None = None  # 부분 일치 후보
-
-    for char_id, char in characters.items():
-        # char_로 시작하는 오퍼레이터만 (npc 제외)
-        if char_id.startswith("char_") and not char_id.startswith("char_npc_"):
-            name = char.name_ko or ""
-            # 부분 일치: 이름이 검색어로 시작 (예: "비나 빅토리아".startswith("비나"))
-            if name.startswith(speaker_name + " ") and not prefix_match:
-                prefix_match = char_id
-
-    return prefix_match
-
-
 def _is_mystery_name(name: str) -> bool:
     """이름이 '???' 같은 미스터리 이름인지 확인"""
     if not name:
@@ -272,7 +234,7 @@ async def get_episode_characters(episode_id: str, lang: str | None = None):
             key = speaker_id
         else:
             # speaker_id 없음 → speaker_name으로 캐릭터 검색 시도
-            found_char_id = _find_operator_id_by_name(loader, speaker_name, lang)
+            found_char_id = find_operator_id_by_name(loader, speaker_name, lang)
             if found_char_id:
                 # 캐릭터 테이블에서 이름으로 찾음 → 해당 char_id 기준
                 key = found_char_id
@@ -354,7 +316,7 @@ async def get_episode_characters(episode_id: str, lang: str | None = None):
         if not has_voice:
             for name in names:
                 if name:
-                    operator_id = _find_operator_id_by_name(loader, name, lang)
+                    operator_id = find_operator_id_by_name(loader, name, lang)
                     if operator_id and voice_mapper.has_voice(operator_id):
                         has_voice = True
                         voice_char_id = operator_id

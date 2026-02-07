@@ -16,6 +16,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _get_gamedata_excel_path() -> Path:
+    """게임데이터 excel 디렉토리 경로"""
+    return Path(config.data_path) / "gamedata" / "kr" / "gamedata" / "excel"
+
+
 class AliasInfo(BaseModel):
     """별칭 정보"""
 
@@ -213,7 +218,7 @@ async def get_alias_suggestions(char_id: str):
 
     프로필 첫 문장에서 "이름, 설명..." 패턴을 감지하여 제안
     """
-    gamedata_path = Path(config.data_path) / "gamedata" / "kr" / "gamedata" / "excel"
+    gamedata_path = _get_gamedata_excel_path()
     handbook_path = gamedata_path / "handbook_info_table.json"
     char_table_path = gamedata_path / "character_table.json"
 
@@ -277,7 +282,7 @@ async def get_alias_suggestions(char_id: str):
 @router.get("/suggestions")
 async def get_all_suggestions():
     """모든 캐릭터의 별칭 제안 목록"""
-    gamedata_path = Path(config.data_path) / "gamedata" / "kr" / "gamedata" / "excel"
+    gamedata_path = _get_gamedata_excel_path()
     handbook_path = gamedata_path / "handbook_info_table.json"
     char_table_path = gamedata_path / "character_table.json"
 
@@ -341,7 +346,7 @@ async def extract_realnames(dry_run: bool = False):
     Args:
         dry_run: True면 실제 저장 없이 결과만 반환
     """
-    gamedata_path = Path(config.data_path) / "gamedata" / "kr" / "gamedata" / "excel"
+    gamedata_path = _get_gamedata_excel_path()
     handbook_path = gamedata_path / "handbook_info_table.json"
     char_table_path = gamedata_path / "character_table.json"
 

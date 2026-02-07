@@ -180,20 +180,6 @@ export const ttsApi = {
     return res.data
   },
 
-  // 사용 가능한 음성 목록
-  listVoices: async () => {
-    const res = await api.get<{ default: string; voices: string[] }>('/api/tts/voices')
-    return res.data
-  },
-
-  // 언어별 음성 목록
-  listVoicesByLanguage: async (language: string) => {
-    const res = await api.get<{ language: string; voices: Array<{ name: string; gender: string; friendly_name: string }> }>(
-      `/api/tts/voices/${language}`
-    )
-    return res.data
-  },
-
   // GPT-SoVITS 상태 확인
   getGptSovitsStatus: async () => {
     const res = await api.get<{
@@ -339,39 +325,6 @@ export const voiceApi = {
       total: number
       characters: Array<{ char_id: string; name: string; has_voice: boolean }>
     }>('/api/voice/characters/search', { params: { q: query, limit } })
-    return res.data
-  },
-
-  // === 캐릭터 별칭 API ===
-
-  // 전체 별칭 목록 조회
-  listAliases: async () => {
-    const res = await api.get<CharacterAliases>('/api/voice/aliases')
-    return res.data
-  },
-
-  // 특정 캐릭터의 별칭 목록 조회
-  getCharacterAliases: async (charId: string) => {
-    const res = await api.get<{ char_id: string; aliases: string[] }>(
-      `/api/voice/aliases/${encodeURIComponent(charId)}`
-    )
-    return res.data
-  },
-
-  // 별칭 추가
-  addAlias: async (alias: string, charId: string) => {
-    const res = await api.post<{ message: string; alias: string; char_id: string }>(
-      '/api/voice/aliases',
-      { alias, char_id: charId }
-    )
-    return res.data
-  },
-
-  // 별칭 삭제
-  removeAlias: async (alias: string) => {
-    const res = await api.delete<{ message: string; alias: string; char_id: string }>(
-      `/api/voice/aliases/${encodeURIComponent(alias)}`
-    )
     return res.data
   },
 

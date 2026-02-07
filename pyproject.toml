@@ -13,8 +13,6 @@ dependencies = [
     "pydantic>=2.0",
     "python-multipart>=0.0.20",
     "sse-starlette>=1.6.0",
-    # TTS
-    "edge-tts>=6.1.0",
     # 오디오 처리
     "librosa>=0.10.0",
     "soundfile>=0.12.0",

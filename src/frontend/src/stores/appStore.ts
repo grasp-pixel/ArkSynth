@@ -104,10 +104,6 @@ interface AppState {
   voiceCharacters: VoiceCharacter[]  // 음성 있는 모든 캐릭터
   isLoadingVoiceCharacters: boolean
 
-  // 캐릭터 별칭 (NPC 이름 → 캐릭터 ID 매핑)
-  characterAliases: Record<string, string[]>  // char_id → alias[]
-  isLoadingAliases: boolean
-
   // 음성 모델 학습 관련
   isTrainingActive: boolean  // 학습 진행 중
   currentTrainingJob: TrainingJob | null  // 현재 학습 작업
@@ -216,11 +212,6 @@ interface AppState {
   toggleAutoPlay: () => void
   startDubbing: () => void
   stopDubbing: () => void
-
-  // 캐릭터 별칭 관리
-  loadCharacterAliases: () => Promise<void>
-  addCharacterAlias: (charId: string, alias: string) => Promise<void>
-  removeCharacterAlias: (alias: string) => Promise<void>
 
   // 음성 모델 학습
   loadTrainingStatus: () => Promise<void>
@@ -478,10 +469,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   // 음성 캐릭터 목록 초기 상태
   voiceCharacters: [],
   isLoadingVoiceCharacters: false,
-
-  // 캐릭터 별칭 초기 상태
-  characterAliases: {},
-  isLoadingAliases: false,
 
   // 음성 모델 학습 초기 상태
   isTrainingActive: false,
@@ -1662,58 +1649,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       matchedIndex: -1,
       matchSimilarity: 0,
     })
-  },
-
-  // === 캐릭터 별칭 관리 ===
-
-  // 별칭 목록 로드
-  loadCharacterAliases: async () => {
-    set({ isLoadingAliases: true })
-    try {
-      const data = await voiceApi.listAliases()
-      set({
-        characterAliases: data.aliases_by_char,
-        isLoadingAliases: false,
-      })
-    } catch (error) {
-      console.error('Failed to load character aliases:', error)
-      set({ isLoadingAliases: false })
-    }
-  },
-
-  // 별칭 추가
-  addCharacterAlias: async (charId: string, alias: string) => {
-    try {
-      await voiceApi.addAlias(alias, charId)
-      // 상태 업데이트
-      set((state) => ({
-        characterAliases: {
-          ...state.characterAliases,
-          [charId]: [...(state.characterAliases[charId] || []), alias],
-        },
-      }))
-    } catch (error) {
-      console.error('Failed to add character alias:', error)
-      throw error
-    }
-  },
-
-  // 별칭 삭제
-  removeCharacterAlias: async (alias: string) => {
-    try {
-      const result = await voiceApi.removeAlias(alias)
-      const charId = result.char_id
-      // 상태 업데이트
-      set((state) => ({
-        characterAliases: {
-          ...state.characterAliases,
-          [charId]: (state.characterAliases[charId] || []).filter((a) => a !== alias),
-        },
-      }))
-    } catch (error) {
-      console.error('Failed to remove character alias:', error)
-      throw error
-    }
   },
 
   // === 음성 모델 학습 ===
