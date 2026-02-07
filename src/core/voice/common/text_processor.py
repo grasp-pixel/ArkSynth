@@ -5,6 +5,170 @@
 
 import re
 
+# ============ 숫자→한국어 변환 상수 ============
+
+# 한자어 수사
+_SINO_DIGITS = {1: "일", 2: "이", 3: "삼", 4: "사", 5: "오",
+                6: "육", 7: "칠", 8: "팔", 9: "구"}
+
+# 고유어 수사 관형사형 (카운터 앞)
+_NATIVE_ONES = {1: "한", 2: "두", 3: "세", 4: "네", 5: "다섯",
+                6: "여섯", 7: "일곱", 8: "여덟", 9: "아홉"}
+
+_NATIVE_TENS = {10: "열", 20: "스무", 30: "서른", 40: "마흔", 50: "쉰",
+                60: "예순", 70: "일흔", 80: "여든", 90: "아흔"}
+
+# 20+α 합성형: 스물한, 스물두 (스무X → 스물X)
+_NATIVE_TENS_COMPOUND = {**_NATIVE_TENS, 20: "스물"}
+
+# 한자어 접미사
+_SINO_SUFFIXES = frozenset({
+    "년", "월", "일", "원", "분", "초", "번", "호", "층", "도",
+    "퍼센트", "프로", "세기", "주년", "주일", "주", "배",
+    "미터", "킬로", "그램", "리터", "톤",
+    "세", "인분", "인", "차", "위", "시간",
+})
+
+# 고유어 접미사
+_NATIVE_SUFFIXES = frozenset({
+    "명", "개", "살", "마리", "대", "벌", "채",
+    "자루", "그루", "송이", "잔", "병", "판", "통",
+    "권", "장", "쪽", "줄", "곳", "가지", "번째",
+    "시",  # 3시 = 세 시 (시간은 한자어)
+})
+
+# 접미사 regex (긴 것부터 매칭)
+_ALL_SUFFIXES_SORTED = sorted(_SINO_SUFFIXES | _NATIVE_SUFFIXES, key=len, reverse=True)
+_SUFFIX_RE = "|".join(re.escape(s) for s in _ALL_SUFFIXES_SORTED)
+
+
+# ============ 숫자→한국어 변환 함수 ============
+
+def _four_digits_to_sino(n: int) -> str:
+    """4자리 이하 숫자를 한자어로 변환 (일십→십, 일백→백, 일천→천)"""
+    parts = []
+    for val, unit in [(n // 1000, "천"), (n % 1000 // 100, "백"),
+                      (n % 100 // 10, "십"), (n % 10, "")]:
+        if val == 0:
+            continue
+        if val == 1 and unit:
+            parts.append(unit)
+        else:
+            parts.append(_SINO_DIGITS[val] + unit)
+    return "".join(parts)
+
+
+def _number_to_sino(n: int) -> str:
+    """정수를 한자어 수사로 변환 (예: 20→이십, 1234→천이백삼십사)"""
+    if n == 0:
+        return "영"
+
+    large_units = ["", "만", "억", "조", "경"]
+    s = str(n)
+    groups = []
+    while s:
+        groups.append(int(s[-4:]))
+        s = s[:-4]
+
+    parts = []
+    for i, group_val in enumerate(groups):
+        if group_val == 0:
+            continue
+        unit = large_units[i] if i < len(large_units) else ""
+        # 일만→만, 일억→억, 일조→조 (상위 그룹에서 1은 생략)
+        if group_val == 1 and unit:
+            parts.append(unit)
+        else:
+            parts.append(_four_digits_to_sino(group_val) + unit)
+
+    return "".join(reversed(parts))
+
+
+def _number_to_native(n: int) -> str | None:
+    """정수를 고유어 수사 관형사형으로 변환 (1-99만 지원)
+
+    Returns None if n > 99 or n < 1.
+    """
+    if n < 1 or n > 99:
+        return None
+
+    tens = (n // 10) * 10
+    ones = n % 10
+
+    if tens and ones:
+        return _NATIVE_TENS_COMPOUND[tens] + _NATIVE_ONES[ones]
+    elif tens:
+        return _NATIVE_TENS[tens]
+    else:
+        return _NATIVE_ONES[ones]
+
+
+def _replace_number_suffix(m: re.Match) -> str:
+    """숫자+접미사 패턴 치환 콜백"""
+    num = int(m.group(1))
+    large_unit = m.group(2) or ""  # 만, 억, 조
+    yeo = m.group(3) or ""         # 여
+    suffix = m.group(4)
+
+    # 고유어 접미사는 항상 띄어쓰기
+    space = " " if suffix in _NATIVE_SUFFIXES else ""
+
+    # 만/억/조 또는 여가 있으면 항상 한자어
+    if large_unit or yeo:
+        # 일만→만, 일억→억 (1은 생략)
+        sino = "" if num == 1 and large_unit else _number_to_sino(num)
+        return sino + large_unit + yeo + space + suffix
+
+    # 고유어 접미사 & 99 이하 → 고유어 사용
+    if suffix in _NATIVE_SUFFIXES and num <= 99:
+        native = _number_to_native(num)
+        if native:
+            return native + " " + suffix
+
+    return _number_to_sino(num) + space + suffix
+
+
+def _replace_decimal(m: re.Match) -> str:
+    """소수점 숫자 치환 (3.5 → 삼점오)"""
+    integer_part = int(m.group(1))
+    decimal_digits = "".join(
+        _SINO_DIGITS.get(int(d), d) for d in m.group(2)
+    )
+    return _number_to_sino(integer_part) + "점" + decimal_digits
+
+
+def normalize_numbers_for_tts(text: str) -> str:
+    """숫자를 한국어 읽기로 변환
+
+    접미사에 따라 한자어/고유어 수사를 자동 선택합니다.
+
+    예:
+        "20여년" → "이십여년"
+        "3명"   → "세 명"
+        "100만" → "백만"
+        "3.5"   → "삼점오"
+    """
+    # 소수점 (3.5 → 삼점오)
+    text = re.sub(r"(\d+)\.(\d+)", _replace_decimal, text)
+
+    # 숫자 + (만/억/조)? + 여? + 접미사
+    text = re.sub(
+        rf"(\d+)(만|억|조)?(여)?({_SUFFIX_RE})",
+        _replace_number_suffix, text,
+    )
+
+    # 숫자 + 만/억/조 (접미사 없이)
+    text = re.sub(
+        r"(\d+)(만|억|조)",
+        lambda m: _number_to_sino(int(m.group(1))) + m.group(2),
+        text,
+    )
+
+    # 나머지 단독 숫자 → 한자어
+    text = re.sub(r"\d+", lambda m: _number_to_sino(int(m.group(0))), text)
+
+    return text
+
 
 def preprocess_text_for_tts(text: str) -> str | None:
     """TTS 합성을 위한 텍스트 전처리
@@ -44,6 +208,9 @@ def preprocess_text_for_tts(text: str) -> str | None:
 
     # 연속된 쉼표 정리
     text = re.sub(r",\s*,+", ",", text)
+
+    # 숫자를 한국어 읽기로 변환
+    text = normalize_numbers_for_tts(text)
 
     # 전처리 후에도 빈 문자열이면 None 반환
     if not text.strip():
