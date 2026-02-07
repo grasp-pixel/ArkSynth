@@ -51,6 +51,13 @@ export default function CharacterManagerModal({
   const [sortBy, setSortBy] = useState<SortBy>("dialogues");
   const [readyFirst, setReadyFirst] = useState(true);
   const [defaultFirst, setDefaultFirst] = useState(true); // 기본 음성/나레이터 우선
+  const [trainedFirst, setTrainedFirst] = useState(false); // 학습됨(finetuned) 우선
+
+  // 캐릭터 선택 상태
+  const [selectedCharIds, setSelectedCharIds] = useState<Set<string>>(new Set());
+
+  // 초기화 확인 다이얼로그
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // 테스트 관련 상태
   const [testCharId, setTestCharId] = useState<string | null>(null);
@@ -72,11 +79,13 @@ export default function CharacterManagerModal({
     defaultMale: string[];
     trained: Set<string>;
     narrator: string | null;
+    modelTypes: Record<string, string>;
   }>({
     defaultFemale: [],
     defaultMale: [],
     trained: new Set(),
     narrator: null,
+    modelTypes: {},
   });
 
   // 이미지 상태
@@ -139,11 +148,16 @@ export default function CharacterManagerModal({
 
   // 정렬 스냅샷 업데이트 함수
   const updateSortSnapshot = () => {
+    const modelTypes: Record<string, string> = {};
+    for (const charId of trainedCharIds) {
+      modelTypes[charId] = getModelType(charId);
+    }
     setSortSnapshot({
       defaultFemale: [...defaultFemaleVoices],
       defaultMale: [...defaultMaleVoices],
       trained: new Set(trainedCharIds),
       narrator: narratorCharId,
+      modelTypes,
     });
   };
 
@@ -180,7 +194,7 @@ export default function CharacterManagerModal({
     if (isOpen) {
       updateSortSnapshot();
     }
-  }, [sortBy, readyFirst, defaultFirst]);
+  }, [sortBy, readyFirst, defaultFirst, trainedFirst]);
 
   // 스크롤 위치 복원 (정렬 스냅샷 변경 시에만)
   useLayoutEffect(() => {
@@ -245,6 +259,12 @@ export default function CharacterManagerModal({
             : 0;
         if (aDefault !== bDefault) return bDefault - aDefault;
       }
+      // 학습됨 우선 토글이 켜져 있으면 finetuned 캐릭터 먼저 (스냅샷 사용)
+      if (trainedFirst) {
+        const aTrained = sortSnapshot.modelTypes[a.char_id] === "finetuned" ? 1 : 0;
+        const bTrained = sortSnapshot.modelTypes[b.char_id] === "finetuned" ? 1 : 0;
+        if (aTrained !== bTrained) return bTrained - aTrained;
+      }
       // 준비됨 우선 토글이 켜져 있으면 준비된 캐릭터 먼저 (스냅샷 사용)
       if (readyFirst) {
         const aReady = sortSnapshot.trained.has(a.char_id) ? 1 : 0;
@@ -261,6 +281,7 @@ export default function CharacterManagerModal({
     sortBy,
     readyFirst,
     defaultFirst,
+    trainedFirst,
     sortSnapshot,
   ]);
 
@@ -326,6 +347,35 @@ export default function CharacterManagerModal({
     scrollTargetCharId.current = charId;
     await deleteModel(charId);
   };
+
+  // 캐릭터 선택 토글
+  const toggleCharSelection = (charId: string) => {
+    setSelectedCharIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(charId)) {
+        next.delete(charId);
+      } else {
+        next.add(charId);
+      }
+      return next;
+    });
+  };
+
+  // 전체 선택 (현재 필터링/정렬된 목록 기준)
+  const selectAll = () => {
+    setSelectedCharIds(new Set(sortedCharacters.map((c) => c.char_id)));
+  };
+
+  // 전체 해제
+  const deselectAll = () => {
+    setSelectedCharIds(new Set());
+  };
+
+  // 선택된 캐릭터 ID 배열
+  const selectedIds = useMemo(
+    () => Array.from(selectedCharIds),
+    [selectedCharIds],
+  );
 
   // 음성 테스트
   const handleTestVoice = async () => {
@@ -510,79 +560,112 @@ export default function CharacterManagerModal({
         </div>
 
         {/* 검색 및 정렬 */}
-        <div className="p-4 border-b border-ark-border flex items-center gap-4">
-          <div className="flex-1">
-            <input
-              type="text"
-              placeholder="캐릭터 검색..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="ark-input w-full"
-            />
+        <div className="p-4 border-b border-ark-border space-y-2">
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
+              <input
+                type="text"
+                placeholder="캐릭터 검색..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="ark-input w-full"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-ark-gray">정렬:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortBy)}
+                className="ark-input text-sm"
+              >
+                <option value="dialogues">대사 수</option>
+                <option value="files">파일 수</option>
+                <option value="id">출시순</option>
+                <option value="name">이름순</option>
+              </select>
+            </div>
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={defaultFirst}
+                onChange={(e) => setDefaultFirst(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-ark-border bg-ark-black text-ark-orange focus:ring-ark-orange"
+              />
+              <span className="text-xs text-ark-gray">기본 우선</span>
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={trainedFirst}
+                onChange={(e) => setTrainedFirst(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-ark-border bg-ark-black text-ark-orange focus:ring-ark-orange"
+              />
+              <span className="text-xs text-ark-gray">학습됨 우선</span>
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={readyFirst}
+                onChange={(e) => setReadyFirst(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-ark-border bg-ark-black text-ark-orange focus:ring-ark-orange"
+              />
+              <span className="text-xs text-ark-gray">준비됨 우선</span>
+            </label>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-ark-gray">정렬:</span>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as SortBy)}
-              className="ark-input text-sm"
-            >
-              <option value="dialogues">대사 수</option>
-              <option value="files">파일 수</option>
-              <option value="id">출시순</option>
-              <option value="name">이름순</option>
-            </select>
-          </div>
-          <label className="flex items-center gap-1.5 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={defaultFirst}
-              onChange={(e) => setDefaultFirst(e.target.checked)}
-              className="w-3.5 h-3.5 rounded border-ark-border bg-ark-black text-ark-orange focus:ring-ark-orange"
-            />
-            <span className="text-xs text-ark-gray">기본 우선</span>
-          </label>
-          <label className="flex items-center gap-1.5 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={readyFirst}
-              onChange={(e) => setReadyFirst(e.target.checked)}
-              className="w-3.5 h-3.5 rounded border-ark-border bg-ark-black text-ark-orange focus:ring-ark-orange"
-            />
-            <span className="text-xs text-ark-gray">준비됨 우선</span>
-          </label>
+          {/* 선택 & 일괄 처리 */}
           <div className="flex items-center gap-3">
             <span className="text-sm text-ark-gray">
               {stats.ready}/{stats.total} 준비됨
             </span>
+            <div className="w-px h-4 bg-ark-border" />
+            {/* 선택 버튼 */}
+            <button
+              onClick={selectAll}
+              className="text-xs px-2 py-1 rounded bg-white/10 text-white/70 hover:bg-white/20 transition-colors"
+            >
+              전체 선택
+            </button>
+            <button
+              onClick={deselectAll}
+              disabled={selectedCharIds.size === 0}
+              className="text-xs px-2 py-1 rounded bg-white/10 text-white/70 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              선택 해제
+            </button>
+            {selectedCharIds.size > 0 && (
+              <span className="text-xs text-ark-orange font-medium">
+                {selectedCharIds.size}개 선택됨
+              </span>
+            )}
+            <div className="w-px h-4 bg-ark-border" />
             {/* 일괄 준비/학습 버튼 */}
             <button
-              onClick={() => startBatchTraining(undefined, "prepare")}
-              disabled={isTrainingActive || stats.ready === stats.total}
+              onClick={() => startBatchTraining(selectedIds, "prepare")}
+              disabled={isTrainingActive || selectedCharIds.size === 0}
               className="text-xs px-2 py-1 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title="미준비 캐릭터 일괄 준비 (Zero-shot)"
+              title="선택된 캐릭터 일괄 준비 (Zero-shot)"
             >
-              일괄 준비
+              일괄 준비{selectedCharIds.size > 0 ? ` (${selectedCharIds.size})` : ""}
             </button>
             <button
-              onClick={() => startFullBatchTraining()}
-              disabled={isTrainingActive}
+              onClick={() => startFullBatchTraining(selectedIds)}
+              disabled={isTrainingActive || selectedCharIds.size === 0}
               className="text-xs px-2 py-1 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title="미준비 캐릭터 준비 후 자동으로 학습 시작"
+              title="선택된 캐릭터 준비 후 자동으로 학습 시작"
             >
-              준비+학습
+              준비+학습{selectedCharIds.size > 0 ? ` (${selectedCharIds.size})` : ""}
             </button>
             <button
-              onClick={() => startBatchTraining(undefined, "finetune")}
-              disabled={isTrainingActive}
+              onClick={() => startBatchTraining(selectedIds, "finetune")}
+              disabled={isTrainingActive || selectedCharIds.size === 0}
               className="text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title="준비된 캐릭터 일괄 학습 (Fine-tuning)"
+              title="선택된 캐릭터 일괄 학습 (Fine-tuning)"
             >
-              일괄 학습
+              일괄 학습{selectedCharIds.size > 0 ? ` (${selectedCharIds.size})` : ""}
             </button>
             {stats.ready > 0 && (
               <button
-                onClick={clearAllTrainedModels}
+                onClick={() => setShowResetConfirm(true)}
                 className="text-xs px-2 py-1 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
                 title="모든 준비 데이터 초기화"
               >
@@ -590,6 +673,34 @@ export default function CharacterManagerModal({
               </button>
             )}
           </div>
+          {/* 초기화 확인 다이얼로그 */}
+          {showResetConfirm && (
+            <div className="flex items-center gap-3 p-3 rounded bg-red-500/10 border border-red-500/30">
+              <svg viewBox="0 0 24 24" className="w-5 h-5 text-red-400 shrink-0" fill="currentColor">
+                <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+              </svg>
+              <span className="text-sm text-red-300">
+                모든 준비/학습 데이터({stats.ready}개)가 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
+              </span>
+              <div className="flex gap-2 ml-auto shrink-0">
+                <button
+                  onClick={() => setShowResetConfirm(false)}
+                  className="text-xs px-3 py-1 rounded bg-white/10 text-white/70 hover:bg-white/20 transition-colors"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={() => {
+                    clearAllTrainedModels();
+                    setShowResetConfirm(false);
+                  }}
+                  className="text-xs px-3 py-1 rounded bg-red-500/30 text-red-300 hover:bg-red-500/50 transition-colors"
+                >
+                  초기화
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 기본 음성 & 나레이션 표시 (접기/펼치기 가능) */}
@@ -783,6 +894,7 @@ export default function CharacterManagerModal({
                 const isTraining =
                   isTrainingActive &&
                   currentTrainingJob?.char_id === char.char_id;
+                const isSelected = selectedCharIds.has(char.char_id);
 
                 const charGender = genders[char.char_id];
                 const charImage = getCharImageUrl(char.char_id);
@@ -791,13 +903,34 @@ export default function CharacterManagerModal({
                   <div
                     key={char.char_id}
                     data-char-id={char.char_id}
-                    className={`relative rounded-lg border overflow-hidden min-h-[180px] ${
-                      isReady ? "border-green-500/50" : "border-ark-border"
+                    onClick={() => toggleCharSelection(char.char_id)}
+                    className={`relative rounded-lg border overflow-hidden min-h-[180px] cursor-pointer transition-colors ${
+                      isSelected
+                        ? "border-ark-orange ring-1 ring-ark-orange/50"
+                        : isReady
+                          ? "border-green-500/50"
+                          : "border-ark-border"
                     }`}
                   >
+                    {/* 선택 체크박스 */}
+                    <div className="absolute top-2 right-2 z-20">
+                      <div
+                        className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                          isSelected
+                            ? "bg-ark-orange border-ark-orange"
+                            : "border-white/30 bg-black/40 hover:border-white/50"
+                        }`}
+                      >
+                        {isSelected && (
+                          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-white" fill="currentColor">
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                          </svg>
+                        )}
+                      </div>
+                    </div>
                     {/* 기본 배경 */}
                     <div
-                      className={`absolute inset-0 ${isReady ? "bg-green-500/10" : "bg-ark-black/50"}`}
+                      className={`absolute inset-0 ${isSelected ? "bg-ark-orange/5" : isReady ? "bg-green-500/10" : "bg-ark-black/50"}`}
                     />
 
                     {/* 캐릭터 이미지 (우측에, mask로 페이드) */}
@@ -863,7 +996,7 @@ export default function CharacterManagerModal({
                             </span>
                           )}
                           <button
-                            onClick={() => setAliasEditCharId(char.char_id)}
+                            onClick={(e) => { e.stopPropagation(); setAliasEditCharId(char.char_id); }}
                             className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
                               characterAliases[char.char_id]?.length > 0
                                 ? "bg-amber-500/40 text-amber-200 hover:bg-amber-500/60"
@@ -976,7 +1109,7 @@ export default function CharacterManagerModal({
                         </div>
 
                         {/* 액션 버튼 */}
-                        <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
                           {(() => {
                             const isDefault = isFemaleDefault || isMaleDefault;
                             const defaultColor =
