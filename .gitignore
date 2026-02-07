@@ -21,6 +21,7 @@ ENV/
 src/frontend/dist/
 src/frontend/dist-electron/
 src/frontend/release/
+release/
 src/frontend/node_modules/
 *.tsbuildinfo
 
