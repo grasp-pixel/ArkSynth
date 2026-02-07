@@ -64,7 +64,7 @@ def load_charword_transcripts(
 
     # 후보 경로들 (우선순위 순)
     candidates = [
-        # arkprts 경로 (data/gamedata/kr/gamedata/excel/)
+        # 다운로드 경로 (data/gamedata/kr/gamedata/excel/)
         gamedata_path.parent / "gamedata" / server_code / "gamedata" / "excel" / "charword_table.json",
         # gamedata 경로
         gamedata_path / server_code / "gamedata" / "excel" / "charword_table.json",

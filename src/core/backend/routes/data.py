@@ -26,8 +26,18 @@ def get_updater() -> GamedataUpdater:
     """GamedataUpdater 인스턴스 가져오기"""
     global _updater
     if _updater is None:
-        _updater = GamedataUpdater(config.data_path)
+        _updater = GamedataUpdater(
+            config.data_path,
+            repo=config.gamedata_repo,
+            branch=config.gamedata_branch,
+        )
     return _updater
+
+
+def reset_updater():
+    """Updater 인스턴스 리셋 (설정 변경 시)"""
+    global _updater
+    _updater = None
 
 
 class GamedataStatusResponse(BaseModel):
@@ -208,3 +218,32 @@ async def cancel_update():
     updater.cancel()
 
     return {"status": "cancelling", "message": "업데이트 취소 요청됨"}
+
+
+class RepoSettingRequest(BaseModel):
+    """레포지토리 설정 요청"""
+
+    repo: str  # owner/repo 형식
+    branch: str = "master"
+
+
+@router.get("/repo")
+async def get_repo_setting():
+    """현재 게임 데이터 레포지토리 설정 조회"""
+    return {
+        "repo": config.gamedata_repo,
+        "branch": config.gamedata_branch,
+    }
+
+
+@router.post("/repo")
+async def set_repo_setting(request: RepoSettingRequest):
+    """게임 데이터 레포지토리 설정 변경"""
+    config.gamedata_repo = request.repo
+    config.gamedata_branch = request.branch
+    reset_updater()
+    return {
+        "repo": config.gamedata_repo,
+        "branch": config.gamedata_branch,
+        "message": "레포지토리 설정이 변경되었습니다",
+    }

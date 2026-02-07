@@ -1,6 +1,6 @@
 """게임 데이터 업데이터
 
-arkprts 라이브러리를 사용하여 Arknights 게임 데이터를 다운로드/업데이트
+GitHub 레포지토리에서 필요한 게임 데이터만 선택적으로 다운로드
 """
 
 import asyncio
@@ -11,7 +11,22 @@ from datetime import datetime
 from pathlib import Path
 from typing import Awaitable, Callable, Optional, Union
 
+import aiohttp
+
 logger = logging.getLogger(__name__)
+
+# 필요한 Excel JSON 파일 목록
+NEEDED_EXCEL_FILES = [
+    "character_table.json",
+    "story_review_table.json",
+    "charword_table.json",
+    "handbook_info_table.json",
+]
+
+# 스토리 폴더 중 제외할 경로
+EXCLUDED_STORY_DIRS = {"[uc]info"}
+
+MAX_CONCURRENT_DOWNLOADS = 50
 
 
 @dataclass
@@ -38,18 +53,29 @@ class GamedataStatus:
 class GamedataUpdater:
     """게임 데이터 업데이터
 
-    arkprts를 사용하여 게임 서버에서 직접 데이터를 다운로드합니다.
+    GitHub 레포지토리에서 필요한 파일만 선택적으로 다운로드합니다.
     """
 
-    def __init__(self, data_root: str | Path):
-        """
-        Args:
-            data_root: data 폴더 경로
-        """
+    def __init__(
+        self,
+        data_root: str | Path,
+        repo: str = "ArknightsAssets/ArknightsGamedata",
+        branch: str = "master",
+    ):
         self.data_root = Path(data_root)
         self.gamedata_path = self.data_root / "gamedata"
+        self.repo = repo
+        self.branch = branch
         self._cancel_flag = False
         self._update_info_path = self.gamedata_path / ".update_info.json"
+
+    @property
+    def _api_tree_url(self) -> str:
+        return f"https://api.github.com/repos/{self.repo}/git/trees/{self.branch}?recursive=1"
+
+    @property
+    def _raw_base_url(self) -> str:
+        return f"https://raw.githubusercontent.com/{self.repo}/{self.branch}"
 
     def get_status(self, server: str = "kr") -> GamedataStatus:
         """현재 게임 데이터 상태 확인"""
@@ -61,10 +87,8 @@ class GamedataUpdater:
         last_updated = None
 
         if exists:
-            # 스토리 파일 수 카운트
             story_count = sum(1 for _ in story_path.rglob("*.txt"))
 
-        # 업데이트 정보 읽기
         if self._update_info_path.exists():
             try:
                 with open(self._update_info_path, "r", encoding="utf-8") as f:
@@ -84,182 +108,74 @@ class GamedataUpdater:
     async def update(
         self,
         server: str = "kr",
-        on_progress: Optional[Callable[[UpdateProgress], Union[None, Awaitable[None]]]] = None,
+        on_progress: Optional[
+            Callable[[UpdateProgress], Union[None, Awaitable[None]]]
+        ] = None,
     ) -> bool:
-        """게임 데이터 업데이트
-
-        Args:
-            server: 서버 코드 (kr, en, jp, cn, tw)
-            on_progress: 진행률 콜백 (동기 또는 비동기 함수)
-
-        Returns:
-            성공 여부
-        """
+        """게임 데이터 업데이트"""
         self._cancel_flag = False
 
-        async def report(stage: str, progress: float, message: str, error: str = None):
-            logger.info(f"[GamedataUpdater] report: stage={stage}, progress={progress}, message={message}, error={error}")
+        async def report(
+            stage: str, progress: float, message: str, error: str = None
+        ):
             if on_progress:
                 try:
-                    progress_obj = UpdateProgress(stage, progress, message, error)
-                    logger.debug(f"[GamedataUpdater] Calling on_progress with: {progress_obj}")
-                    result = on_progress(progress_obj)
-                    # 코루틴이면 await
+                    result = on_progress(
+                        UpdateProgress(stage, progress, message, error)
+                    )
                     if asyncio.iscoroutine(result):
-                        logger.debug("[GamedataUpdater] on_progress returned coroutine, awaiting...")
                         await result
-                    logger.debug("[GamedataUpdater] on_progress completed")
                 except Exception as e:
-                    logger.exception(f"[GamedataUpdater] Error in on_progress callback: {e}")
+                    logger.exception(f"on_progress 콜백 오류: {e}")
 
         try:
-            # arkprts 임포트 확인
-            await report("checking", 0.0, "arkprts 라이브러리 확인 중...")
+            await report("checking", 0.0, "파일 목록 조회 중...")
 
-            try:
-                import arkprts
-            except ImportError:
-                await report(
-                    "error",
-                    0.0,
-                    "arkprts가 설치되지 않았습니다",
-                    "pip install arkprts[all] 명령으로 설치해주세요",
-                )
+            # 1. GitHub API로 파일 트리 조회
+            tree = await self._fetch_file_tree()
+            if tree is None:
+                await report("error", 0.0, "파일 목록 조회 실패", "GitHub API 요청 실패")
                 return False
 
             if self._cancel_flag:
                 await report("error", 0.0, "취소됨", "사용자가 취소함")
                 return False
 
-            # 다운로드 시작
-            await report("downloading", 0.1, f"{server} 서버 데이터 다운로드 시작...")
+            # 2. 필요한 파일 필터링
+            files = self._filter_needed_files(tree, server)
+            total = len(files)
 
-            # arkprts.assets 모듈로 다운로드
-            # 실제로는 subprocess로 실행하는 것이 더 안정적
-            import subprocess
-            import sys
-
-            # 출력 경로
-            output_path = str(self.gamedata_path)
-
-            # arkprts.assets 명령 실행
-            cmd = [
-                sys.executable,
-                "-m",
-                "arkprts.assets",
-                output_path,
-                "--server",
-                server,
-                "--log-level",
-                "DEBUG",  # DEBUG 레벨로 더 많은 출력 얻기
-            ]
-
-            logger.info(f"[GamedataUpdater] Running command: {' '.join(cmd)}")
-            logger.info(f"[GamedataUpdater] Python executable: {sys.executable}")
-            logger.info(f"[GamedataUpdater] Output path: {output_path}")
-            await report("downloading", 0.2, f"arkprts 실행 중... (서버: {server})")
-
-            # 비동기로 subprocess 실행
-            logger.info("[GamedataUpdater] Creating subprocess...")
-            try:
-                process = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
+            if total == 0:
+                await report(
+                    "error", 0.0, "다운로드할 파일 없음",
+                    f"레포지토리에서 {server} 서버 데이터를 찾을 수 없습니다"
                 )
-                logger.info(f"[GamedataUpdater] Subprocess created with PID: {process.pid}")
-            except Exception as e:
-                logger.exception(f"[GamedataUpdater] Failed to create subprocess: {e}")
-                raise
+                return False
 
-            # stdout과 stderr를 동시에 읽는 태스크
-            progress_value = 0.2
-            line_count = 0
-            last_report_time = asyncio.get_event_loop().time()
-            process_finished = False
+            await report("downloading", 0.05, f"{total}개 파일 다운로드 시작...")
+            logger.info(f"다운로드 대상: {total}개 파일 (서버: {server})")
 
-            async def read_stream(stream, name):
-                nonlocal progress_value, line_count, last_report_time, process_finished
-                while not process_finished:
-                    try:
-                        line = await asyncio.wait_for(
-                            stream.readline(),
-                            timeout=10.0,  # 10초 타임아웃
-                        )
-                        if not line:
-                            break
-
-                        line_count += 1
-                        line_text = line.decode("utf-8", errors="ignore").strip()
-                        if line_text:
-                            logger.info(f"[GamedataUpdater] [{name}][{line_count}] {line_text}")
-
-                            # 진행률 추정 (로그 라인 수 기반)
-                            progress_value = min(0.9, progress_value + 0.005)
-                            await report("downloading", progress_value, line_text[:100])
-                            last_report_time = asyncio.get_event_loop().time()
-
-                    except asyncio.TimeoutError:
-                        # 타임아웃 시 하트비트 전송
-                        current_time = asyncio.get_event_loop().time()
-                        if current_time - last_report_time > 5.0:
-                            await report("downloading", progress_value, "처리 중...")
-                            last_report_time = current_time
-
-                    if self._cancel_flag:
-                        break
-
-            logger.info("[GamedataUpdater] Starting to read process output...")
-
-            # stdout과 stderr 동시 읽기
-            try:
-                read_tasks = [
-                    asyncio.create_task(read_stream(process.stdout, "stdout")),
-                    asyncio.create_task(read_stream(process.stderr, "stderr")),
-                ]
-
-                # 프로세스 완료 대기
-                await process.wait()
-                process_finished = True
-                logger.info(f"[GamedataUpdater] Process completed with return code: {process.returncode}")
-
-                # 읽기 태스크 완료 대기 (짧은 타임아웃)
-                await asyncio.wait_for(asyncio.gather(*read_tasks, return_exceptions=True), timeout=5.0)
-
-            except asyncio.TimeoutError:
-                logger.warning("[GamedataUpdater] Timeout waiting for read tasks")
-                for task in read_tasks:
-                    task.cancel()
+            # 3. 병렬 다운로드
+            success = await self._download_files(files, server, total, report)
 
             if self._cancel_flag:
-                logger.info("[GamedataUpdater] Cancel flag detected, killing process")
-                process.kill()
-                await report("error", progress_value, "취소됨", "사용자가 취소함")
+                await report("error", 0.0, "취소됨", "사용자가 취소함")
                 return False
 
-            logger.info(f"[GamedataUpdater] Total lines read: {line_count}")
-
-            if process.returncode != 0:
-                stderr = await process.stderr.read()
-                error_msg = stderr.decode("utf-8", errors="ignore")
-                logger.error(f"[GamedataUpdater] Process failed with error: {error_msg}")
-                await report("error", progress_value, "다운로드 실패", error_msg[:200])
+            if not success:
+                await report("error", 0.0, "다운로드 실패", "일부 파일 다운로드에 실패했습니다")
                 return False
 
-            # 업데이트 정보 저장
-            logger.info("[GamedataUpdater] Saving update info...")
+            # 4. 업데이트 정보 저장
             self._save_update_info(server)
-
-            logger.info("[GamedataUpdater] Update completed successfully!")
-            await report("complete", 1.0, "업데이트 완료!")
+            await report("complete", 1.0, f"업데이트 완료! ({total}개 파일)")
             return True
 
-        except asyncio.TimeoutError as e:
-            logger.error(f"[GamedataUpdater] Timeout error: {e}")
-            await report("error", 0.0, "타임아웃", "다운로드가 너무 오래 걸립니다")
+        except asyncio.CancelledError:
+            await report("error", 0.0, "취소됨", "작업이 취소되었습니다")
             return False
         except Exception as e:
-            logger.exception(f"[GamedataUpdater] Update failed with exception: {e}")
+            logger.exception(f"업데이트 실패: {e}")
             await report("error", 0.0, "업데이트 실패", str(e))
             return False
 
@@ -267,12 +183,127 @@ class GamedataUpdater:
         """업데이트 취소"""
         self._cancel_flag = True
 
+    async def _fetch_file_tree(self) -> Optional[list[dict]]:
+        """GitHub API로 전체 파일 트리 조회"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    self._api_tree_url,
+                    headers={"Accept": "application/vnd.github.v3+json"},
+                    timeout=aiohttp.ClientTimeout(total=60),
+                ) as resp:
+                    if resp.status != 200:
+                        logger.error(f"GitHub API 응답 오류: {resp.status}")
+                        return None
+                    data = await resp.json()
+                    return data.get("tree", [])
+        except Exception as e:
+            logger.exception(f"GitHub API 요청 실패: {e}")
+            return None
+
+    def _filter_needed_files(
+        self, tree: list[dict], server: str
+    ) -> list[str]:
+        """트리에서 필요한 파일 경로만 필터링"""
+        needed = []
+        excel_prefix = f"{server}/gamedata/excel/"
+        story_prefix = f"{server}/gamedata/story/"
+
+        for item in tree:
+            if item.get("type") != "blob":
+                continue
+
+            path = item["path"]
+
+            # Excel JSON 파일
+            if path.startswith(excel_prefix):
+                filename = path[len(excel_prefix):]
+                if filename in NEEDED_EXCEL_FILES:
+                    needed.append(path)
+                continue
+
+            # Story 파일 (.txt + story_variables.json)
+            if path.startswith(story_prefix):
+                rel = path[len(story_prefix):]
+
+                # 제외 디렉토리 체크
+                first_dir = rel.split("/")[0] if "/" in rel else ""
+                if first_dir in EXCLUDED_STORY_DIRS:
+                    continue
+
+                if path.endswith(".txt") or rel == "story_variables.json":
+                    needed.append(path)
+
+        return needed
+
+    async def _download_files(
+        self,
+        files: list[str],
+        server: str,
+        total: int,
+        report,
+    ) -> bool:
+        """파일들을 병렬로 다운로드"""
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
+        completed = 0
+        failed = 0
+
+        async def download_one(session: aiohttp.ClientSession, file_path: str):
+            nonlocal completed, failed
+
+            if self._cancel_flag:
+                return
+
+            url = f"{self._raw_base_url}/{file_path}"
+            local_path = self.gamedata_path / file_path
+
+            try:
+                async with semaphore:
+                    async with session.get(
+                        url, timeout=aiohttp.ClientTimeout(total=120)
+                    ) as resp:
+                        if resp.status != 200:
+                            logger.warning(f"다운로드 실패 ({resp.status}): {file_path}")
+                            failed += 1
+                            return
+
+                        content = await resp.read()
+
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+                local_path.write_bytes(content)
+
+                completed += 1
+                if completed % 50 == 0 or completed == total:
+                    progress = 0.05 + (completed / total) * 0.90
+                    await report(
+                        "downloading", progress,
+                        f"다운로드 중... ({completed}/{total})"
+                    )
+
+            except Exception as e:
+                logger.warning(f"다운로드 오류: {file_path} - {e}")
+                failed += 1
+
+        connector = aiohttp.TCPConnector(limit=MAX_CONCURRENT_DOWNLOADS)
+        async with aiohttp.ClientSession(connector=connector) as session:
+            tasks = [download_one(session, f) for f in files]
+            await asyncio.gather(*tasks)
+
+        logger.info(f"다운로드 완료: {completed} 성공, {failed} 실패 / {total} 전체")
+
+        # 실패가 전체의 10% 이상이면 실패로 간주
+        if failed > total * 0.1:
+            return False
+        return True
+
     def _save_update_info(self, server: str):
         """업데이트 정보 저장"""
         self.gamedata_path.mkdir(parents=True, exist_ok=True)
 
         info = {
             "server": server,
+            "repo": self.repo,
+            "branch": self.branch,
             "last_updated": datetime.now().isoformat(),
         }
 

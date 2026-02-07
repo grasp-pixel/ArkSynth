@@ -39,7 +39,7 @@ class StoryLoader:
         self.data_root = Path(data_root)
         self.parser = StoryParser()
 
-        # 언어별 경로 매핑 (arkprts 경로 우선, 기존 경로 fallback)
+        # 언어별 경로 매핑 (다운로드 경로 우선, 기존 경로 fallback)
         self._lang_paths = self._build_lang_paths()
 
         # 캐시
@@ -53,15 +53,14 @@ class StoryLoader:
     def _build_lang_paths(self) -> dict[str, Path]:
         """언어별 경로 매핑 구축
 
-        arkprts로 다운로드한 경로를 우선 사용하고,
+        다운로드 경로를 우선 사용하고,
         없으면 기존 gamedata_yostar 경로를 fallback으로 사용
         """
         paths = {}
 
-        # 언어 코드 매핑 (공통 모듈 사용)
         for lang, server in LOCALE_TO_SERVER.items():
-            # arkprts 경로 (우선)
-            arkprts_path = self.data_root / "gamedata" / server / "gamedata"
+            # 다운로드 경로 (우선)
+            download_path = self.data_root / "gamedata" / server / "gamedata"
 
             # 기존 경로 (fallback)
             if lang == "zh_CN":
@@ -69,9 +68,8 @@ class StoryLoader:
             else:
                 legacy_path = self.data_root / "gamedata_yostar" / lang / "gamedata"
 
-            # arkprts 경로가 있으면 우선 사용
-            if arkprts_path.exists():
-                paths[lang] = arkprts_path
+            if download_path.exists():
+                paths[lang] = download_path
             else:
                 paths[lang] = legacy_path
 

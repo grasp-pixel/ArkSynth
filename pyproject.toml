@@ -37,8 +37,6 @@ dependencies = [
     "torchvision>=0.15.0",
     "torchaudio>=2.0.0",
     "py7zr>=1.1.0",
-    # 게임 데이터 다운로드
-    "arkprts[all]>=0.3.0",
     # Whisper 전처리 (학습 데이터 준비용)
     "faster-whisper>=1.0.0",
     "ctranslate2>=4.0.0",

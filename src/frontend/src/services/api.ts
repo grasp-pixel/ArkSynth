@@ -1629,6 +1629,21 @@ export const gamedataApi = {
     )
     return res.data
   },
+
+  // 레포지토리 설정 조회
+  getRepo: async () => {
+    const res = await api.get<{ repo: string; branch: string }>('/api/data/repo')
+    return res.data
+  },
+
+  // 레포지토리 설정 변경
+  setRepo: async (repo: string, branch: string = 'master') => {
+    const res = await api.post<{ repo: string; branch: string; message: string }>(
+      '/api/data/repo',
+      { repo, branch }
+    )
+    return res.data
+  },
 }
 
 // 게임 데이터 업데이트 진행률 SSE 스트림

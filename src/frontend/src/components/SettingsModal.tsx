@@ -84,6 +84,9 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     null,
   );
   const gamedataStreamRef = useRef<{ close: () => void } | null>(null);
+  const [gamedataRepo, setGamedataRepo] = useState('');
+  const [gamedataRepoInput, setGamedataRepoInput] = useState('');
+  const [isRepoSaving, setIsRepoSaving] = useState(false);
 
   // 별칭 추출 관련 상태
   const [aliasesInfo, setAliasesInfo] = useState<AliasListResponse | null>(null);
@@ -100,6 +103,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       checkVoiceAssets();
       checkImageAssets();
       checkGamedataStatus();
+      loadGamedataRepo();
       loadTTSEngineSetting();
       loadAliasesInfo();
     }
@@ -269,6 +273,29 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setGamedataStatus(status);
     } catch (err) {
       console.error("게임 데이터 상태 확인 실패:", err);
+    }
+  };
+
+  const loadGamedataRepo = async () => {
+    try {
+      const { repo } = await gamedataApi.getRepo();
+      setGamedataRepo(repo);
+      setGamedataRepoInput(repo);
+    } catch (err) {
+      console.error("레포지토리 설정 로드 실패:", err);
+    }
+  };
+
+  const saveGamedataRepo = async () => {
+    if (!gamedataRepoInput.trim() || gamedataRepoInput === gamedataRepo) return;
+    setIsRepoSaving(true);
+    try {
+      await gamedataApi.setRepo(gamedataRepoInput.trim());
+      setGamedataRepo(gamedataRepoInput.trim());
+    } catch (err) {
+      console.error("레포지토리 설정 저장 실패:", err);
+    } finally {
+      setIsRepoSaving(false);
     }
   };
 
@@ -858,10 +885,27 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           </div>
                         )}
 
-                        <p className="text-xs text-ark-gray mt-3">
-                          arkprts를 통해 한국 서버의 최신 스토리 데이터를
-                          다운로드합니다.
-                        </p>
+                        <div className="mt-3 pt-3 border-t border-ark-border">
+                          <label className="text-xs text-ark-gray block mb-1">
+                            데이터 소스 (GitHub)
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={gamedataRepoInput}
+                              onChange={(e) => setGamedataRepoInput(e.target.value)}
+                              placeholder="owner/repo"
+                              className="flex-1 px-2 py-1 text-xs bg-ark-black border border-ark-border rounded text-ark-white placeholder:text-ark-gray/50 focus:border-ark-orange focus:outline-none"
+                            />
+                            <button
+                              onClick={saveGamedataRepo}
+                              disabled={isRepoSaving || gamedataRepoInput === gamedataRepo}
+                              className="px-3 py-1 text-xs bg-ark-panel border border-ark-border rounded text-ark-gray hover:text-ark-white disabled:opacity-30 disabled:cursor-default"
+                            >
+                              {isRepoSaving ? '...' : '저장'}
+                            </button>
+                          </div>
+                        </div>
 
                         {/* 수동 캐릭터 새로고침 */}
                         {gamedataStatus?.exists && (

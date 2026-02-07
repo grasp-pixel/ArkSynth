@@ -141,12 +141,11 @@ class CharacterVoiceMapper:
         if self.gamedata_path is None:
             return {}
 
-        # arkprts 경로와 기존 경로 모두 시도 (공통 모듈 사용)
         server_code = LOCALE_TO_SERVER.get(game_lang, game_lang)
 
         # 후보 경로들 (우선순위 순)
         candidates = [
-            # arkprts 경로 (data/gamedata/kr/gamedata/excel/)
+            # 다운로드 경로 (data/gamedata/kr/gamedata/excel/)
             self.gamedata_path.parent / "gamedata" / server_code / "gamedata" / "excel" / "character_table.json",
             # 기존 경로 (data/gamedata_yostar/ko_KR/gamedata/excel/)
             self.gamedata_path / game_lang / "gamedata" / "excel" / "character_table.json",

@@ -23,6 +23,10 @@ class ServerConfig(BaseModel):
     game_language: str = "ko_KR"  # 게임 데이터 언어 (캐릭터 이름 등)
     voice_language: str = "voice_kr"  # 음성 폴더 (voice, voice_kr, voice_cn, voice_en)
 
+    # 게임 데이터 다운로드 설정
+    gamedata_repo: str = "ArknightsAssets/ArknightsGamedata"  # GitHub owner/repo
+    gamedata_branch: str = "master"
+
     # TTS 설정
     default_voice: str = "ko-KR-SunHiNeural"
     default_tts_language: str = "ko-KR"  # Edge TTS 언어

@@ -176,40 +176,6 @@ def check_7zip() -> DependencyStatus:
     return DependencyStatus(name="7-Zip", installed=False)
 
 
-def check_flatc() -> DependencyStatus:
-    """FlatBuffers Compiler (flatc) 설치 확인
-
-    arkprts 라이브러리가 게임 데이터를 파싱하는 데 필요합니다.
-    """
-    try:
-        result = subprocess.run(
-            ["flatc", "--version"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            # 버전 추출 (예: "flatc version 24.3.25")
-            version_line = result.stdout.strip()
-            version = "unknown"
-            if "version" in version_line.lower():
-                parts = version_line.split()
-                for i, p in enumerate(parts):
-                    if p.lower() == "version" and i + 1 < len(parts):
-                        version = parts[i + 1]
-                        break
-            path = shutil.which("flatc")
-            return DependencyStatus(
-                name="flatc",
-                installed=True,
-                version=version,
-                path=path,
-            )
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-
-    return DependencyStatus(name="flatc", installed=False)
-
 
 @router.get("", response_model=SettingsResponse)
 async def get_settings():
@@ -223,7 +189,6 @@ async def get_settings():
         check_ffmpeg(),
         check_ffprobe(),
         check_7zip(),
-        check_flatc(),
         check_gpt_sovits(),
     ]
 
@@ -251,7 +216,6 @@ async def check_dependencies():
             check_ffmpeg(),
             check_ffprobe(),
             check_7zip(),
-            check_flatc(),
             check_gpt_sovits(),
         ]
     }
@@ -312,26 +276,6 @@ async def sevenzip_install_guide():
         "note": "7-Zip은 GPT-SoVITS 압축 해제 속도를 크게 향상시킵니다 (권장)",
     }
 
-
-@router.get("/flatc/install-guide")
-async def flatc_install_guide():
-    """FlatBuffers Compiler 설치 가이드"""
-    return {
-        "name": "flatc (FlatBuffers Compiler)",
-        "description": "arkprts 라이브러리가 게임 데이터 파싱 시 FlatBuffers 스키마를 컴파일하는 데 필요합니다.",
-        "windows": {
-            "method": "winget",
-            "command": "winget install Google.FlatBuffers",
-            "alternative": "https://github.com/google/flatbuffers/releases 에서 다운로드",
-        },
-        "manual_steps": [
-            "1. https://github.com/google/flatbuffers/releases 에서 최신 릴리스 다운로드",
-            "2. Windows.flatc.binary.zip 파일 선택",
-            "3. 압축 해제 후 flatc.exe를 PATH가 포함된 폴더에 복사",
-            "4. 터미널 재시작 후 'flatc --version'으로 확인",
-        ],
-        "required_for": "게임 데이터 업데이트 (arkprts)",
-    }
 
 
 # ============================================================================
