@@ -34,6 +34,11 @@ src/frontend/node_modules/
 # Claude Code local settings
 .claude/settings.local.json
 
+# Game data (사용자가 앱 내에서 직접 다운로드)
+data/gamedata/
+data/gamedata_yostar/
+data/character_aliases.json
+
 # Large assets (음성, 이미지, 모델 등)
 extracted/
 models/
