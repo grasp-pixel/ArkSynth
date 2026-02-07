@@ -111,8 +111,8 @@ class GPTSoVITSConfig:
             self.pretrained_path = (root / self.pretrained_path).resolve()
 
     # 학습 설정
-    epochs_sovits: int = 12  # SoVITS 학습 에포크 (과적합 시 기계음 발생, 8~12 권장)
-    epochs_gpt: int = 20  # GPT 학습 에포크 (소량 데이터 시 15~20 권장)
+    epochs_sovits: int = 15  # SoVITS 학습 에포크 (과적합 시 기계음 발생, 8~12 권장)
+    epochs_gpt: int = 15  # GPT 학습 에포크 (소량 데이터 시 15~20 권장)
     batch_size: int = 4
     learning_rate: float = 0.0001
 
@@ -126,7 +126,7 @@ class GPTSoVITSConfig:
     speed_factor: float = 1.0  # 음성 속도 (0.5~2.0, 1.0=기본)
     top_k: int = 12  # 샘플링 다양성 (5~15 권장)
     top_p: float = 1.0  # Nucleus sampling (0.1~1.0)
-    temperature: float = 0.9  # 음성 랜덤성 (0.6~1.0, 낮을수록 안정)
+    temperature: float = 0.8  # 음성 랜덤성 (0.6~1.0, 낮을수록 안정)
 
     # 언어 설정 (한국어 우선)
     default_language: str = "ko"
