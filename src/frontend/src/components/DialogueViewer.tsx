@@ -43,7 +43,6 @@ export default function DialogueViewer() {
     defaultFemaleVoices,
     defaultVoices,
     voiceCharacters,
-    getModelType,
   } = useAppStore()
 
   // 디버그: 캐릭터 ID 표시 토글

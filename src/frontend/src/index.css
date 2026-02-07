@@ -190,6 +190,11 @@ select.ark-input option {
   border-left-color: #3A8BC4;
 }
 
+.ark-dialogue.subtitle {
+  background: linear-gradient(180deg, #1f1a24 0%, #18141d 100%);
+  border-left-color: #a855f7;
+}
+
 /* 스크롤바 스타일 */
 ::-webkit-scrollbar {
   width: 6px;

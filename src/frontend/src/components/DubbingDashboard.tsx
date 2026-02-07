@@ -36,11 +36,6 @@ export default function DubbingDashboard() {
 
   const selectedWindow = windows.find((w) => w.hwnd === selectedWindowHwnd)
 
-  // 캡처 이미지 URL
-  const captureImageUrl = selectedWindowHwnd
-    ? ocrApi.getWindowImageUrl(selectedWindowHwnd)
-    : null
-
   return (
     <div className="bg-ark-dark border-t border-ark-border">
       {/* 렌더링 상태 바 */}

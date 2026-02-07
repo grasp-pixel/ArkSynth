@@ -111,8 +111,8 @@ class GPTSoVITSConfig:
             self.pretrained_path = (root / self.pretrained_path).resolve()
 
     # 학습 설정
-    epochs_sovits: int = 10  # SoVITS 학습 에포크 (과적합 시 기계음 발생, 8~12 권장)
-    epochs_gpt: int = 15  # GPT 학습 에포크 (소량 데이터 시 15~20 권장)
+    epochs_sovits: int = 12  # SoVITS 학습 에포크 (과적합 시 기계음 발생, 8~12 권장)
+    epochs_gpt: int = 20  # GPT 학습 에포크 (소량 데이터 시 15~20 권장)
     batch_size: int = 4
     learning_rate: float = 0.0001
 

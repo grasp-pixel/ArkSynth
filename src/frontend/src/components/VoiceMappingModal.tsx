@@ -14,6 +14,7 @@ function CheckIcon({ className = '' }: { className?: string }) {
 interface VoiceMappingModalProps {
   isOpen: boolean
   onClose: () => void
+  characters?: GroupCharacterInfo[]  // 전달되면 사용, 없으면 episodeCharacters 사용
 }
 
 // 캐릭터 이미지 컴포넌트
@@ -36,6 +37,15 @@ function CharacterStanding({
 
   // 현재 charId에서 에러가 발생했는지 확인
   const hasError = errorCharId === charId
+
+  // char_empty인 경우 placeholder 표시 (이미지 로드 시도 안 함)
+  if (charId === 'char_empty') {
+    return showPlaceholder ? (
+      <div className={`bg-ark-black/50 border border-ark-border flex flex-col items-center justify-center text-ark-gray/50 p-1 ${className}`}>
+        <span className="text-xl">?</span>
+      </div>
+    ) : null
+  }
 
   if (!imageUrl || hasError) {
     return showPlaceholder ? (
@@ -95,7 +105,7 @@ function CharacterStanding({
   )
 }
 
-export default function VoiceMappingModal({ isOpen, onClose }: VoiceMappingModalProps) {
+export default function VoiceMappingModal({ isOpen, onClose, characters }: VoiceMappingModalProps) {
   const {
     episodeCharacters,
     voiceCharacters,
@@ -106,6 +116,9 @@ export default function VoiceMappingModal({ isOpen, onClose }: VoiceMappingModal
     defaultMaleVoices,
     getSpeakerVoice,
   } = useAppStore()
+
+  // 사용할 캐릭터 목록 (전달된 값 우선, 없으면 에피소드 캐릭터)
+  const targetCharacters = characters ?? episodeCharacters
 
   // 메타데이터 (성별)
   const [genders, setGenders] = useState<Record<string, string>>({})
@@ -124,8 +137,8 @@ export default function VoiceMappingModal({ isOpen, onClose }: VoiceMappingModal
 
   // 음성 없는 캐릭터 (매핑 대상)
   const voicelessCharacters = useMemo(() => {
-    return episodeCharacters.filter(c => !c.has_voice && c.name)
-  }, [episodeCharacters])
+    return targetCharacters.filter(c => !c.has_voice && c.name)
+  }, [targetCharacters])
 
   // 선택 가능한 음성 목록: 준비된 캐릭터 + 기본 음성 캐릭터
   const availableVoices = useMemo(() => {
