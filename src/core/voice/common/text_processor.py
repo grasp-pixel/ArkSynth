@@ -186,16 +186,16 @@ def preprocess_text_for_tts(text: str) -> str | None:
     meaningful_chars = re.sub(r"[.\s…,?!]+", "", text)
     if not meaningful_chars:
         # 말줄임표나 문장부호만 있는 텍스트 → 비언어적 발성
-        return "음…"
+        return "음..."
 
     # 괄호 안의 감탄사/의성어 제거 (예: "(한숨)" -> "")
     # TTS로 읽을 필요 없는 연출 지시문
     text = re.sub(r"\([^)]+\)", "", text)
 
-    # 연속된 마침표 및 말줄임표 → 유니코드 말줄임표(…)로 통일
-    # split_text_with_pauses()에서 쉬는 시간 삽입에 활용
-    text = re.sub(r"\.{2,}", "…", text)
-    text = re.sub(r"…{2,}", "…", text)  # 연속 말줄임표 단일화
+    # 연속된 마침표 및 말줄임표 정리 (... 또는 … -> 단일 마침표)
+    # 분할 시 마침표 기준으로 나뉘므로 단일화만 수행
+    text = re.sub(r"\.{2,}", ".", text)
+    text = re.sub(r"…+", ".", text)  # 유니코드 말줄임표(…)도 처리
 
     # 연속된 물음표/느낌표 단순화
     text = re.sub(r"[?!]{2,}", "?", text)
@@ -301,94 +301,3 @@ def split_text_for_tts(text: str, max_length: int = 50) -> list[str]:
         final_segments = merged
 
     return final_segments if final_segments else [text]
-
-
-# ============ 구두점 기반 휴지(pause) 분할 ============
-
-# 구두점별 휴지 시간 (ms)
-PAUSE_COMMA_MS = 150       # 쉼표 후
-PAUSE_ELLIPSIS_MS = 300    # 말줄임표 후
-PAUSE_SENTENCE_MS = 80     # 문장 종결(. ! ?) 후
-
-
-def split_text_with_pauses(text: str, max_length: int = 50) -> list[tuple[str, int]]:
-    """텍스트를 TTS용 세그먼트로 분할 (구두점 기반 휴지 포함)
-
-    쉼표, 말줄임표, 문장 종결 부호에서 분할하고
-    각 세그먼트 사이에 적절한 휴지 시간을 설정합니다.
-
-    Args:
-        text: 분할할 텍스트
-        max_length: 세그먼트 최대 길이 (초과 시 추가 분할)
-
-    Returns:
-        (세그먼트 텍스트, 다음 세그먼트까지 휴지 ms) 튜플 목록.
-        마지막 세그먼트의 휴지는 0.
-    """
-    # 쉼표, 말줄임표, 문장 종결 부호에서 분할 (구분자 캡처)
-    parts = re.split(r"(,\s*|…|[.!?])", text)
-
-    segments: list[tuple[str, int]] = []
-    current = ""
-
-    for part in parts:
-        if part is None:
-            continue
-
-        stripped = part.strip()
-        if not stripped:
-            continue
-
-        # 쉼표: 앞 텍스트를 세그먼트로 저장
-        if re.match(r"^,\s*$", part):
-            if current.strip():
-                segments.append((current.strip(), PAUSE_COMMA_MS))
-                current = ""
-        # 말줄임표: 앞 텍스트에 붙여서 저장 (운율 힌트)
-        elif stripped == "…":
-            current += "…"
-            if current.strip():
-                segments.append((current.strip(), PAUSE_ELLIPSIS_MS))
-                current = ""
-        # 문장 종결 부호: 앞 텍스트에 붙여서 저장
-        elif stripped in (".", "!", "?"):
-            current += stripped
-            if current.strip():
-                segments.append((current.strip(), PAUSE_SENTENCE_MS))
-                current = ""
-        else:
-            # 일반 텍스트
-            current = (current + " " + part).strip() if current else part
-
-    # 마지막 세그먼트
-    if current.strip():
-        segments.append((current.strip(), 0))
-
-    if not segments:
-        return [(text, 0)]
-
-    # 마지막 세그먼트 휴지 제거
-    last_text, _ = segments[-1]
-    segments[-1] = (last_text, 0)
-
-    # 단일 세그먼트면 분할 불필요
-    if len(segments) <= 1:
-        return segments
-
-    # 너무 짧은 세그먼트(3자 미만) 병합
-    MIN_SEGMENT_LEN = 3
-    merged: list[tuple[str, int]] = []
-    for seg_text, pause in segments:
-        if merged and len(seg_text) < MIN_SEGMENT_LEN:
-            # 이전 세그먼트에 병합, 큰 쪽의 휴지 유지
-            prev_text, prev_pause = merged[-1]
-            merged[-1] = (prev_text + " " + seg_text, max(prev_pause, pause))
-        elif merged and len(merged[-1][0]) < MIN_SEGMENT_LEN:
-            # 이전이 짧으면 현재에 병합
-            prev_text, prev_pause = merged[-1]
-            merged[-1] = (prev_text + " " + seg_text, pause)
-        else:
-            merged.append((seg_text, pause))
-    segments = merged
-
-    return segments if segments else [(text, 0)]
