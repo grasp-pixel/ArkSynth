@@ -45,7 +45,8 @@
       "dist-electron/**/*"
     ],
     "win": {
-      "target": "portable"
+      "target": "portable",
+      "artifactName": "ArkSynth.${ext}"
     }
   }
 }
