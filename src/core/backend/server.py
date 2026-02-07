@@ -1,9 +1,14 @@
 """FastAPI 서버 정의"""
 
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from .routes import episodes, stories, tts, voice, health, ocr, training, render, settings, data, aliases
+
+logger = logging.getLogger(__name__)
 
 
 def create_app() -> FastAPI:
@@ -13,6 +18,15 @@ def create_app() -> FastAPI:
         description="ArkSynth API - 명일방주 스토리 음성 더빙",
         version="0.1.0",
     )
+
+    @app.exception_handler(FileNotFoundError)
+    async def file_not_found_handler(request: Request, exc: FileNotFoundError):
+        return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        logger.error("%s %s - %s: %s", request.method, request.url.path, type(exc).__name__, exc)
+        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
     # CORS 설정 (Electron 프론트엔드 허용)
     app.add_middleware(
