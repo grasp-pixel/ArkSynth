@@ -75,9 +75,19 @@ if exist "%~dp0ArkSynth.exe" (
 )
 
 REM === 6. 종료 대기 ===
-echo.
-echo [ArkSynth] 서버가 실행 중입니다. 이 창을 닫거나 아무 키를 누르면 서버가 종료됩니다.
-pause >nul
+if exist "%~dp0ArkSynth.exe" (
+    echo [ArkSynth] 앱을 종료하면 서버도 자동으로 종료됩니다.
+    :wait_app
+    timeout /t 3 /nobreak >nul
+    tasklist /fi "imagename eq ArkSynth.exe" 2>nul | findstr /i "ArkSynth.exe" >nul
+    if !errorlevel! equ 0 goto :wait_app
+) else (
+    echo.
+    echo [ArkSynth] Ctrl+C를 누르면 서버가 종료됩니다.
+    :wait_ctrlc
+    timeout /t 60 /nobreak >nul
+    goto :wait_ctrlc
+)
 
 :cleanup
 echo [ArkSynth] 서버를 종료합니다...
