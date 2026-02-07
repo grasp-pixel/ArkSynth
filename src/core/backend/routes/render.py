@@ -473,13 +473,13 @@ async def start_group_render(
 
     # 그룹의 에피소드 목록 조회
     try:
-        episodes = loader.list_group_episodes(group_id)
+        episodes = loader.list_episodes_by_group(group_id)
         if not episodes:
             raise HTTPException(
                 status_code=404,
                 detail=f"그룹에 에피소드가 없습니다: {group_id}",
             )
-        episode_ids = [ep.id for ep in episodes]
+        episode_ids = [ep["id"] for ep in episodes]
         logger.info(f"[GroupRender] 그룹 {group_id}: {len(episode_ids)}개 에피소드")
     except Exception as e:
         logger.error(f"그룹 에피소드 조회 실패: {e}")

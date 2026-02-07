@@ -437,3 +437,69 @@ async def set_force_zero_shot(enabled: bool = True):
         "force_zero_shot": synthesizer.force_zero_shot,
         "message": f"제로샷 강제 모드가 {'활성화' if enabled else '비활성화'}되었습니다",
     }
+
+
+class TTSParamsResponse(BaseModel):
+    """TTS 추론 파라미터"""
+    speed_factor: float
+    top_k: int
+    top_p: float
+    temperature: float
+
+
+class UpdateTTSParamsRequest(BaseModel):
+    """TTS 추론 파라미터 업데이트 요청"""
+    speed_factor: Optional[float] = None
+    top_k: Optional[int] = None
+    top_p: Optional[float] = None
+    temperature: Optional[float] = None
+
+
+@router.get("/gpt-sovits/tts-params")
+async def get_tts_params():
+    """TTS 추론 파라미터 조회"""
+    synthesizer = get_gpt_synthesizer()
+    c = synthesizer.config
+    return TTSParamsResponse(
+        speed_factor=c.speed_factor,
+        top_k=c.top_k,
+        top_p=c.top_p,
+        temperature=c.temperature,
+    )
+
+
+@router.put("/gpt-sovits/tts-params")
+async def update_tts_params(request: UpdateTTSParamsRequest):
+    """TTS 추론 파라미터 업데이트
+
+    변경한 값만 전송하면 됩니다. 변경 즉시 이후 TTS 합성에 적용됩니다.
+    """
+    synthesizer = get_gpt_synthesizer()
+    c = synthesizer.config
+
+    if request.speed_factor is not None:
+        if not (0.5 <= request.speed_factor <= 2.0):
+            raise HTTPException(status_code=400, detail="speed_factor는 0.5~2.0 범위여야 합니다")
+        c.speed_factor = request.speed_factor
+
+    if request.top_k is not None:
+        if not (1 <= request.top_k <= 30):
+            raise HTTPException(status_code=400, detail="top_k는 1~30 범위여야 합니다")
+        c.top_k = request.top_k
+
+    if request.top_p is not None:
+        if not (0.1 <= request.top_p <= 1.0):
+            raise HTTPException(status_code=400, detail="top_p는 0.1~1.0 범위여야 합니다")
+        c.top_p = request.top_p
+
+    if request.temperature is not None:
+        if not (0.1 <= request.temperature <= 2.0):
+            raise HTTPException(status_code=400, detail="temperature는 0.1~2.0 범위여야 합니다")
+        c.temperature = request.temperature
+
+    return TTSParamsResponse(
+        speed_factor=c.speed_factor,
+        top_k=c.top_k,
+        top_p=c.top_p,
+        temperature=c.temperature,
+    )

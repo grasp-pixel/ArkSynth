@@ -1160,6 +1160,9 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </section>
 
+                {/* TTS 추론 파라미터 */}
+                <TTSParamsSection />
+
                 {/* 언어 설정 */}
                 <section>
                   <h3 className="text-sm font-medium text-ark-white mb-3">
@@ -1287,6 +1290,94 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
     </div>
   );
+}
+
+// TTS 추론 파라미터 섹션
+function TTSParamsSection() {
+  const { ttsParams, loadTtsParams, updateTtsParams } = useAppStore()
+  const [isLoaded, setIsLoaded] = useState(false)
+
+  useEffect(() => {
+    loadTtsParams().then(() => setIsLoaded(true))
+  }, [loadTtsParams])
+
+  const params = [
+    {
+      key: 'temperature' as const,
+      label: 'Temperature',
+      desc: '음성 랜덤성 (낮을수록 안정, 높을수록 다양)',
+      min: 0.1, max: 2.0, step: 0.05,
+    },
+    {
+      key: 'top_k' as const,
+      label: 'Top K',
+      desc: '샘플링 다양성 (5~15 권장)',
+      min: 1, max: 30, step: 1,
+    },
+    {
+      key: 'top_p' as const,
+      label: 'Top P',
+      desc: 'Nucleus sampling (1.0이면 비활성)',
+      min: 0.1, max: 1.0, step: 0.05,
+    },
+    {
+      key: 'speed_factor' as const,
+      label: '음성 속도',
+      desc: '1.0 = 기본 속도',
+      min: 0.5, max: 2.0, step: 0.05,
+    },
+  ]
+
+  if (!isLoaded) {
+    return (
+      <section>
+        <h3 className="text-sm font-medium text-ark-white mb-3">TTS 추론 파라미터</h3>
+        <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
+          <p className="text-sm text-ark-gray">로딩 중...</p>
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section>
+      <h3 className="text-sm font-medium text-ark-white mb-3">
+        TTS 추론 파라미터
+      </h3>
+      <div className="p-4 bg-ark-black/50 rounded border border-ark-border space-y-4">
+        <p className="text-xs text-ark-gray">
+          음성 합성 품질에 영향을 주는 파라미터입니다. 변경 즉시 적용됩니다.
+        </p>
+        {params.map(({ key, label, desc, min, max, step }) => (
+          <div key={key}>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs text-ark-gray">{label}</label>
+              <span className="text-xs text-ark-white font-mono w-12 text-right">
+                {key === 'top_k' ? ttsParams[key] : ttsParams[key].toFixed(2)}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={min}
+              max={max}
+              step={step}
+              value={ttsParams[key]}
+              onChange={(e) => {
+                const value = key === 'top_k' ? parseInt(e.target.value) : parseFloat(e.target.value)
+                updateTtsParams({ [key]: value })
+              }}
+              className="w-full h-1.5 bg-ark-border rounded-lg appearance-none cursor-pointer accent-ark-orange"
+            />
+            <div className="flex justify-between mt-0.5">
+              <span className="text-[10px] text-ark-gray/50">{min}</span>
+              <span className="text-[10px] text-ark-gray/50">{desc}</span>
+              <span className="text-[10px] text-ark-gray/50">{max}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
 }
 
 // 경로 아이템 컴포넌트

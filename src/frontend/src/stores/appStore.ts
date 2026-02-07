@@ -140,6 +140,9 @@ interface AppState {
   // GPU 세마포어 (OCR/TTS 동시 실행 제한)
   gpuSemaphoreEnabled: boolean
 
+  // TTS 추론 파라미터
+  ttsParams: { speed_factor: number; top_k: number; top_p: number; temperature: number }
+
   // 볼륨 설정
   volume: number  // 재생 볼륨 (0.0~1.0)
   isMuted: boolean
@@ -256,6 +259,10 @@ interface AppState {
 
   // TTS 엔진 설정
   loadTtsEngineSetting: () => Promise<void>
+
+  // TTS 추론 파라미터
+  loadTtsParams: () => Promise<void>
+  updateTtsParams: (params: Partial<{ speed_factor: number; top_k: number; top_p: number; temperature: number }>) => Promise<void>
 
   // GPU 세마포어
   loadGpuSemaphoreStatus: () => Promise<void>
@@ -504,6 +511,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // TTS 엔진 설정 초기 상태
   defaultTtsEngine: 'gpt_sovits',
+
+  // TTS 추론 파라미터 초기 상태
+  ttsParams: { speed_factor: 1.0, top_k: 12, top_p: 1.0, temperature: 0.9 },
 
   // GPU 세마포어 초기 상태 (기본 활성화)
   gpuSemaphoreEnabled: true,
@@ -2310,6 +2320,26 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   // GPU 세마포어 상태 로드
+  // TTS 추론 파라미터 로드
+  loadTtsParams: async () => {
+    try {
+      const params = await ttsApi.getTtsParams()
+      set({ ttsParams: params })
+    } catch (error) {
+      console.error('Failed to load TTS params:', error)
+    }
+  },
+
+  // TTS 추론 파라미터 업데이트
+  updateTtsParams: async (params) => {
+    try {
+      const updated = await ttsApi.updateTtsParams(params)
+      set({ ttsParams: updated })
+    } catch (error) {
+      console.error('Failed to update TTS params:', error)
+    }
+  },
+
   loadGpuSemaphoreStatus: async () => {
     try {
       const result = await settingsApi.getGpuSemaphore()

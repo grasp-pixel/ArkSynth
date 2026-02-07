@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { useAppStore } from '../stores/appStore'
 import VoiceMappingModal from './VoiceMappingModal'
 
@@ -13,6 +13,9 @@ interface FinetuneTarget {
   mapped: boolean      // 매핑된 캐릭터
 }
 
+// 대기 중인 다음 단계
+type PendingStep = 'finetune' | 'render' | null
+
 export default function GroupSetupPanel() {
   const [isVoiceMappingModalOpen, setIsVoiceMappingModalOpen] = useState(false)
   const [batchTasks, setBatchTasks] = useState<BatchTasks>({
@@ -25,6 +28,8 @@ export default function GroupSetupPanel() {
     mapped: false,
   })
   const [isExecuting, setIsExecuting] = useState(false)
+  const [pendingStep, setPendingStep] = useState<PendingStep>(null)
+  const prevTrainingActiveRef = useRef(false)
 
   const {
     // 그룹 정보
@@ -175,10 +180,58 @@ export default function GroupSetupPanel() {
     }).length
   }, [voicelessCharacters, speakerVoiceMap])
 
+  // 학습 완료 감지 및 다음 단계 자동 실행
+  useEffect(() => {
+    // 학습이 활성 → 비활성으로 변경되었을 때
+    if (prevTrainingActiveRef.current && !isTrainingActive && pendingStep) {
+      const executeNextStep = async () => {
+        if (pendingStep === 'finetune' && batchTasks.finetune) {
+          // finetune 실행
+          const targetCharIds: string[] = []
+          if (finetuneTarget.appearance) {
+            const ids = actualCharacters
+              .filter(c => c.has_voice)
+              .map(c => c.voice_char_id || c.char_id)
+              .filter((id): id is string => id !== null && canFinetune(id))
+            targetCharIds.push(...ids)
+          }
+          if (finetuneTarget.mapped) {
+            const ids = mappedVoiceIds.filter(id => canFinetune(id))
+            targetCharIds.push(...ids)
+          }
+          const uniqueIds = [...new Set(targetCharIds)]
+          if (uniqueIds.length > 0) {
+            await startBatchTraining(uniqueIds, 'finetune')
+            setPendingStep(batchTasks.render ? 'render' : null)
+          } else {
+            // finetune 대상 없으면 render로
+            if (batchTasks.render) {
+              setPendingStep('render')
+            } else {
+              setPendingStep(null)
+              setIsExecuting(false)
+            }
+          }
+        } else if (pendingStep === 'render' && batchTasks.render && selectedGroupId) {
+          // render 실행
+          await startGroupRender(selectedGroupId)
+          setPendingStep(null)
+          setIsExecuting(false)
+        } else {
+          setPendingStep(null)
+          setIsExecuting(false)
+        }
+      }
+      executeNextStep()
+    }
+    prevTrainingActiveRef.current = isTrainingActive
+  }, [isTrainingActive, pendingStep, batchTasks, finetuneTarget, actualCharacters, mappedVoiceIds, canFinetune, startBatchTraining, startGroupRender, selectedGroupId])
+
   // 일괄 실행
   const handleBatchExecute = async () => {
     if (!selectedGroupId) return
     setIsExecuting(true)
+    setPendingStep(null)
 
     try {
       // 1. 음성 준비 (prepare)
@@ -190,17 +243,20 @@ export default function GroupSetupPanel() {
 
         if (charIds.length > 0) {
           await startBatchTraining(charIds, 'prepare')
-          // 준비 완료 대기 (학습이 완료될 때까지)
-          // 실제로는 SSE로 진행 상황을 추적하고, 완료 후 다음 단계 진행
-          // 여기서는 일단 시작만 하고 다음 단계는 수동으로
+          // 다음 단계 설정: finetune → render 순서
+          if (batchTasks.finetune) {
+            setPendingStep('finetune')
+          } else if (batchTasks.render) {
+            setPendingStep('render')
+          }
+          return // 학습 완료 후 자동으로 다음 단계 진행
         }
       }
 
-      // 2. 모델 학습 (finetune) - 선택 사항
+      // 2. 모델 학습 (finetune) - prepare가 없거나 이미 완료된 경우
       if (batchTasks.finetune) {
         const targetCharIds: string[] = []
 
-        // 등장 캐릭터 (음성 보유)
         if (finetuneTarget.appearance) {
           const ids = actualCharacters
             .filter(c => c.has_voice)
@@ -209,7 +265,6 @@ export default function GroupSetupPanel() {
           targetCharIds.push(...ids)
         }
 
-        // 매핑된 캐릭터
         if (finetuneTarget.mapped) {
           const ids = mappedVoiceIds.filter(id => canFinetune(id))
           targetCharIds.push(...ids)
@@ -218,23 +273,29 @@ export default function GroupSetupPanel() {
         const uniqueIds = [...new Set(targetCharIds)]
         if (uniqueIds.length > 0) {
           await startBatchTraining(uniqueIds, 'finetune')
+          if (batchTasks.render) {
+            setPendingStep('render')
+          }
+          return // 학습 완료 후 자동으로 다음 단계 진행
         }
       }
 
-      // 3. 사전 더빙 (render)
-      // 학습이 진행 중이면 완료 후 시작해야 함
+      // 3. 사전 더빙 (render) - 학습이 없거나 이미 완료된 경우
       if (batchTasks.render && !isTrainingActive) {
         await startGroupRender(selectedGroupId)
       }
+      setIsExecuting(false)
     } catch (error) {
       console.error('일괄 실행 오류:', error)
-    } finally {
       setIsExecuting(false)
+      setPendingStep(null)
     }
   }
 
   // 학습 취소
   const handleCancelTraining = async () => {
+    setPendingStep(null)
+    setIsExecuting(false)
     if (currentTrainingJob) {
       await cancelTraining(currentTrainingJob.job_id)
     }

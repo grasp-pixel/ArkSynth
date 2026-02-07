@@ -235,6 +235,25 @@ export const ttsApi = {
     )
     return res.data
   },
+
+  // TTS 추론 파라미터 조회
+  getTtsParams: async () => {
+    const res = await api.get<TTSParams>('/api/tts/gpt-sovits/tts-params')
+    return res.data
+  },
+
+  // TTS 추론 파라미터 업데이트
+  updateTtsParams: async (params: Partial<TTSParams>) => {
+    const res = await api.put<TTSParams>('/api/tts/gpt-sovits/tts-params', params)
+    return res.data
+  },
+}
+
+export interface TTSParams {
+  speed_factor: number
+  top_k: number
+  top_p: number
+  temperature: number
 }
 
 // GPT-SoVITS 진단 타입
