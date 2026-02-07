@@ -1087,9 +1087,28 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <p className="text-[10px] text-ark-gray/60">
                         <span className="text-ark-gray">게임 원본:</span> Android/Data/com.YoStarKR.Arknights/files/Bundles/audio/sound_beta_2/voice_kr
                       </p>
-                      <p className="text-[10px] text-ark-gray/60">
-                        <span className="text-ark-gray">복사 위치:</span> Assets/Voice/voice_kr
-                      </p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] text-ark-gray/60">
+                          <span className="text-ark-gray">복사 위치:</span> Assets/Voice/voice_kr
+                        </p>
+                        <button
+                          onClick={async () => {
+                            try {
+                              if (voiceAssetsStatus?.exists) {
+                                await settingsApi.openFolder('Assets/Voice/voice_kr');
+                              } else {
+                                await settingsApi.createFolder('Assets/Voice/voice_kr');
+                                checkVoiceAssets();
+                              }
+                            } catch (err) {
+                              console.error('폴더 작업 실패:', err);
+                            }
+                          }}
+                          className="text-[10px] text-ark-cyan hover:text-ark-white transition-colors"
+                        >
+                          {voiceAssetsStatus?.exists ? '열기' : '폴더 생성'}
+                        </button>
+                      </div>
                       <p className="text-[10px] text-ark-gray/60">
                         <span className="text-ark-gray">추출 결과:</span> extracted/ 폴더에 캐릭터별 MP3 생성
                       </p>
@@ -1206,9 +1225,50 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <p className="text-[10px] text-ark-gray/60">
                         <span className="text-ark-gray">게임 원본:</span> .../Bundles/avg/characters, .../Bundles/chararts
                       </p>
-                      <p className="text-[10px] text-ark-gray/60">
-                        <span className="text-ark-gray">복사 위치:</span> Assets/Image/avg/characters, Assets/Image/chararts
-                      </p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] text-ark-gray/60">
+                          <span className="text-ark-gray">복사 위치:</span> Assets/Image/avg/characters
+                        </p>
+                        <button
+                          onClick={async () => {
+                            try {
+                              if (imageAssetsStatus?.characters_exists) {
+                                await settingsApi.openFolder('Assets/Image/avg/characters');
+                              } else {
+                                await settingsApi.createFolder('Assets/Image/avg/characters');
+                                checkImageAssets();
+                              }
+                            } catch (err) {
+                              console.error('폴더 작업 실패:', err);
+                            }
+                          }}
+                          className="text-[10px] text-ark-cyan hover:text-ark-white transition-colors"
+                        >
+                          {imageAssetsStatus?.characters_exists ? '열기' : '폴더 생성'}
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] text-ark-gray/60">
+                          <span className="text-ark-gray ml-[52px]">Assets/Image/chararts</span>
+                        </p>
+                        <button
+                          onClick={async () => {
+                            try {
+                              if (imageAssetsStatus?.chararts_exists) {
+                                await settingsApi.openFolder('Assets/Image/chararts');
+                              } else {
+                                await settingsApi.createFolder('Assets/Image/chararts');
+                                checkImageAssets();
+                              }
+                            } catch (err) {
+                              console.error('폴더 작업 실패:', err);
+                            }
+                          }}
+                          className="text-[10px] text-ark-cyan hover:text-ark-white transition-colors"
+                        >
+                          {imageAssetsStatus?.chararts_exists ? '열기' : '폴더 생성'}
+                        </button>
+                      </div>
                       <p className="text-[10px] text-ark-gray/60">
                         <span className="text-ark-gray">추출 결과:</span> extracted/images/ 폴더에 PNG 생성
                       </p>

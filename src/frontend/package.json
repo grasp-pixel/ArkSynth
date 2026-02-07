@@ -46,7 +46,8 @@
     ],
     "win": {
       "target": "portable",
-      "artifactName": "ArkSynth.${ext}"
+      "artifactName": "ArkSynth.${ext}",
+      "icon": "build/icon.ico"
     }
   }
 }

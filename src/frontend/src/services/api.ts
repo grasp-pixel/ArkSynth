@@ -1274,6 +1274,14 @@ export const settingsApi = {
     return res.data
   },
 
+  // 폴더 생성 후 열기
+  createFolder: async (path: string) => {
+    const res = await api.post<{ status: string; path: string }>('/api/settings/create-folder', null, {
+      params: { path }
+    })
+    return res.data
+  },
+
   // FFmpeg 설치 가이드
   getFFmpegGuide: async () => {
     const res = await api.get<FFmpegInstallGuide>('/api/settings/ffmpeg/install-guide')
@@ -1668,6 +1676,7 @@ export interface ImageAssetsStatus {
   exists: boolean
   path?: string
   characters_exists?: boolean
+  chararts_exists?: boolean
   total_bundles?: number
   message?: string
   hint?: string

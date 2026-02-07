@@ -1,5 +1,6 @@
 """설정 관련 라우터"""
 
+import logging
 import asyncio
 import json
 import shutil
@@ -7,6 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -221,6 +224,16 @@ async def check_dependencies():
     }
 
 
+def _open_in_explorer(folder: Path):
+    """탐색기에서 폴더 열기"""
+    if sys.platform == "win32":
+        subprocess.Popen(["explorer", str(folder)])
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", str(folder)])
+    else:
+        subprocess.Popen(["xdg-open", str(folder)])
+
+
 @router.post("/open-folder")
 async def open_folder(path: str):
     """폴더 열기 (탐색기)"""
@@ -229,13 +242,20 @@ async def open_folder(path: str):
         raise HTTPException(status_code=404, detail=f"폴더가 존재하지 않습니다: {path}")
 
     try:
-        if sys.platform == "win32":
-            subprocess.Popen(["explorer", str(folder)])
-        elif sys.platform == "darwin":
-            subprocess.Popen(["open", str(folder)])
-        else:
-            subprocess.Popen(["xdg-open", str(folder)])
+        _open_in_explorer(folder)
         return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/create-folder")
+async def create_folder(path: str):
+    """폴더 생성 후 탐색기에서 열기"""
+    folder = Path(path)
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        _open_in_explorer(folder)
+        return {"status": "created", "path": str(folder.absolute())}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -620,6 +640,7 @@ async def start_voice_extraction(request: ExtractRequest):
             return all_stats
 
         except Exception as e:
+            logger.error("음성 추출 실패: %s", e, exc_info=True)
             await _extract_progress_queue.put(ExtractProgress(
                 stage="error",
                 error=str(e),
@@ -905,6 +926,7 @@ async def start_image_extraction():
             return stats
 
         except Exception as e:
+            logger.error("이미지 추출 실패: %s", e, exc_info=True)
             await _image_extract_progress_queue.put(ImageExtractProgress(
                 stage="error",
                 error=str(e),

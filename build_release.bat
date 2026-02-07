@@ -51,6 +51,7 @@ mkdir "%RELEASE_DIR%"
 
 :: Python 소스 복사
 xcopy "%PROJECT_ROOT%src\core" "%RELEASE_DIR%\src\core\" /e /i /q /y >nul
+xcopy "%PROJECT_ROOT%src\tools" "%RELEASE_DIR%\src\tools\" /e /i /q /y >nul
 if exist "%PROJECT_ROOT%src\__init__.py" copy "%PROJECT_ROOT%src\__init__.py" "%RELEASE_DIR%\src\" >nul
 
 :: 프로젝트 설정 파일
