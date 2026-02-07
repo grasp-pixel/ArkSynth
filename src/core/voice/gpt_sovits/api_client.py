@@ -15,7 +15,7 @@ import aiohttp
 from .config import GPTSoVITSConfig
 
 # 공통 모듈에서 import
-from ..common.text_processor import preprocess_text_for_tts, split_text_for_tts
+from ..common.text_processor import preprocess_text_for_tts, split_text_for_tts, split_text_with_pauses
 from ..common.audio_utils import add_silence_padding, concatenate_wav
 from ..common.reference_manager import (
     select_reference_by_score,
@@ -391,19 +391,20 @@ class GPTSoVITSAPIClient:
                 f"[합성] 텍스트 전처리: '{original_text[:30]}' -> '{text[:30]}'"
             )
 
-        # 텍스트 분할 (GPT-SoVITS 조기 EOS 방지)
-        # 쉼표 기준으로 공격적으로 분할하여 개별 합성 후 연결
-        segments = split_text_for_tts(text, max_length=35)
+        # 텍스트 분할 (구두점 기반 휴지 포함)
+        # 쉼표·말줄임표·문장부호에서 분할하고, 각 경계에 적절한 무음 삽입
+        segments_with_pauses = split_text_with_pauses(text, max_length=35)
 
         # 참조 오디오 선택 (분할 후 평균 세그먼트 길이 기준)
         # 실제 합성되는 세그먼트와 참조 텍스트 길이가 비슷해야 품질 좋음
-        avg_segment_len = sum(len(s) for s in segments) // len(segments)
+        seg_texts = [s for s, _ in segments_with_pauses]
+        avg_segment_len = sum(len(s) for s in seg_texts) // len(seg_texts)
         ref_audio_path, ref_text = self._select_reference_audio(char_id, avg_segment_len)
 
-        if len(segments) == 1:
+        if len(segments_with_pauses) == 1:
             # 단일 세그먼트: 직접 합성
             return await self._synthesize_segment(
-                segments[0],
+                segments_with_pauses[0][0],
                 char_id,
                 language,
                 speed_factor=speed_factor,
@@ -414,17 +415,18 @@ class GPTSoVITSAPIClient:
                 ref_text=ref_text,
             )
 
-        # 긴 텍스트: 분할 합성 후 연결
+        # 복수 세그먼트: 분할 합성 후 연결 (세그먼트 간 무음 삽입)
         logger.info(
-            f"[합성] 긴 텍스트 분할: {len(text)}자 -> {len(segments)}개 세그먼트 (평균 {avg_segment_len}자)"
+            f"[합성] 텍스트 분할: {len(text)}자 -> {len(segments_with_pauses)}개 세그먼트 (평균 {avg_segment_len}자)"
         )
         logger.info(f"[합성] 참조: {ref_audio_path.name} (ref_text_len: {len(ref_text)})")
-        for i, seg in enumerate(segments):
-            logger.info(f"  [{i + 1}] {seg[:30]}{'...' if len(seg) > 30 else ''}")
+        for i, (seg, pause) in enumerate(segments_with_pauses):
+            pause_label = f" +{pause}ms" if pause > 0 else ""
+            logger.info(f"  [{i + 1}] {seg[:30]}{'...' if len(seg) > 30 else ''}{pause_label}")
 
         audio_chunks = []
-        for i, segment in enumerate(segments):
-            logger.info(f"[합성] 세그먼트 {i + 1}/{len(segments)}: {segment[:20]}...")
+        for i, (segment, pause) in enumerate(segments_with_pauses):
+            logger.info(f"[합성] 세그먼트 {i + 1}/{len(segments_with_pauses)}: {segment[:20]}...")
             chunk = await self._synthesize_segment(
                 segment,
                 char_id,
@@ -435,14 +437,16 @@ class GPTSoVITSAPIClient:
                 temperature=temperature,
                 ref_audio_path=ref_audio_path,
                 ref_text=ref_text,
+                add_padding=(i == 0),  # 첫 세그먼트만 스피커 패딩
             )
             if chunk is None:
                 logger.error(f"[합성] 세그먼트 {i + 1} 실패")
                 return None
             audio_chunks.append(chunk)
 
-        # WAV 파일 연결 (공통 모듈 사용)
-        return concatenate_wav(audio_chunks)
+        # WAV 파일 연결 (구두점 기반 무음 삽입)
+        pauses = [p for _, p in segments_with_pauses[:-1]]
+        return concatenate_wav(audio_chunks, pauses_ms=pauses)
 
     async def _synthesize_segment(
         self,
@@ -455,6 +459,7 @@ class GPTSoVITSAPIClient:
         temperature: float = 0.9,  # 약간만 높임 (0.8→0.9)
         ref_audio_path: Path | None = None,
         ref_text: str | None = None,
+        add_padding: bool = True,
     ) -> Optional[bytes]:
         """단일 텍스트 세그먼트를 음성으로 합성
 
@@ -468,6 +473,7 @@ class GPTSoVITSAPIClient:
             temperature: 음성 랜덤성 (0.1~2.0)
             ref_audio_path: 참조 오디오 경로 (None이면 자동 선택)
             ref_text: 참조 텍스트 (None이면 자동 선택)
+            add_padding: 앞에 무음 패딩 추가 여부 (첫 세그먼트만 True)
 
         Returns:
             WAV 오디오 데이터 또는 None
@@ -553,8 +559,9 @@ class GPTSoVITSAPIClient:
 
                     audio_data = await resp.read()
 
-                    # 스피커 절전 모드로 인한 앞부분 잘림 방지
-                    audio_data = add_silence_padding(audio_data, silence_ms=150)
+                    # 스피커 절전 모드로 인한 앞부분 잘림 방지 (첫 세그먼트만)
+                    if add_padding:
+                        audio_data = add_silence_padding(audio_data, silence_ms=150)
 
                     logger.debug(
                         f"[합성] 세그먼트 완료 ({elapsed:.1f}초, {len(audio_data):,} bytes)"

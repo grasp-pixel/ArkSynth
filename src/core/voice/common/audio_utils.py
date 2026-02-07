@@ -48,11 +48,17 @@ def add_silence_padding(wav_data: bytes, silence_ms: int = 150) -> bytes:
         return wav_data  # 실패 시 원본 반환
 
 
-def concatenate_wav(audio_chunks: list[bytes]) -> bytes | None:
+def concatenate_wav(
+    audio_chunks: list[bytes],
+    pauses_ms: list[int] | None = None,
+) -> bytes | None:
     """여러 WAV 오디오를 하나로 연결
 
     Args:
         audio_chunks: WAV 오디오 데이터 목록
+        pauses_ms: 세그먼트 사이에 삽입할 무음 길이 목록 (밀리초).
+                   길이는 len(audio_chunks) - 1이어야 합니다.
+                   None이면 무음 삽입 없음.
 
     Returns:
         연결된 WAV 오디오 데이터 또는 None
@@ -76,14 +82,30 @@ def concatenate_wav(audio_chunks: list[bytes]) -> bytes | None:
                 with wave.open(buf, "rb") as wav_file:
                     all_frames.append(wav_file.readframes(wav_file.getnframes()))
 
-        # 하나의 WAV로 합치기
+        # 하나의 WAV로 합치기 (세그먼트 사이에 무음 삽입)
         output = io.BytesIO()
         with wave.open(output, "wb") as out_wav:
             out_wav.setparams(params)
-            for frames in all_frames:
+            for i, frames in enumerate(all_frames):
                 out_wav.writeframes(frames)
+                # 마지막 세그먼트 뒤에는 무음 삽입하지 않음
+                if pauses_ms and i < len(all_frames) - 1 and i < len(pauses_ms):
+                    pause = pauses_ms[i]
+                    if pause > 0:
+                        silence_samples = int(params.framerate * pause / 1000)
+                        silence = b"\x00" * (
+                            silence_samples * params.nchannels * params.sampwidth
+                        )
+                        out_wav.writeframes(silence)
 
-        logger.info(f"[오디오] {len(audio_chunks)}개 세그먼트 연결 완료")
+        pause_info = ""
+        if pauses_ms:
+            non_zero = [p for p in pauses_ms if p > 0]
+            if non_zero:
+                pause_info = f" (휴지 {len(non_zero)}개, 총 {sum(non_zero)}ms)"
+        logger.info(
+            f"[오디오] {len(audio_chunks)}개 세그먼트 연결 완료{pause_info}"
+        )
         return output.getvalue()
 
     except Exception as e:

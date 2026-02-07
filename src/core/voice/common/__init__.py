@@ -3,7 +3,7 @@
 여러 TTS 엔진에서 공유하는 유틸리티 함수들.
 """
 
-from .text_processor import preprocess_text_for_tts, split_text_for_tts, normalize_numbers_for_tts
+from .text_processor import preprocess_text_for_tts, split_text_for_tts, split_text_with_pauses, normalize_numbers_for_tts
 from .audio_utils import add_silence_padding, concatenate_wav, get_audio_duration
 from .reference_manager import (
     ReferenceManager,
@@ -27,6 +27,7 @@ __all__ = [
     # text_processor
     "preprocess_text_for_tts",
     "split_text_for_tts",
+    "split_text_with_pauses",
     "normalize_numbers_for_tts",
     # audio_utils
     "add_silence_padding",
