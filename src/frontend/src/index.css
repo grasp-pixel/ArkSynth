@@ -409,6 +409,19 @@ select.ark-input option {
   box-shadow: 0 0 15px rgba(84, 162, 216, 0.4);
 }
 
+/* 버튼 하단 스캔라인 바 */
+.ark-scan-bar {
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #54A2D8, #ff8c00, #54A2D8, transparent);
+  background-size: 200% 100%;
+  animation: scan-slide 2.5s ease-in-out infinite;
+}
+
+@keyframes scan-slide {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
 /* 주황 배경 + 청록 하단 띠 */
 .ark-btn-dual-orange {
   @apply relative px-4 py-2 font-semibold transition-all duration-200;

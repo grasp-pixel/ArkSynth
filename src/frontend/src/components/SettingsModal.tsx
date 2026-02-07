@@ -508,6 +508,14 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           ) : (
             settings && (
               <>
+                {/* ===== 초기 설정 ===== */}
+                <div className="ark-divider">
+                  <span>초기 설정</span>
+                </div>
+                <p className="text-[11px] text-ark-gray/70 -mt-3 text-center mb-2">
+                  처음 사용 시 아래 항목을 순서대로 완료하세요
+                </p>
+
                 {/* 의존성 상태 */}
                 <section>
                   <div className="flex items-center justify-between mb-3">
@@ -786,11 +794,56 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                 </section>
 
-                {/* 게임 데이터 업데이트 */}
+                {/* TTS 엔진 설정 */}
                 <section>
                   <h3 className="text-sm font-medium text-ark-white mb-3">
+                    TTS 엔진
+                  </h3>
+                  <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
+                    {ttsEngineSetting === null ? (
+                      <p className="text-sm text-ark-gray">로딩 중...</p>
+                    ) : (
+                      <div className="space-y-3">
+                        <p className="text-xs text-ark-gray mb-2">
+                          앱 전체에서 사용할 TTS 엔진을 선택합니다.
+                        </p>
+                        <div className="flex gap-2 flex-wrap">
+                          {/* GPT-SoVITS */}
+                          <button
+                            onClick={() => changeTTSEngine("gpt_sovits")}
+                            disabled={isChangingEngine || !ttsEngineSetting.engine_status.gpt_sovits?.installed}
+                            className={`px-4 py-2 rounded border transition-colors ${
+                              ttsEngineSetting.engine === "gpt_sovits"
+                                ? "bg-ark-orange/20 border-ark-orange text-ark-orange"
+                                : ttsEngineSetting.engine_status.gpt_sovits?.installed
+                                  ? "bg-ark-panel border-ark-border text-ark-gray hover:text-ark-white hover:border-ark-orange/50"
+                                  : "bg-ark-panel/50 border-ark-border/50 text-ark-gray/50 cursor-not-allowed"
+                            }`}
+                          >
+                            <div className="text-sm font-medium">GPT-SoVITS</div>
+                            <div className="text-[10px] opacity-70">
+                              {ttsEngineSetting.engine_status.gpt_sovits?.installed ? "v2" : "미설치"}
+                            </div>
+                          </button>
+                        </div>
+
+                        {/* 엔진 설명 */}
+                        <div className="mt-2 p-2 bg-ark-panel/50 rounded text-xs text-ark-gray">
+                          <span>캐릭터별 학습 후 최상의 품질. 학습 안 된 캐릭터는 제로샷 모드로 동작.</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                {/* 게임 데이터 업데이트 */}
+                <section>
+                  <h3 className="text-sm font-medium text-ark-white mb-2">
                     게임 데이터
                   </h3>
+                  <p className="text-[11px] text-ark-gray/70 mb-3">
+                    스토리 텍스트를 GitHub에서 다운로드합니다. 스토리 표시에 필수입니다.
+                  </p>
                   <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
                     {gamedataStatus === null ? (
                       <p className="text-sm text-ark-gray">확인 중...</p>
@@ -931,9 +984,12 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                 {/* 음성 추출 */}
                 <section>
-                  <h3 className="text-sm font-medium text-ark-white mb-3">
+                  <h3 className="text-sm font-medium text-ark-white mb-2">
                     음성 추출
                   </h3>
+                  <p className="text-[11px] text-ark-gray/70 mb-3">
+                    게임 음성 번들에서 캐릭터별 MP3를 추출합니다. 음성 학습과 제로샷 TTS에 사용됩니다.
+                  </p>
                   <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
                     {voiceAssetsStatus === null ? (
                       <p className="text-sm text-ark-gray">확인 중...</p>
@@ -1026,14 +1082,29 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         )}
                       </div>
                     )}
+                    {/* 경로 안내 (항상 표시) */}
+                    <div className="mt-3 pt-3 border-t border-ark-border space-y-1">
+                      <p className="text-[10px] text-ark-gray/60">
+                        <span className="text-ark-gray">게임 원본:</span> Android/Data/com.YoStarKR.Arknights/files/Bundles/audio/sound_beta_2/voice_kr
+                      </p>
+                      <p className="text-[10px] text-ark-gray/60">
+                        <span className="text-ark-gray">복사 위치:</span> Assets/Voice/voice_kr
+                      </p>
+                      <p className="text-[10px] text-ark-gray/60">
+                        <span className="text-ark-gray">추출 결과:</span> extracted/ 폴더에 캐릭터별 MP3 생성
+                      </p>
+                    </div>
                   </div>
                 </section>
 
                 {/* 이미지 추출 */}
                 <section>
-                  <h3 className="text-sm font-medium text-ark-white mb-3">
+                  <h3 className="text-sm font-medium text-ark-white mb-2">
                     이미지 추출
                   </h3>
+                  <p className="text-[11px] text-ark-gray/70 mb-3">
+                    캐릭터 일러스트 번들에서 이미지를 추출합니다.
+                  </p>
                   <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
                     {imageAssetsStatus === null ? (
                       <p className="text-sm text-ark-gray">확인 중...</p>
@@ -1130,105 +1201,25 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         )}
                       </div>
                     )}
-                  </div>
-                </section>
-
-                {/* 경로 설정 */}
-                <section>
-                  <h3 className="text-sm font-medium text-ark-white mb-3">
-                    경로
-                  </h3>
-                  <div className="space-y-2">
-                    <PathItem
-                      label="GPT-SoVITS"
-                      path={settings.gpt_sovits_path}
-                      onOpen={() => handleOpenFolder(settings.gpt_sovits_path)}
-                    />
-                    <PathItem
-                      label="모델"
-                      path={settings.models_path}
-                      onOpen={() => handleOpenFolder(settings.models_path)}
-                    />
-                    <PathItem
-                      label="추출된 음성"
-                      path={settings.extracted_path}
-                      onOpen={() => handleOpenFolder(settings.extracted_path)}
-                    />
-                    <PathItem
-                      label="게임 데이터"
-                      path={settings.gamedata_path}
-                      onOpen={() => handleOpenFolder(settings.gamedata_path)}
-                    />
-                  </div>
-                </section>
-
-                {/* TTS 엔진 설정 */}
-                <section>
-                  <h3 className="text-sm font-medium text-ark-white mb-3">
-                    TTS 엔진
-                  </h3>
-                  <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
-                    {ttsEngineSetting === null ? (
-                      <p className="text-sm text-ark-gray">로딩 중...</p>
-                    ) : (
-                      <div className="space-y-3">
-                        <p className="text-xs text-ark-gray mb-2">
-                          앱 전체에서 사용할 TTS 엔진을 선택합니다.
-                        </p>
-                        <div className="flex gap-2 flex-wrap">
-                          {/* GPT-SoVITS */}
-                          <button
-                            onClick={() => changeTTSEngine("gpt_sovits")}
-                            disabled={isChangingEngine || !ttsEngineSetting.engine_status.gpt_sovits?.installed}
-                            className={`px-4 py-2 rounded border transition-colors ${
-                              ttsEngineSetting.engine === "gpt_sovits"
-                                ? "bg-ark-orange/20 border-ark-orange text-ark-orange"
-                                : ttsEngineSetting.engine_status.gpt_sovits?.installed
-                                  ? "bg-ark-panel border-ark-border text-ark-gray hover:text-ark-white hover:border-ark-orange/50"
-                                  : "bg-ark-panel/50 border-ark-border/50 text-ark-gray/50 cursor-not-allowed"
-                            }`}
-                          >
-                            <div className="text-sm font-medium">GPT-SoVITS</div>
-                            <div className="text-[10px] opacity-70">
-                              {ttsEngineSetting.engine_status.gpt_sovits?.installed ? "v2" : "미설치"}
-                            </div>
-                          </button>
-                        </div>
-
-                        {/* 엔진 설명 */}
-                        <div className="mt-2 p-2 bg-ark-panel/50 rounded text-xs text-ark-gray">
-                          <span>캐릭터별 학습 후 최상의 품질. 학습 안 된 캐릭터는 제로샷 모드로 동작.</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </section>
-
-                {/* TTS 추론 파라미터 */}
-                <TTSParamsSection />
-
-                {/* 언어 설정 */}
-                <section>
-                  <h3 className="text-sm font-medium text-ark-white mb-3">
-                    언어
-                  </h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="p-3 bg-ark-black/50 rounded border border-ark-border">
-                      <p className="text-xs text-ark-gray mb-1">게임 언어</p>
-                      <p className="text-sm text-ark-white">
-                        {settings.game_language}
+                    {/* 경로 안내 (항상 표시) */}
+                    <div className="mt-3 pt-3 border-t border-ark-border space-y-1">
+                      <p className="text-[10px] text-ark-gray/60">
+                        <span className="text-ark-gray">게임 원본:</span> .../Bundles/avg/characters, .../Bundles/chararts
                       </p>
-                    </div>
-                    <div className="p-3 bg-ark-black/50 rounded border border-ark-border">
-                      <p className="text-xs text-ark-gray mb-1">
-                        GPT-SoVITS 언어
+                      <p className="text-[10px] text-ark-gray/60">
+                        <span className="text-ark-gray">복사 위치:</span> Assets/Image/avg/characters, Assets/Image/chararts
                       </p>
-                      <p className="text-sm text-ark-white">
-                        {settings.gpt_sovits_language}
+                      <p className="text-[10px] text-ark-gray/60">
+                        <span className="text-ark-gray">추출 결과:</span> extracted/images/ 폴더에 PNG 생성
                       </p>
                     </div>
                   </div>
                 </section>
+
+                {/* ===== 음성 설정 ===== */}
+                <div className="ark-divider mt-2">
+                  <span>음성 설정</span>
+                </div>
 
                 {/* 캐릭터 별칭 */}
                 <section>
@@ -1273,11 +1264,80 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </section>
 
+                {/* TTS 추론 파라미터 */}
+                <TTSParamsSection />
+
+                {/* ===== 고급 설정 ===== */}
+                <div className="ark-divider mt-2">
+                  <span>고급 설정</span>
+                </div>
+
+                {/* 언어 설정 */}
+                <section>
+                  <h3 className="text-sm font-medium text-ark-white mb-2">
+                    언어
+                  </h3>
+                  <p className="text-[11px] text-ark-gray/70 mb-3">
+                    게임 클라이언트 언어와 TTS 합성 언어를 표시합니다.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 bg-ark-black/50 rounded border border-ark-border">
+                      <p className="text-xs text-ark-gray mb-1">게임 언어</p>
+                      <p className="text-sm text-ark-white">
+                        {settings.game_language}
+                      </p>
+                    </div>
+                    <div className="p-3 bg-ark-black/50 rounded border border-ark-border">
+                      <p className="text-xs text-ark-gray mb-1">
+                        GPT-SoVITS 언어
+                      </p>
+                      <p className="text-sm text-ark-white">
+                        {settings.gpt_sovits_language}
+                      </p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* 경로 설정 */}
+                <section>
+                  <h3 className="text-sm font-medium text-ark-white mb-2">
+                    경로
+                  </h3>
+                  <p className="text-[11px] text-ark-gray/70 mb-3">
+                    주요 리소스 폴더 경로입니다. 폴더 열기 버튼으로 탐색기에서 확인할 수 있습니다.
+                  </p>
+                  <div className="space-y-2">
+                    <PathItem
+                      label="GPT-SoVITS"
+                      path={settings.gpt_sovits_path}
+                      onOpen={() => handleOpenFolder(settings.gpt_sovits_path)}
+                    />
+                    <PathItem
+                      label="모델"
+                      path={settings.models_path}
+                      onOpen={() => handleOpenFolder(settings.models_path)}
+                    />
+                    <PathItem
+                      label="추출된 음성"
+                      path={settings.extracted_path}
+                      onOpen={() => handleOpenFolder(settings.extracted_path)}
+                    />
+                    <PathItem
+                      label="게임 데이터"
+                      path={settings.gamedata_path}
+                      onOpen={() => handleOpenFolder(settings.gamedata_path)}
+                    />
+                  </div>
+                </section>
+
                 {/* Whisper 전처리 설정 */}
                 <section>
-                  <h3 className="text-sm font-medium text-ark-white mb-3">
+                  <h3 className="text-sm font-medium text-ark-white mb-2">
                     Whisper 전처리
                   </h3>
+                  <p className="text-[11px] text-ark-gray/70 mb-3">
+                    음성 학습 전처리에 사용되는 Whisper 설정입니다. 기본값으로도 충분합니다.
+                  </p>
                   <div className="grid grid-cols-3 gap-3">
                     <div className="p-3 bg-ark-black/50 rounded border border-ark-border">
                       <p className="text-xs text-ark-gray mb-1">모델</p>

@@ -155,6 +155,7 @@ interface AppState {
   loadEpisodes: () => Promise<void>
   selectEpisode: (episodeId: string) => Promise<void>
   clearEpisode: () => void
+  goHome: () => void
   playDialogue: (dialogue: DialogueInfo) => Promise<void>
   stopPlayback: () => void
   setDefaultCharId: (charId: string | null) => void
@@ -671,6 +672,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   // 에피소드 선택 해제
   clearEpisode: () => {
     set({ selectedEpisodeId: null, selectedEpisode: null })
+  },
+
+  goHome: () => {
+    const { isPrepared, isDubbingMode, stopDubbing, cancelPrepare } = get()
+    if (isDubbingMode) stopDubbing()
+    if (isPrepared) cancelPrepare()
+    set({
+      selectedGroupId: null,
+      groupEpisodes: [],
+      selectedEpisodeId: null,
+      selectedEpisode: null,
+    })
+    persistCurrentState(get)
   },
 
   // 대사 재생 (캐시 우선, 렌더링 중이면 캐시만 사용)

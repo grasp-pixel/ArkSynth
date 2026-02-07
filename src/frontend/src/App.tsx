@@ -49,6 +49,7 @@ function App() {
     toggleRightPanel,
     // 에피소드 선택 해제
     clearEpisode,
+    goHome,
   } = useAppStore()
 
   useEffect(() => {
@@ -94,7 +95,11 @@ function App() {
     <div className="flex flex-col h-screen bg-ark-black">
       {/* 헤더 */}
       <header className="ark-header relative px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+        <button
+          onClick={goHome}
+          className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+          title="홈으로 이동"
+        >
           {/* 로고 아이콘 */}
           <div className="w-8 h-8 flex items-center justify-center">
             <svg viewBox="0 0 24 24" className="w-6 h-6 text-ark-orange" fill="currentColor">
@@ -107,7 +112,7 @@ function App() {
             <span className="text-ark-gray mx-2">|</span>
             <span className="text-sm font-normal">ARKNIGHTS STORY VOICE</span>
           </h1>
-        </div>
+        </button>
         <div className="flex items-center gap-4">
           {/* 더빙 상태 표시 */}
           {isDubbingMode && (
@@ -204,12 +209,13 @@ function App() {
           {/* 설정 버튼 */}
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="p-2 text-ark-gray hover:text-ark-white transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-ark-gray hover:text-ark-white border border-ark-border hover:border-ark-cyan/50 rounded transition-colors"
             title="설정"
           >
-            <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
+            <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
               <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
             </svg>
+            <span className="text-xs">설정</span>
           </button>
         </div>
       </header>
@@ -337,6 +343,7 @@ function App() {
                             </>
                           )}
                         </button>
+                        {!isLoadingCharacters && <div className="ark-scan-bar mt-1 rounded-full" />}
                       </div>
                       <div className="flex-1 p-4 space-y-4">
                         <p className="text-xs text-ark-gray text-center">
@@ -356,32 +363,130 @@ function App() {
                 )
               ) : (
                 <div className="flex flex-col h-full">
-                  {/* 안내 */}
-                  <div className="flex-1 p-4 space-y-4">
-                    <div className="ark-info-box ark-corner-cut text-xs text-ark-gray space-y-3">
+                  <div className="flex-1 p-4 space-y-4 overflow-y-auto">
+
+                    {/* 앱 소개 */}
+                    <div className="text-center py-2">
+                      <h3 className="text-base font-bold text-ark-orange tracking-wide">ArkSynth</h3>
+                      <p className="text-xs text-ark-gray mt-1">명일방주 스토리를 캐릭터 음성으로 더빙하는 앱</p>
+                    </div>
+
+                    {/* 카드 1: 처음 설치 가이드 */}
+                    <div className="ark-warning-box ark-corner-cut text-xs text-ark-gray space-y-2.5">
+                      <h4 className="font-medium text-ark-orange flex items-center gap-2">
+                        <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+                          <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+                        </svg>
+                        처음 설치 가이드
+                      </h4>
+                      <p>우상단 <span className="text-ark-white">⚙ 설정</span>을 열어 아래 항목을 완료하세요.</p>
+
+                      <div className="space-y-2">
+                        <div className="flex items-start gap-2">
+                          <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-orange/20 text-ark-orange text-[10px] font-bold flex items-center justify-center mt-0.5">1</span>
+                          <div>
+                            <p className="text-ark-white font-medium">의존성 설치</p>
+                            <p className="text-ark-gray/80">FFmpeg, 7-Zip, GPT-SoVITS 등 필수 도구</p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-orange/20 text-ark-orange text-[10px] font-bold flex items-center justify-center mt-0.5">2</span>
+                          <div>
+                            <p className="text-ark-white font-medium">게임 에셋 복사</p>
+                            <p className="text-ark-gray/80">아래 게임 폴더에서 Assets 폴더로 복사:</p>
+                            <div className="mt-1 space-y-0.5 text-[10px] text-ark-gray/60">
+                              <p><span className="text-ark-gray">음성:</span> .../Bundles/audio/sound_beta_2/voice_kr → Assets/Voice/voice_kr</p>
+                              <p><span className="text-ark-gray">이미지:</span> .../Bundles/avg/characters → Assets/Image/avg/characters</p>
+                              <p className="ml-[38px]">.../Bundles/chararts → Assets/Image/chararts</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-orange/20 text-ark-orange text-[10px] font-bold flex items-center justify-center mt-0.5">3</span>
+                          <div>
+                            <p className="text-ark-white font-medium">에셋 추출</p>
+                            <p className="text-ark-gray/80">설정에서 "음성 추출", "이미지 추출" 실행</p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-orange/20 text-ark-orange text-[10px] font-bold flex items-center justify-center mt-0.5">4</span>
+                          <div>
+                            <p className="text-ark-white font-medium">스토리 데이터</p>
+                            <p className="text-ark-gray/80">설정에서 "데이터 다운로드"로 스토리 텍스트 받기</p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-orange/20 text-ark-orange text-[10px] font-bold flex items-center justify-center mt-0.5">5</span>
+                          <div>
+                            <p className="text-ark-white font-medium">데이터 매핑</p>
+                            <p className="text-ark-gray/80">"캐릭터 매핑 캐시 새로고침" + "본명 자동 추출" 실행</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 카드 2: 사용 방법 */}
+                    <div className="ark-info-box ark-corner-cut text-xs text-ark-gray space-y-2.5">
                       <h4 className="font-medium text-ark-cyan flex items-center gap-2">
                         <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
                           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
                         </svg>
                         사용 방법
                       </h4>
-                      <p className="flex items-start gap-2">
-                        <span className="text-ark-orange font-bold">1.</span>
-                        상단의 "GPT-SoVITS 시작" 버튼을 눌러 TTS 엔진을 시작하세요
-                      </p>
-                      <p className="flex items-start gap-2">
-                        <span className="text-ark-orange font-bold">2.</span>
-                        왼쪽에서 스토리 그룹을 선택하세요
-                      </p>
-                      <p className="flex items-start gap-2">
-                        <span className="text-ark-orange font-bold">3.</span>
-                        그룹 설정에서 일괄 작업을 실행하거나
-                      </p>
-                      <p className="flex items-start gap-2">
-                        <span className="text-ark-orange font-bold">4.</span>
-                        에피소드를 선택하여 개별 설정을 하세요
-                      </p>
+
+                      <div className="space-y-2">
+                        <div className="flex items-start gap-2">
+                          <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-cyan/20 text-ark-cyan text-[10px] font-bold flex items-center justify-center mt-0.5">1</span>
+                          <div>
+                            <p className="text-ark-white font-medium">GPT-SoVITS 시작</p>
+                            <p className="text-ark-gray/80">상단 헤더의 시작 버튼으로 TTS 엔진 구동</p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-cyan/20 text-ark-cyan text-[10px] font-bold flex items-center justify-center mt-0.5">2</span>
+                          <div>
+                            <p className="text-ark-white font-medium">캐릭터 관리</p>
+                            <p className="text-ark-gray/80">상단 탭 우측 버튼에서 기본 음성 캐릭터 및 나레이터 지정</p>
+                            <p className="text-ark-gray/60 mt-0.5">음성이 없는 캐릭터와 NPC는 기본 음성으로, 화자가 없는 대사와 자막은 나레이터 음성으로 합성됩니다.</p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-cyan/20 text-ark-cyan text-[10px] font-bold flex items-center justify-center mt-0.5">3</span>
+                          <div>
+                            <p className="text-ark-white font-medium">스토리 선택</p>
+                            <p className="text-ark-gray/80">카테고리 탭에서 분류 선택 → 왼쪽 목록에서 그룹 또는 에피소드 선택</p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-cyan/20 text-ark-cyan text-[10px] font-bold flex items-center justify-center mt-0.5">4</span>
+                          <div>
+                            <p className="text-ark-white font-medium">음성 매핑 설정</p>
+                            <p className="text-ark-gray/80">음성이 없는 캐릭터를 기본 캐릭터로 매핑</p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-cyan/20 text-ark-cyan text-[10px] font-bold flex items-center justify-center mt-0.5">5</span>
+                          <div>
+                            <p className="text-ark-white font-medium">음성 준비</p>
+                            <p className="text-ark-gray/80">그룹 일괄 또는 에피소드별로 캐릭터 음성 준비/학습</p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-cyan/20 text-ark-cyan text-[10px] font-bold flex items-center justify-center mt-0.5">6</span>
+                          <div>
+                            <p className="text-ark-white font-medium">실시간 더빙</p>
+                            <p className="text-ark-gray/80">OCR 윈도우 설정 → 게임 텍스트 실시간 인식 → 매칭된 대사 자동 재생</p>
+                          </div>
+                        </div>
+                      </div>
                     </div>
+
+                    {/* 참고 팁 */}
+                    <div className="p-3 bg-ark-panel/50 rounded border border-ark-border text-[11px] text-ark-gray space-y-1.5">
+                      <p>학습되지 않은 캐릭터는 <span className="text-ark-white">제로샷 모드</span>로 합성됩니다.</p>
+                      <p>헤더의 <span className="text-ark-cyan">GPU</span> 버튼으로 OCR/TTS 동시 실행을 제어합니다.</p>
+                    </div>
+
                   </div>
                 </div>
               )}
