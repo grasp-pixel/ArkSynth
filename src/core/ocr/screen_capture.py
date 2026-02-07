@@ -314,7 +314,7 @@ def get_dialogue_region(screen_width: int, screen_height: int) -> BoundingBox:
 def get_subtitle_region(screen_width: int, screen_height: int) -> BoundingBox:
     """화면 중앙 자막 영역 반환
 
-    자막은 화면 중앙 (상단 40% ~ 70%) 영역에 표시.
+    자막은 화면 중앙 (상단 35% ~ 75%) 영역에 표시.
     상단 헤더(~15%)를 고려하여 아래로 이동.
     좌우 1% 여백.
 
@@ -326,8 +326,8 @@ def get_subtitle_region(screen_width: int, screen_height: int) -> BoundingBox:
         자막 영역 바운딩 박스
     """
     margin_x = int(screen_width * 0.01)  # 좌우 1% 여백
-    y_start = int(screen_height * 0.40)  # 상단 40%부터 (헤더 15% 감안)
-    y_end = int(screen_height * 0.70)    # 70%까지
+    y_start = int(screen_height * 0.35)  # 상단 35%부터 (헤더 15% 감안)
+    y_end = int(screen_height * 0.75)    # 75%까지
 
     return BoundingBox(
         x=margin_x,
