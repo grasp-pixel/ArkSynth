@@ -306,9 +306,9 @@ def split_text_for_tts(text: str, max_length: int = 50) -> list[str]:
 # ============ 구두점 기반 휴지(pause) 분할 ============
 
 # 구두점별 휴지 시간 (ms)
-PAUSE_COMMA_MS = 250       # 쉼표 후
-PAUSE_ELLIPSIS_MS = 450    # 말줄임표 후
-PAUSE_SENTENCE_MS = 150    # 문장 종결(. ! ?) 후
+PAUSE_COMMA_MS = 150       # 쉼표 후
+PAUSE_ELLIPSIS_MS = 300    # 말줄임표 후
+PAUSE_SENTENCE_MS = 80     # 문장 종결(. ! ?) 후
 
 
 def split_text_with_pauses(text: str, max_length: int = 50) -> list[tuple[str, int]]:
