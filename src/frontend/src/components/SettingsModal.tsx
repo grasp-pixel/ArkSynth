@@ -302,16 +302,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
-  const loadGamedataRepo = async () => {
-    try {
-      const { repo } = await gamedataApi.getRepo();
-      setGamedataRepo(repo);
-      setGamedataRepoInput(repo);
-    } catch (err) {
-      console.error("레포지토리 설정 로드 실패:", err);
-    }
-  };
-
   const saveGamedataRepo = async () => {
     if (!gamedataRepoInput.trim() || gamedataRepoInput === gamedataRepo) return;
     setIsRepoSaving(true);
