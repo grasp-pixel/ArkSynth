@@ -178,6 +178,7 @@ interface AppState {
   removeDefaultMaleVoice: (index: number) => void
   updateDefaultMaleVoice: (index: number, charId: string) => void
   getSpeakerVoice: (speakerId: string, speakerName?: string) => string | null
+  resolveDialogueVoice: (dialogue: { speaker_id?: string | null, speaker_name?: string | null }) => string | null
 
   // OCR 액션
   loadMonitors: () => Promise<void>
@@ -372,8 +373,28 @@ export const isMysteryName = (name: string): boolean => {
   return [...trimmed].every(c => c === '?')
 }
 
+// AUTO_VOICE 특수 값을 실제 char_id로 해석하는 공통 함수
+// getSpeakerVoice와 resolveSpeakerMappings에서 동일 로직 사용
+const resolveAutoVoice = (
+  voiceId: string,
+  speakerId: string,
+  defaultFemaleVoices: string[],
+  defaultMaleVoices: string[],
+): string | null => {
+  if (voiceId === AUTO_VOICE_FEMALE) {
+    return defaultFemaleVoices.length > 0
+      ? defaultFemaleVoices[simpleHash(speakerId) % defaultFemaleVoices.length]
+      : null
+  } else if (voiceId === AUTO_VOICE_MALE) {
+    return defaultMaleVoices.length > 0
+      ? defaultMaleVoices[simpleHash(speakerId) % defaultMaleVoices.length]
+      : null
+  }
+  return voiceId
+}
+
 // speakerVoiceMap 항목을 해석하여 resolvedVoiceMap을 구성하는 공통 함수
-// getSpeakerVoice, startRender, startGroupRender에서 동일한 로직을 사용하여 불일치 방지
+// startRender, startGroupRender에서 동일한 로직을 사용하여 불일치 방지
 export const resolveSpeakerMappings = (
   speakerVoiceMap: Record<string, string>,
   defaultFemaleVoices: string[],
@@ -391,18 +412,9 @@ export const resolveSpeakerMappings = (
       if (isMysteryKey) continue
     }
 
-    if (voiceId === AUTO_VOICE_FEMALE) {
-      if (defaultFemaleVoices.length > 0) {
-        const hash = simpleHash(speakerId)
-        resolved[speakerId] = defaultFemaleVoices[hash % defaultFemaleVoices.length]
-      }
-    } else if (voiceId === AUTO_VOICE_MALE) {
-      if (defaultMaleVoices.length > 0) {
-        const hash = simpleHash(speakerId)
-        resolved[speakerId] = defaultMaleVoices[hash % defaultMaleVoices.length]
-      }
-    } else {
-      resolved[speakerId] = voiceId
+    const resolvedId = resolveAutoVoice(voiceId, speakerId, defaultFemaleVoices, defaultMaleVoices)
+    if (resolvedId) {
+      resolved[speakerId] = resolvedId
     }
   }
 
@@ -779,9 +791,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   // 대사 재생 (캐시 우선, 렌더링 중이면 캐시만 사용)
   playDialogue: async (dialogue: DialogueInfo) => {
     const {
-      narratorCharId, defaultVoices,
       selectedEpisodeId, cachedEpisodes, renderProgress,
-      getSpeakerVoice, currentDialogue, isPlaying,
+      currentDialogue, isPlaying,
       isRendering,
     } = get()
 
@@ -810,36 +821,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     lastPlayStartTime = now
     lastPlayedDialogueId = dialogue.id
 
-    // 캐릭터 ID 결정 우선순위:
-    // 1. dialogue.speaker_id (화자) → getSpeakerVoice로 음성 결정 (성별 기반)
-    // 2. 나레이션이면 narratorCharId
-    // 3. defaultFemaleVoices[0] (기본)
-    let charIdToUse: string | null = null
-    const { defaultFemaleVoices, voiceCharacters, episodeCharacters } = get()
+    // 캐릭터 ID 결정 (resolveDialogueVoice 통합 함수 사용)
+    const { resolveDialogueVoice } = get()
+    const charIdToUse = resolveDialogueVoice(dialogue)
 
     console.log('[playDialogue] 대사 정보:', {
       speaker_id: dialogue.speaker_id,
       speaker_name: dialogue.speaker_name,
       text: dialogue.text.substring(0, 30) + '...',
-      voiceCharactersCount: voiceCharacters.length,
-      episodeCharactersCount: episodeCharacters.length,
+      resolvedVoice: charIdToUse,
     })
-
-    if (dialogue.speaker_id) {
-      // speaker_id가 있으면 직접 사용
-      charIdToUse = getSpeakerVoice(dialogue.speaker_id, dialogue.speaker_name || undefined)
-    } else if (dialogue.speaker_name) {
-      // speaker_id가 없지만 speaker_name이 있으면 name: 접두사로 매핑 확인
-      const nameKey = `name:${dialogue.speaker_name}`
-      charIdToUse = getSpeakerVoice(nameKey, dialogue.speaker_name)
-      console.log('[playDialogue] 이름 키 사용:', nameKey, '->', charIdToUse)
-    } else {
-      // 나레이션 (speaker_id, speaker_name 둘 다 없음)
-      charIdToUse = narratorCharId || (defaultFemaleVoices.length > 0 ? defaultFemaleVoices[0] : (defaultVoices.length > 0 ? defaultVoices[0] : null))
-      console.log('[playDialogue] 나레이션 음성:', charIdToUse)
-    }
-
-    console.log('[playDialogue] 최종 사용 음성:', charIdToUse)
 
     // 기존 재생 중지
     if (currentAudio) {
@@ -1068,20 +1059,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     if (mapping) {
-      // 특수 값 처리: 자동 여성/남성
-      if (mapping === AUTO_VOICE_FEMALE) {
-        if (defaultFemaleVoices.length > 0) {
-          const hash = simpleHash(speakerId)
-          return defaultFemaleVoices[hash % defaultFemaleVoices.length]
-        }
-      } else if (mapping === AUTO_VOICE_MALE) {
-        if (defaultMaleVoices.length > 0) {
-          const hash = simpleHash(speakerId)
-          return defaultMaleVoices[hash % defaultMaleVoices.length]
-        }
-      } else {
-        return mapping
-      }
+      const resolved = resolveAutoVoice(mapping, speakerId, defaultFemaleVoices, defaultMaleVoices)
+      if (resolved) return resolved
     }
 
     // 2. episodeCharacters에서 voice_char_id 확인 (별칭 기반 자동 감지)
@@ -1131,6 +1110,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     return null
+  },
+
+  // 대사 하나의 음성을 결정하는 통합 함수 (표시/재생 공통)
+  resolveDialogueVoice: (dialogue: { speaker_id?: string | null, speaker_name?: string | null }): string | null => {
+    const { getSpeakerVoice, narratorCharId, defaultFemaleVoices, defaultVoices } = get()
+
+    if (dialogue.speaker_id) {
+      return getSpeakerVoice(dialogue.speaker_id, dialogue.speaker_name || undefined)
+    } else if (dialogue.speaker_name) {
+      return getSpeakerVoice(`name:${dialogue.speaker_name}`, dialogue.speaker_name)
+    } else {
+      // 나레이션
+      return narratorCharId || (defaultFemaleVoices.length > 0 ? defaultFemaleVoices[0] : (defaultVoices.length > 0 ? defaultVoices[0] : null))
+    }
   },
 
   // OCR: 모니터 목록 로드

@@ -113,10 +113,7 @@ export default function DialogueViewer() {
     groupCharacters,
     renderProgress,
     isRendering,
-    getSpeakerVoice,
-    narratorCharId,
-    defaultFemaleVoices,
-    defaultVoices,
+    resolveDialogueVoice,
     voiceCharacters,
   } = useAppStore()
 
@@ -248,22 +245,8 @@ export default function DialogueViewer() {
           // 렌더링 상태 확인
           const isRendered = renderProgress ? index < renderProgress.completed : false
 
-          // 사용될 캐릭터 ID 계산 (디버그용)
-          // speaker_id 우선 (수동 매핑이 speaker_id로 저장되므로), 없으면 name: 키
-          let resolvedCharId: string | null = null
-          if (showCharIds) {
-            if (dialogue.speaker_id) {
-              // speaker_id가 있으면 먼저 조회 (VoiceMappingModal에서 char_id로 매핑 저장)
-              resolvedCharId = getSpeakerVoice(dialogue.speaker_id, dialogue.speaker_name || undefined)
-            } else if (dialogue.speaker_name) {
-              // speaker_id가 없으면 name: 키로 조회
-              const nameKey = `name:${dialogue.speaker_name}`
-              resolvedCharId = getSpeakerVoice(nameKey, dialogue.speaker_name)
-            } else {
-              // 나레이션
-              resolvedCharId = narratorCharId || (defaultFemaleVoices.length > 0 ? defaultFemaleVoices[0] : (defaultVoices.length > 0 ? defaultVoices[0] : null))
-            }
-          }
+          // 사용될 캐릭터 ID 계산 (디버그용, resolveDialogueVoice 통합 함수 사용)
+          const resolvedCharId = showCharIds ? resolveDialogueVoice(dialogue) : null
 
           // 캐릭터 이름 조회
           const resolvedCharName = resolvedCharId
