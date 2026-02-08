@@ -98,6 +98,7 @@ interface AppState {
   isLoadingEpisodeCharacters: boolean  // 에피소드 캐릭터 로딩 중
   speakerVoiceMap: Record<string, string>  // speaker_id → voice_id 매핑
   narratorCharId: string | null  // 나레이터 캐릭터 ID
+  unknownSpeakerCharId: string | null  // 알 수 없는 화자(name-only "???" 등) 캐릭터 ID
   autoPlayOnMatch: boolean  // 매칭 시 자동 재생
 
   // 음성 캐릭터 목록 (나레이터 선택용)
@@ -208,6 +209,7 @@ interface AppState {
   setSpeakerVoice: (speakerId: string, voiceId: string | null) => Promise<void>
   clearSpeakerVoice: (speakerId: string) => Promise<void>
   setNarratorCharId: (charId: string | null) => void
+  setUnknownSpeakerCharId: (charId: string | null) => void
   loadVoiceCharacters: () => Promise<void>
   loadVoiceMappings: () => Promise<void>  // 백엔드에서 음성 매핑 로드
   toggleAutoPlay: () => void
@@ -282,6 +284,7 @@ interface PersistedState {
   defaultFemaleVoices: string[]  // 기본 여성 음성
   defaultMaleVoices: string[]  // 기본 남성 음성
   narratorCharId: string | null
+  unknownSpeakerCharId: string | null
   autoPlayOnMatch: boolean
   npcVoiceMap: Record<string, string>  // NPC 음성 매핑 (char_id → voice_id)
   // 볼륨 설정
@@ -333,6 +336,7 @@ const persistCurrentState = (get: () => AppState) => {
     defaultFemaleVoices: state.defaultFemaleVoices,
     defaultMaleVoices: state.defaultMaleVoices,
     narratorCharId: state.narratorCharId,
+    unknownSpeakerCharId: state.unknownSpeakerCharId,
     autoPlayOnMatch: state.autoPlayOnMatch,
     npcVoiceMap: state.speakerVoiceMap,  // NPC 음성 매핑 저장
     volume: state.volume,
@@ -351,6 +355,13 @@ export const simpleHash = (str: string): number => {
     hash = hash & hash  // 32bit integer 변환
   }
   return Math.abs(hash)
+}
+
+// 이름이 '???' 같은 미스터리 이름인지 확인 (이름 기반 매핑 상속에서 제외)
+const isMysteryName = (name: string): boolean => {
+  if (!name) return true
+  const trimmed = name.trim()
+  return trimmed.endsWith('?') || [...trimmed].every(c => c === '?')
 }
 
 // 오디오 재생 관리
@@ -465,6 +476,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   isLoadingEpisodeCharacters: false,
   speakerVoiceMap: persistedState.npcVoiceMap ?? {},  // 저장된 NPC 매핑 복원
   narratorCharId: persistedState.narratorCharId ?? null,
+  unknownSpeakerCharId: persistedState.unknownSpeakerCharId ?? null,
   autoPlayOnMatch: persistedState.autoPlayOnMatch ?? true,
 
   // 음성 캐릭터 목록 초기 상태
@@ -954,8 +966,27 @@ export const useAppStore = create<AppState>((set, get) => ({
   getSpeakerVoice: (speakerId: string, speakerName?: string): string | null => {
     const { trainedCharIds, speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices, defaultVoices, voiceCharacters, episodeCharacters } = get()
 
+    const { unknownSpeakerCharId } = get()
+
     // 1. 수동 매핑 (사용자가 명시적으로 설정한 매핑이 최우선)
-    const mapping = speakerVoiceMap[speakerId]
+    let mapping = speakerVoiceMap[speakerId]
+
+    // 1.5. name: 키 추가 해석
+    if (!mapping && speakerId.startsWith('name:')) {
+      const charName = speakerId.slice(5)
+      if (isMysteryName(charName)) {
+        // 미스터리 이름(???) → 알 수 없는 화자 전용 음성 사용
+        if (unknownSpeakerCharId) return unknownSpeakerCharId
+      } else {
+        // 일반 이름 → 같은 이름의 char_id 매핑 상속
+        // (예: avg_npc_003="클로어" 매핑 → name:클로어도 동일 음성 사용)
+        const matchingChar = episodeCharacters.find(c => c.char_id && c.name === charName)
+        if (matchingChar?.char_id) {
+          mapping = speakerVoiceMap[matchingChar.char_id]
+        }
+      }
+    }
+
     if (mapping) {
       // 특수 값 처리: 자동 여성/남성
       if (mapping === AUTO_VOICE_FEMALE) {
@@ -1594,6 +1625,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistCurrentState(get)
   },
 
+  // 알 수 없는 화자 캐릭터 설정 (name-only "???" 등)
+  setUnknownSpeakerCharId: (charId: string | null) => {
+    set({ unknownSpeakerCharId: charId })
+    persistCurrentState(get)
+  },
+
   // 음성 캐릭터 목록 로드
   loadVoiceCharacters: async () => {
     set({ isLoadingVoiceCharacters: true })
@@ -1911,7 +1948,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // 렌더링 시작
   startRender: async (episodeId: string, force: boolean = false) => {
-    const { defaultCharId, narratorCharId, speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices, getSpeakerVoice, loadEpisodeCharacters, loadVoiceCharacters } = get()
+    const { defaultCharId, narratorCharId, unknownSpeakerCharId, speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices, getSpeakerVoice, loadEpisodeCharacters, loadVoiceCharacters } = get()
 
     // voiceCharacters가 비어있으면 먼저 로드 (getSpeakerVoice에서 사용)
     let { voiceCharacters } = get()
@@ -1948,9 +1985,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           console.log(`[startRender] 캐릭터 매핑: ${char.char_id} (${char.name}) → ${voiceId}`)
 
           // name: 키도 추가 (speaker_id가 없는 대사용)
-          const nameKey = `name:${char.name}`
-          if (!resolvedVoiceMap[nameKey]) {
-            resolvedVoiceMap[nameKey] = voiceId
+          // 단, 미스터리 이름(???)은 전파하지 않음 (unknownSpeakerCharId로 처리)
+          if (!isMysteryName(char.name)) {
+            const nameKey = `name:${char.name}`
+            if (!resolvedVoiceMap[nameKey]) {
+              resolvedVoiceMap[nameKey] = voiceId
+            }
           }
         } else {
           console.log(`[startRender] 캐릭터 음성 없음: ${char.char_id} (${char.name})`)
@@ -1981,6 +2021,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       } else {
         // 일반 매핑 (수동 매핑이 자동 매핑보다 우선)
         resolvedVoiceMap[speakerId] = voiceId
+      }
+    }
+
+    // 3. 알 수 없는 화자(name-only "???" 등) 매핑
+    if (unknownSpeakerCharId) {
+      for (const char of episodeCharacters) {
+        if (!char.char_id && char.name && isMysteryName(char.name)) {
+          const nameKey = `name:${char.name}`
+          if (!resolvedVoiceMap[nameKey]) {
+            resolvedVoiceMap[nameKey] = unknownSpeakerCharId
+          }
+        }
       }
     }
 
@@ -2116,7 +2168,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // 그룹 렌더링 시작
   startGroupRender: async (groupId: string, force: boolean = false) => {
-    const { defaultCharId, narratorCharId, speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices } = get()
+    const { defaultCharId, narratorCharId, unknownSpeakerCharId, speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices } = get()
 
     // 특수 값들을 실제 char_id로 해석
     const resolvedVoiceMap: Record<string, string> = {}
@@ -2133,6 +2185,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       } else {
         resolvedVoiceMap[speakerId] = voiceId
+      }
+    }
+
+    // 알 수 없는 화자(name-only "???" 등) 매핑
+    if (unknownSpeakerCharId) {
+      const mysteryKeys = ['name:???', 'name:????', 'name:?????']
+      for (const key of mysteryKeys) {
+        if (!resolvedVoiceMap[key]) {
+          resolvedVoiceMap[key] = unknownSpeakerCharId
+        }
       }
     }
 

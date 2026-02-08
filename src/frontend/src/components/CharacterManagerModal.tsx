@@ -32,6 +32,8 @@ export default function CharacterManagerModal({
     removeDefaultMaleVoice,
     narratorCharId,
     setNarratorCharId,
+    unknownSpeakerCharId,
+    setUnknownSpeakerCharId,
     startBatchTraining,
     isTrainingActive,
     currentTrainingJob,
@@ -328,6 +330,16 @@ export default function CharacterManagerModal({
       setNarratorCharId(null);
     } else {
       setNarratorCharId(charId);
+    }
+  };
+
+  // 알 수 없는 화자 토글
+  const handleToggleUnknownSpeaker = (charId: string) => {
+    scrollTargetCharId.current = charId;
+    if (unknownSpeakerCharId === charId) {
+      setUnknownSpeakerCharId(null);
+    } else {
+      setUnknownSpeakerCharId(charId);
     }
   };
 
@@ -845,9 +857,37 @@ export default function CharacterManagerModal({
                   )}
                 </div>
               </div>
+              {/* 알 수 없는 화자 */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-ark-gray whitespace-nowrap w-24">
+                  ???:
+                </span>
+                <div className="flex flex-wrap gap-1 flex-1">
+                  {unknownSpeakerCharId ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-amber-500/20 text-amber-400 rounded">
+                      {voiceCharacters.find((c) => c.char_id === unknownSpeakerCharId)
+                        ?.name || unknownSpeakerCharId}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setUnknownSpeakerCharId(null);
+                        }}
+                        className="hover:text-red-400"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ) : (
+                    <span className="text-xs text-ark-gray/50">설정 안 됨</span>
+                  )}
+                </div>
+              </div>
               <p className="text-[10px] text-ark-gray/50 mt-1">
                 * 기본(여성): 일반 캐릭터 / 기본(남성): "남자", "남성", "소년",
                 "청년" 포함 캐릭터
+              </p>
+              <p className="text-[10px] text-ark-gray/50">
+                * ???: 스프라이트 없는 "???" 화자에 사용할 음성
               </p>
 
               {/* 이미지 캐시 관리 */}
@@ -891,6 +931,7 @@ export default function CharacterManagerModal({
                 );
                 const isMaleDefault = defaultMaleVoices.includes(char.char_id);
                 const isNarrator = narratorCharId === char.char_id;
+                const isUnknownSpeaker = unknownSpeakerCharId === char.char_id;
                 const isTraining =
                   isTrainingActive &&
                   currentTrainingJob?.char_id === char.char_id;
@@ -993,6 +1034,11 @@ export default function CharacterManagerModal({
                           {isNarrator && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/40 text-purple-200">
                               나레이션
+                            </span>
+                          )}
+                          {isUnknownSpeaker && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/40 text-amber-200">
+                              ???
                             </span>
                           )}
                           <button
@@ -1148,6 +1194,20 @@ export default function CharacterManagerModal({
                                     </button>
                                     <button
                                       onClick={() =>
+                                        handleToggleUnknownSpeaker(char.char_id)
+                                      }
+                                      className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                                        isUnknownSpeaker
+                                          ? "bg-amber-500/50 text-amber-200"
+                                          : "bg-white/10 text-white/70 hover:bg-white/20"
+                                      }`}
+                                    >
+                                      {isUnknownSpeaker
+                                        ? "??? 해제"
+                                        : "???"}
+                                    </button>
+                                    <button
+                                      onClick={() =>
                                         handleSelectForTest(char.char_id)
                                       }
                                       className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
@@ -1221,6 +1281,20 @@ export default function CharacterManagerModal({
                                       {isNarrator
                                         ? "나레이션 해제"
                                         : "나레이션"}
+                                    </button>
+                                    <button
+                                      onClick={() =>
+                                        handleToggleUnknownSpeaker(char.char_id)
+                                      }
+                                      className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                                        isUnknownSpeaker
+                                          ? "bg-amber-500/50 text-amber-200"
+                                          : "bg-white/10 text-white/70 hover:bg-white/20"
+                                      }`}
+                                    >
+                                      {isUnknownSpeaker
+                                        ? "??? 해제"
+                                        : "???"}
                                     </button>
                                   </>
                                 )}

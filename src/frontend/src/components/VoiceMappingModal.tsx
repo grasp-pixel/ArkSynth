@@ -136,8 +136,17 @@ export default function VoiceMappingModal({ isOpen, onClose, characters }: Voice
   }, [isOpen])
 
   // 음성 없는 캐릭터 (매핑 대상)
+  // name-only 미스터리 이름(???)은 제외 (알 수 없는 화자 전용 슬롯으로 처리)
   const voicelessCharacters = useMemo(() => {
-    return targetCharacters.filter(c => !c.has_voice && c.name)
+    return targetCharacters.filter(c => {
+      if (!c.name || c.has_voice) return false
+      // char_id 없고 미스터리 이름이면 제외
+      if (!c.char_id) {
+        const trimmed = c.name.trim()
+        if (trimmed.endsWith('?') || [...trimmed].every(ch => ch === '?')) return false
+      }
+      return true
+    })
   }, [targetCharacters])
 
   // 선택 가능한 음성 목록: 준비된 캐릭터 + 기본 음성 캐릭터
