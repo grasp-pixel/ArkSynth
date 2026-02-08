@@ -19,10 +19,14 @@ class CachedAudio:
     duration: float  # 초 단위
     file_path: str
     synthesized_at: str
+    voice_char_id: str | None = None  # 실제 합성에 사용된 캐릭터 (char_id와 다를 때만)
 
     @classmethod
     def from_dict(cls, data: dict) -> "CachedAudio":
-        return cls(**data)
+        # 이전 meta.json 호환: 새 필드 없으면 기본값 사용
+        import dataclasses
+        field_names = {f.name for f in dataclasses.fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in field_names})
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -149,6 +153,7 @@ class RenderCache:
         text: str,
         duration: float,
         audio_path: Path,
+        voice_char_id: str | None = None,
     ) -> CachedAudio:
         """렌더링된 오디오 추가"""
         meta = self.get_meta(episode_id)
@@ -163,6 +168,7 @@ class RenderCache:
             duration=duration,
             file_path=str(audio_path.relative_to(self.get_episode_path(episode_id))),
             synthesized_at=datetime.now().isoformat(),
+            voice_char_id=voice_char_id,
         )
 
         # 메타 업데이트

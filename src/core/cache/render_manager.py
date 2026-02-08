@@ -11,6 +11,7 @@ from typing import Callable, Any
 from .render_cache import RenderCache, get_render_cache
 from ..backend import gpu_semaphore_context
 from ..voice.alias_resolver import resolve_voice_char_id
+from ..character.id_normalizer import load_char_table_mapping, resolve_to_table_id
 
 logger = logging.getLogger(__name__)
 
@@ -266,6 +267,9 @@ class RenderManager:
             from ..backend.config import config as app_config
             gpt_language = app_config.gpt_sovits_language
 
+            # character_table ID 매핑 로드 (스프라이트 ID → 실제 ID 변환용)
+            load_char_table_mapping(app_config.gamedata_yostar_path)
+
             # 메타데이터 생성 또는 로드
             meta = self.cache.get_meta(episode_id)
             if meta is None:
@@ -292,7 +296,7 @@ class RenderManager:
                 if await synthesizer.is_available(cid):
                     return True
                 # 음성 파일이 있으면 자동 준비 시도
-                audio_dir = config.extracted_path / cid
+                audio_dir = config.extracted_path / config.voice_language / cid
                 if audio_dir.exists():
                     logger.info(f"[RenderManager] 캐릭터 자동 준비 시도: {cid}")
                     output_dir = config.models_path / "gpt_sovits" / cid
@@ -319,6 +323,10 @@ class RenderManager:
 
                 index = dialogue["index"]
                 char_id = dialogue.get("char_id")
+                # 스프라이트 ID → character_table ID 변환
+                # 예: char_474_gladiia → char_474_glady
+                if char_id:
+                    char_id = resolve_to_table_id(char_id)
                 speaker_name = dialogue.get("speaker_name")
                 text = dialogue["text"]
 
@@ -378,31 +386,37 @@ class RenderManager:
                 audio_path = self.cache.get_audio_path(episode_id, index)
                 audio_path.parent.mkdir(parents=True, exist_ok=True)
 
-                if char_id_to_use and await synthesizer.is_available(char_id_to_use):
-                    # GPU 세마포어: OCR과 동시 실행 방지
-                    async with gpu_semaphore_context():
-                        # GPT-SoVITS로 합성 (실시간 TTS와 동일한 config 파라미터 사용)
-                        gpt_config = synthesizer.config
-                        result = await synthesizer.synthesize(
-                            char_id_to_use,
-                            text,
-                            output_path=audio_path,
-                            language=app_config.gpt_sovits_language,
-                            speed_factor=gpt_config.speed_factor,
-                            top_k=gpt_config.top_k,
-                            top_p=gpt_config.top_p,
-                            temperature=gpt_config.temperature,
-                        )
-                    duration = result.duration if result else 0.0
-                else:
-                    # 사용 가능한 모델 없음 - 스킵
-                    logger.warning(f"[RenderManager] 사용 가능한 모델 없음: {char_id} (기본: {job.default_char_id})")
-                    continue
+                # 최종 폴백: 모델 없으면 narrator/default로 재시도
+                if not char_id_to_use or not await synthesizer.is_available(char_id_to_use):
+                    fallback = job.narrator_char_id or job.default_char_id
+                    if fallback and fallback != char_id_to_use and await synthesizer.is_available(fallback):
+                        logger.info(f"[RenderManager] 최종 폴백: {char_id_to_use} → {fallback}")
+                        char_id_to_use = fallback
+                    else:
+                        logger.warning(f"[RenderManager] 사용 가능한 모델 없음: {char_id} (기본: {job.default_char_id})")
+                        continue
+
+                # GPU 세마포어: OCR과 동시 실행 방지
+                async with gpu_semaphore_context():
+                    # GPT-SoVITS로 합성 (실시간 TTS와 동일한 config 파라미터 사용)
+                    gpt_config = synthesizer.config
+                    result = await synthesizer.synthesize(
+                        char_id_to_use,
+                        text,
+                        output_path=audio_path,
+                        language=app_config.gpt_sovits_language,
+                        speed_factor=gpt_config.speed_factor,
+                        top_k=gpt_config.top_k,
+                        top_p=gpt_config.top_p,
+                        temperature=gpt_config.temperature,
+                    )
+                duration = result.duration if result else 0.0
 
                 # 캐시에 추가
                 if audio_path.exists():
                     self.cache.add_audio(
-                        episode_id, index, char_id, text, duration, audio_path
+                        episode_id, index, char_id, text, duration, audio_path,
+                        voice_char_id=char_id_to_use if char_id_to_use != char_id else None,
                     )
                     self._progress.completed += 1
                     await self._notify_progress()

@@ -4,7 +4,89 @@
 기존 character_name_mapper.py, loader.py, parser.py의 정규화 로직을 통합했습니다.
 """
 
+import json
+import logging
 import re
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+# 스프라이트 번호 → character_table ID 매핑 캐시
+_number_to_table_id: dict[str, str] | None = None
+_CHAR_NUMBER_PATTERN = re.compile(r"^char_(\d+)_")
+
+
+def load_char_table_mapping(gamedata_path: Path, lang: str = "ko_KR") -> None:
+    """character_table.json에서 번호→ID 매핑 로드
+
+    스프라이트 ID(char_474_gladiia)와 character_table ID(char_474_glady)가
+    다를 수 있으므로, 번호 기준으로 매핑을 구축합니다.
+    """
+    global _number_to_table_id
+    if _number_to_table_id is not None:
+        return
+
+    # 후보 경로 (character_mapping.py와 동일한 패턴)
+    candidates = [
+        gamedata_path / lang / "gamedata" / "excel" / "character_table.json",
+        gamedata_path / "gamedata" / "excel" / "character_table.json",
+    ]
+
+    char_table_path = None
+    for candidate in candidates:
+        if candidate.exists():
+            char_table_path = candidate
+            break
+
+    if char_table_path is None:
+        logger.warning("character_table.json을 찾을 수 없어 ID 변환을 건너뜁니다")
+        _number_to_table_id = {}
+        return
+
+    try:
+        with open(char_table_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        mapping: dict[str, str] = {}
+        for key in data:
+            m = _CHAR_NUMBER_PATTERN.match(key)
+            if m:
+                mapping[m.group(1)] = key
+
+        _number_to_table_id = mapping
+        logger.info(f"character_table 매핑 로드: {len(mapping)}개 캐릭터")
+    except Exception as e:
+        logger.error(f"character_table 매핑 로드 실패: {e}")
+        _number_to_table_id = {}
+
+
+def resolve_to_table_id(normalized_id: str) -> str:
+    """정규화된 ID를 character_table의 실제 ID로 변환
+
+    스프라이트 이름이 character_table 이름과 다른 경우 번호 기반으로 매핑.
+    예: char_474_gladiia → char_474_glady
+
+    NPC ID는 변환하지 않습니다.
+    """
+    if _number_to_table_id is None or not _number_to_table_id:
+        return normalized_id
+
+    # char_ 접두사가 아니면 (NPC 등) 그대로 반환
+    if not normalized_id.startswith("char_") or "_npc_" in normalized_id:
+        return normalized_id
+
+    # 이미 테이블에 있는 ID면 그대로
+    m = _CHAR_NUMBER_PATTERN.match(normalized_id)
+    if not m:
+        return normalized_id
+
+    number = m.group(1)
+    table_id = _number_to_table_id.get(number)
+    if table_id and table_id != normalized_id:
+        logger.debug(f"스프라이트 ID 변환: {normalized_id} → {table_id}")
+        return table_id
+
+    return normalized_id
 
 
 class CharacterIdNormalizer:
