@@ -140,11 +140,9 @@ export default function VoiceMappingModal({ isOpen, onClose, characters }: Voice
   const voicelessCharacters = useMemo(() => {
     return targetCharacters.filter(c => {
       if (!c.name || c.has_voice) return false
-      // char_id 없고 미스터리 이름이면 제외
-      if (!c.char_id) {
-        const trimmed = c.name.trim()
-        if ([...trimmed].every(ch => ch === '?')) return false
-      }
+      // 미스터리 이름(???) 제외 - char_id 없는 경우와 char_id 자체가 '?'인 경우 모두
+      const nameIsMystery = [...c.name.trim()].every(ch => ch === '?')
+      if (nameIsMystery && (!c.char_id || [...c.char_id.trim()].every(ch => ch === '?'))) return false
       return true
     })
   }, [targetCharacters])
