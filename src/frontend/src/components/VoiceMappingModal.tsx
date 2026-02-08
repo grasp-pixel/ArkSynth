@@ -143,7 +143,7 @@ export default function VoiceMappingModal({ isOpen, onClose, characters }: Voice
       // char_id 없고 미스터리 이름이면 제외
       if (!c.char_id) {
         const trimmed = c.name.trim()
-        if (trimmed.endsWith('?') || [...trimmed].every(ch => ch === '?')) return false
+        if ([...trimmed].every(ch => ch === '?')) return false
       }
       return true
     })
