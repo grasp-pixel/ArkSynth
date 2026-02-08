@@ -73,12 +73,18 @@ export default function GroupSetupPanel() {
     getModelType,
     // 알 수 없는 화자
     unknownSpeakerCharId,
+    // 나레이션
+    narratorCharId,
+    // 캐릭터 이름 조회용
+    voiceCharacters,
+    loadVoiceCharacters,
   } = useAppStore()
 
   // 초기 로드
   useEffect(() => {
     loadTrainingStatus()
     loadTrainedModels()
+    loadVoiceCharacters()
     loadRenderStatus()
 
     return () => {
@@ -399,7 +405,9 @@ export default function GroupSetupPanel() {
                 <span className="text-xs text-purple-300">{narrationInfo}대사</span>
               </div>
               <p className="text-[10px] text-purple-400/70 mt-1">
-                캐릭터 관리에서 설정한 나레이션 음성 사용
+                {narratorCharId
+                  ? `음성: ${voiceCharacters.find(c => c.char_id === narratorCharId)?.name ?? narratorCharId}`
+                  : '캐릭터 관리에서 나레이션 음성을 설정하세요'}
               </p>
             </div>
           )}
@@ -413,7 +421,7 @@ export default function GroupSetupPanel() {
               </div>
               <p className="text-[10px] text-amber-400/70 mt-1">
                 {unknownSpeakerCharId
-                  ? '캐릭터 관리에서 설정한 ??? 음성 사용'
+                  ? `음성: ${voiceCharacters.find(c => c.char_id === unknownSpeakerCharId)?.name ?? unknownSpeakerCharId}`
                   : '캐릭터 관리에서 ??? 음성을 설정하세요'}
               </p>
             </div>
