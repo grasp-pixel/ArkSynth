@@ -49,6 +49,8 @@ export default function VoiceSetupPanel() {
     getModelType,
     // 나레이션
     narratorCharId,
+    // 알 수 없는 화자
+    unknownSpeakerCharId,
   } = useAppStore()
 
   useEffect(() => {
@@ -90,6 +92,13 @@ export default function VoiceSetupPanel() {
       return voiceId && !trainedCharIds.has(voiceId)
     })
   }, [episodeCharacters, trainedCharIds])
+
+  // 알 수 없는 화자("???") 대사 수
+  const unknownSpeakerCount = useMemo(() => {
+    return episodeCharacters
+      .filter(c => !c.char_id && c.name && [...c.name.trim()].every(ch => ch === '?'))
+      .reduce((sum, c) => sum + c.dialogue_count, 0)
+  }, [episodeCharacters])
 
   // 음성 없는 캐릭터 (수동 매핑 대상) - 에피소드 캐릭터 목록 기준
   // char_id가 null이어도 name이 있으면 매핑 가능
@@ -327,6 +336,21 @@ export default function VoiceSetupPanel() {
               </div>
               <p className="text-[10px] text-purple-400/70 mt-1">
                 캐릭터 관리에서 설정한 나레이션 음성 사용
+              </p>
+            </div>
+          )}
+
+          {/* 알 수 없는 화자(???) 대사 수 */}
+          {unknownSpeakerCount > 0 && (
+            <div className="mt-3 p-2 bg-amber-500/10 rounded border border-amber-500/20">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-amber-400">??? (알 수 없는 화자)</span>
+                <span className="text-xs text-amber-300">{unknownSpeakerCount}대사</span>
+              </div>
+              <p className="text-[10px] text-amber-400/70 mt-1">
+                {unknownSpeakerCharId
+                  ? '캐릭터 관리에서 설정한 ??? 음성 사용'
+                  : '캐릭터 관리에서 ??? 음성을 설정하세요'}
               </p>
             </div>
           )}
