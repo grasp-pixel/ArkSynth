@@ -10,7 +10,7 @@ from typing import Callable, Any
 
 from .render_cache import RenderCache, get_render_cache
 from ..backend import gpu_semaphore_context
-from ..voice.alias_resolver import resolve_voice_char_id
+from ..voice.alias_resolver import resolve_voice_char_id, AUTO_VOICE_FEMALE, AUTO_VOICE_MALE
 from ..character.id_normalizer import load_char_table_mapping, resolve_to_table_id
 
 logger = logging.getLogger(__name__)
@@ -29,6 +29,28 @@ def simple_hash(s: str) -> int:
         if h >= 0x80000000:
             h -= 0x100000000
     return abs(h)
+
+
+def _resolve_auto_voice(
+    voice_id: str,
+    mapping_key: str,
+    default_female_voices: list[str],
+    default_male_voices: list[str],
+) -> str | None:
+    """__auto_female__/__auto_male__ 특수값을 실제 char_id로 해석
+
+    프론트엔드 resolveAutoVoice와 동일한 로직.
+    voice_mapping.json에 특수값이 저장된 경우 백엔드에서도 해석 가능하도록 함.
+    """
+    if voice_id == AUTO_VOICE_FEMALE:
+        if default_female_voices:
+            return default_female_voices[simple_hash(mapping_key) % len(default_female_voices)]
+        return None
+    elif voice_id == AUTO_VOICE_MALE:
+        if default_male_voices:
+            return default_male_voices[simple_hash(mapping_key) % len(default_male_voices)]
+        return None
+    return voice_id
 
 
 def _resolve_gender_voice(
@@ -402,6 +424,15 @@ class RenderManager:
 
                 # 별칭 매핑 확인 (char_id 또는 speaker_name으로 음성 있는 캐릭터 찾기)
                 alias_char_id = resolve_voice_char_id(char_id or speaker_name)
+
+                # __auto_female__/__auto_male__ 특수값 해석
+                if alias_char_id and alias_char_id.startswith("__auto_"):
+                    resolved = _resolve_auto_voice(
+                        alias_char_id, mapping_key or "",
+                        job.default_female_voices, job.default_male_voices,
+                    )
+                    logger.info(f"[RenderManager] 특수값 해석: {alias_char_id} → {resolved}")
+                    alias_char_id = resolved
 
                 logger.info(f"[RenderManager] 대사 {index}: char_id={char_id}, speaker_name={speaker_name}, alias={alias_char_id}")
 
