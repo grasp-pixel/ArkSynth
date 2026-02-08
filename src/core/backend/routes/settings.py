@@ -19,9 +19,13 @@ from ..config import config
 
 router = APIRouter()
 
-# 설치 작업 상태
+# 설치 작업 상태 (GPT-SoVITS)
 _install_task: Optional[asyncio.Task] = None
 _install_progress_queue: Optional[asyncio.Queue] = None
+
+# FFmpeg 설치 작업 상태
+_ffmpeg_install_task: Optional[asyncio.Task] = None
+_ffmpeg_install_queue: Optional[asyncio.Queue] = None
 
 
 class DependencyStatus(BaseModel):
@@ -224,6 +228,49 @@ async def check_dependencies():
     }
 
 
+@router.post("/refresh-dependencies")
+async def refresh_dependencies():
+    """의존성 재검사 + GPT-SoVITS 재초기화"""
+    deps = [
+        check_ffmpeg(),
+        check_ffprobe(),
+        check_7zip(),
+        check_gpt_sovits(),
+    ]
+    return {"dependencies": deps}
+
+
+@router.post("/refresh-all")
+async def refresh_all():
+    """전체 새로고침: shared_loaders 리셋 + 의존성 재검사 + GPT-SoVITS 재초기화"""
+    from ..shared_loaders import reset_all
+    reset_all()
+
+    deps = [
+        check_ffmpeg(),
+        check_ffprobe(),
+        check_7zip(),
+        check_gpt_sovits(),
+    ]
+    return {"dependencies": deps, "message": "전체 새로고침 완료"}
+
+
+@router.post("/shutdown")
+async def shutdown():
+    """백엔드 서버 종료"""
+    import os
+    import signal
+
+    logger.info("종료 요청 수신, 서버를 종료합니다...")
+
+    async def _shutdown():
+        await asyncio.sleep(0.5)  # 응답 전송 완료 대기
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    asyncio.create_task(_shutdown())
+    return {"status": "shutting_down", "message": "서버를 종료합니다"}
+
+
 def _open_in_explorer(folder: Path):
     """탐색기에서 폴더 열기"""
     if sys.platform == "win32":
@@ -276,6 +323,104 @@ async def ffmpeg_install_guide():
             "4. 터미널 재시작 후 'ffmpeg -version' 으로 확인",
         ],
     }
+
+
+@router.post("/ffmpeg/install")
+async def start_ffmpeg_install():
+    """FFmpeg winget 자동 설치"""
+    global _ffmpeg_install_task, _ffmpeg_install_queue
+
+    if _ffmpeg_install_task and not _ffmpeg_install_task.done():
+        raise HTTPException(status_code=409, detail="이미 FFmpeg 설치가 진행 중입니다")
+
+    # winget 사용 가능 여부 확인
+    try:
+        subprocess.run(["winget", "--version"], capture_output=True, timeout=5)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        raise HTTPException(status_code=400, detail="winget이 설치되어 있지 않습니다. 수동 설치를 진행해주세요.")
+
+    _ffmpeg_install_queue = asyncio.Queue()
+
+    async def install_ffmpeg():
+        try:
+            await _ffmpeg_install_queue.put({
+                "stage": "installing", "progress": 10, "message": "winget install 실행 중..."
+            })
+
+            process = await asyncio.create_subprocess_exec(
+                "winget", "install", "Gyan.FFmpeg",
+                "--accept-package-agreements", "--accept-source-agreements",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            await _ffmpeg_install_queue.put({
+                "stage": "installing", "progress": 30, "message": "FFmpeg 다운로드 및 설치 중..."
+            })
+
+            stdout, stderr = await process.communicate()
+            output = (stdout or b"").decode("utf-8", errors="replace")
+            err_output = (stderr or b"").decode("utf-8", errors="replace")
+
+            if process.returncode == 0:
+                await _ffmpeg_install_queue.put({
+                    "stage": "complete", "progress": 100, "message": "FFmpeg 설치 완료"
+                })
+            elif "already installed" in output.lower() or "이미 설치" in output:
+                await _ffmpeg_install_queue.put({
+                    "stage": "complete", "progress": 100, "message": "FFmpeg이 이미 설치되어 있습니다"
+                })
+            else:
+                error_msg = err_output.strip() or output.strip() or "알 수 없는 오류"
+                await _ffmpeg_install_queue.put({
+                    "stage": "error", "progress": 0, "message": "FFmpeg 설치 실패", "error": error_msg
+                })
+        except Exception as e:
+            await _ffmpeg_install_queue.put({
+                "stage": "error", "progress": 0, "message": "FFmpeg 설치 실패", "error": str(e)
+            })
+
+    _ffmpeg_install_task = asyncio.create_task(install_ffmpeg())
+    return {"status": "started", "message": "FFmpeg 설치가 시작되었습니다"}
+
+
+@router.get("/ffmpeg/install/stream")
+async def stream_ffmpeg_install():
+    """FFmpeg 설치 진행률 SSE 스트림"""
+    global _ffmpeg_install_queue
+
+    if _ffmpeg_install_queue is None:
+        raise HTTPException(status_code=404, detail="진행 중인 FFmpeg 설치가 없습니다")
+
+    async def event_generator():
+        try:
+            while True:
+                try:
+                    progress = await asyncio.wait_for(
+                        _ffmpeg_install_queue.get(), timeout=30.0
+                    )
+                    yield f"event: progress\ndata: {json.dumps(progress, ensure_ascii=False)}\n\n"
+
+                    if progress.get("stage") in ("complete", "error"):
+                        if progress.get("stage") == "complete":
+                            yield f"event: complete\ndata: {json.dumps({'success': True})}\n\n"
+                        else:
+                            yield f"event: error\ndata: {json.dumps({'error': progress.get('error', '')})}\n\n"
+                        break
+                except asyncio.TimeoutError:
+                    yield f"event: ping\ndata: {json.dumps({'status': 'alive'})}\n\n"
+        except asyncio.CancelledError:
+            pass
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 
 @router.get("/7zip/install-guide")
@@ -819,9 +964,12 @@ async def get_image_extract_status():
 
 
 @router.post("/extract/images/start")
-async def start_image_extraction():
-    """이미지 추출 시작 (avg/characters + chararts)"""
+async def start_image_extraction(target: str = "all"):
+    """이미지 추출 시작. target: 'characters', 'chararts', 'all'"""
     global _image_extract_task, _image_extract_progress_queue, _image_extract_cancel_flag
+
+    if target not in ("characters", "chararts", "all"):
+        raise HTTPException(status_code=400, detail="target은 'characters', 'chararts', 'all' 중 하나여야 합니다")
 
     # 이미 추출 중인지 확인
     if _image_extract_task and not _image_extract_task.done():
@@ -832,12 +980,19 @@ async def start_image_extraction():
     characters_dir = image_assets_dir / "avg" / "characters"
     chararts_dir = image_assets_dir / "chararts"
 
-    # 최소 하나의 소스 폴더가 있어야 함
-    if not characters_dir.exists() and not chararts_dir.exists():
+    # 대상에 따른 폴더 확인
+    need_characters = target in ("characters", "all")
+    need_chararts = target in ("chararts", "all")
+
+    if need_characters and not characters_dir.exists() and need_chararts and not chararts_dir.exists():
         raise HTTPException(
             status_code=404,
             detail="Assets/Image/avg/characters 또는 Assets/Image/chararts 폴더가 없습니다."
         )
+    if need_characters and not need_chararts and not characters_dir.exists():
+        raise HTTPException(status_code=404, detail="Assets/Image/avg/characters 폴더가 없습니다.")
+    if need_chararts and not need_characters and not chararts_dir.exists():
+        raise HTTPException(status_code=404, detail="Assets/Image/chararts 폴더가 없습니다.")
 
     # 진행률 큐 생성
     _image_extract_progress_queue = asyncio.Queue()
@@ -859,7 +1014,7 @@ async def start_image_extraction():
             extract_jobs: list[tuple[Path, Path, list[Path]]] = []
 
             # avg/characters → extracted/images/characters
-            if characters_dir.exists():
+            if need_characters and characters_dir.exists():
                 ab_files = list(characters_dir.glob("*.ab"))
                 if ab_files:
                     output_dir = Path("extracted/images/characters")
@@ -867,7 +1022,7 @@ async def start_image_extraction():
                     extract_jobs.append((characters_dir, output_dir, ab_files))
 
             # chararts → extracted/images/chararts
-            if chararts_dir.exists():
+            if need_chararts and chararts_dir.exists():
                 ab_files = list(chararts_dir.glob("*.ab"))
                 if ab_files:
                     output_dir = Path("extracted/images/chararts")

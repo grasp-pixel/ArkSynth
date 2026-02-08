@@ -1,6 +1,8 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { useAppStore } from '../stores/appStore'
 import { ocrApi } from '../services/api'
+
+const PREVIEW_REFRESH_INTERVAL = 3000 // 미리보기 갱신 주기 (ms)
 
 export default function DubbingControlBar() {
   const {
@@ -11,9 +13,53 @@ export default function DubbingControlBar() {
     loadWindows,
     setWindow,
     startDubbing,
+    confirmStartDubbing,
+    dismissNoCacheWarning,
     stopDubbing,
     isRendering,
+    gpuSemaphoreEnabled,
+    showNoCacheWarning,
+    startRender,
+    selectedEpisodeId,
   } = useAppStore()
+
+  // 미리보기 이미지 URL 주기적 갱신 (깜빡임 방지)
+  const [previewTimestamp, setPreviewTimestamp] = useState(Date.now())
+  const dialogueImgRef = useRef<HTMLImageElement>(null)
+  const subtitleImgRef = useRef<HTMLImageElement>(null)
+  const [dialogueImgSize, setDialogueImgSize] = useState<{ w: number; h: number } | null>(null)
+  const [subtitleImgSize, setSubtitleImgSize] = useState<{ w: number; h: number } | null>(null)
+
+  useEffect(() => {
+    if (!selectedWindowHwnd) return
+    const timer = setInterval(() => {
+      setPreviewTimestamp(Date.now())
+    }, PREVIEW_REFRESH_INTERVAL)
+    return () => clearInterval(timer)
+  }, [selectedWindowHwnd])
+
+  const dialogueUrl = useMemo(
+    () => selectedWindowHwnd ? `${ocrApi.getWindowRegionImageUrl(selectedWindowHwnd, 'dialogue')}&t=${previewTimestamp}` : '',
+    [selectedWindowHwnd, previewTimestamp]
+  )
+  const subtitleUrl = useMemo(
+    () => selectedWindowHwnd ? `${ocrApi.getWindowRegionImageUrl(selectedWindowHwnd, 'subtitle')}&t=${previewTimestamp}` : '',
+    [selectedWindowHwnd, previewTimestamp]
+  )
+
+  const onDialogueLoad = useCallback(() => {
+    const img = dialogueImgRef.current
+    if (img && img.naturalWidth > 0) {
+      setDialogueImgSize({ w: img.naturalWidth, h: img.naturalHeight })
+    }
+  }, [])
+
+  const onSubtitleLoad = useCallback(() => {
+    const img = subtitleImgRef.current
+    if (img && img.naturalWidth > 0) {
+      setSubtitleImgSize({ w: img.naturalWidth, h: img.naturalHeight })
+    }
+  }, [])
 
   // 게임 관련 윈도우 우선 정렬 (훅은 조건부 return 전에 호출해야 함)
   const sortedWindows = useMemo(() => {
@@ -57,7 +103,7 @@ export default function DubbingControlBar() {
             }`}
             disabled={isDubbingMode}
           >
-            <option value="">⚠ 윈도우를 선택하세요</option>
+            <option value="">윈도우를 선택하세요</option>
             {sortedWindows.map((win) => (
               <option key={win.hwnd} value={win.hwnd}>
                 {win.title || `Window ${win.hwnd}`}
@@ -76,35 +122,57 @@ export default function DubbingControlBar() {
           </button>
         </div>
 
-        {/* 미리보기 썸네일 - 대사 영역 + 자막 영역 */}
-        {selectedWindowHwnd && (
-          <div className="flex-1 min-w-0 flex gap-2">
-            {/* 대사 영역 */}
-            <div className="flex-1 bg-ark-black/50 border border-ark-border rounded overflow-hidden">
-              <div className="px-1.5 py-0.5 bg-ark-panel/50 border-b border-ark-border">
-                <span className="text-[10px] text-ark-orange">대사</span>
-              </div>
-              <img
-                src={ocrApi.getWindowRegionImageUrl(selectedWindowHwnd, 'dialogue')}
-                alt="대사 영역"
-                className="w-full h-auto object-contain"
-                key={`dialogue-${selectedWindowHwnd}-${Date.now()}`}
-              />
+        {/* 미리보기 썸네일 - 대사 영역 + 자막 영역 (항상 영역 유지) */}
+        <div className="flex-1 min-w-0 flex gap-2">
+          {/* 대사 영역 */}
+          <div className="flex-1 bg-ark-black/50 border border-ark-border rounded overflow-hidden">
+            <div className="px-1.5 py-0.5 bg-ark-panel/50 border-b border-ark-border">
+              <span className="text-[10px] text-ark-orange">대사</span>
             </div>
-            {/* 자막 영역 */}
-            <div className="flex-1 bg-ark-black/50 border border-ark-border rounded overflow-hidden">
-              <div className="px-1.5 py-0.5 bg-ark-panel/50 border-b border-ark-border">
-                <span className="text-[10px] text-purple-400">자막</span>
-              </div>
-              <img
-                src={ocrApi.getWindowRegionImageUrl(selectedWindowHwnd, 'subtitle')}
-                alt="자막 영역"
-                className="w-full h-auto object-contain"
-                key={`subtitle-${selectedWindowHwnd}-${Date.now()}`}
-              />
+            <div
+              className="relative"
+              style={dialogueImgSize ? { aspectRatio: `${dialogueImgSize.w} / ${dialogueImgSize.h}` } : { minHeight: 48 }}
+            >
+              {selectedWindowHwnd ? (
+                <img
+                  ref={dialogueImgRef}
+                  src={dialogueUrl}
+                  alt="대사 영역"
+                  className="w-full h-full object-contain"
+                  onLoad={onDialogueLoad}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-ark-gray/30 text-[10px]">
+                  미리보기
+                </div>
+              )}
             </div>
           </div>
-        )}
+          {/* 자막 영역 */}
+          <div className="flex-1 bg-ark-black/50 border border-ark-border rounded overflow-hidden">
+            <div className="px-1.5 py-0.5 bg-ark-panel/50 border-b border-ark-border">
+              <span className="text-[10px] text-purple-400">자막</span>
+            </div>
+            <div
+              className="relative"
+              style={subtitleImgSize ? { aspectRatio: `${subtitleImgSize.w} / ${subtitleImgSize.h}` } : { minHeight: 48 }}
+            >
+              {selectedWindowHwnd ? (
+                <img
+                  ref={subtitleImgRef}
+                  src={subtitleUrl}
+                  alt="자막 영역"
+                  className="w-full h-full object-contain"
+                  onLoad={onSubtitleLoad}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-ark-gray/30 text-[10px]">
+                  미리보기
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
 
         {/* 더빙 버튼 */}
         <div className="flex-shrink-0">
@@ -149,6 +217,44 @@ export default function DubbingControlBar() {
         </div>
       )}
 
+      {/* 사전 더빙 미완료 경고 다이얼로그 */}
+      {showNoCacheWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="bg-ark-dark border border-ark-border rounded-lg p-6 max-w-md mx-4 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 24 24" className="w-5 h-5 text-amber-400" fill="currentColor">
+                  <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+                </svg>
+              </div>
+              <h3 className="text-base font-bold text-ark-white">사전 더빙 필요</h3>
+            </div>
+            <p className="text-sm text-ark-gray mb-6">
+              사전 더빙이 되어있지 않아 음성 재생이 불가합니다.
+              <br />
+              사전 더빙을 먼저 실행하거나, 사전 더빙과 함께 시작할 수 있습니다.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={dismissNoCacheWarning}
+                className="ark-btn text-sm px-4 py-2"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => {
+                  if (selectedEpisodeId) startRender(selectedEpisodeId, false)
+                  confirmStartDubbing()
+                }}
+                className="ark-btn ark-btn-primary text-sm px-4 py-2"
+              >
+                사전 더빙과 함께 시작
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* VRAM 경고 - 사전 더빙 + 실시간 더빙 동시 실행 */}
       {isDubbingMode && isRendering && (
         <div className="mx-4 mb-3 bg-ark-yellow/10 border border-ark-yellow/30 rounded px-3 py-2 flex items-start gap-2">
@@ -156,8 +262,17 @@ export default function DubbingControlBar() {
             <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
           </svg>
           <div className="text-xs text-ark-yellow">
-            <p className="font-medium">사전 더빙과 실시간 더빙 동시 실행 중</p>
-            <p className="text-ark-yellow/70 mt-0.5">VRAM 부족 시 OCR 품질 저하 또는 크래시가 발생할 수 있습니다</p>
+            {gpuSemaphoreEnabled ? (
+              <>
+                <p className="font-medium">GPU 잠금이 활성화되어 OCR과 사전 더빙이 순차적으로 진행됩니다</p>
+                <p className="text-ark-yellow/70 mt-0.5">동시에 실행하려면 우상단에서 GPU 잠금을 해제하세요. VRAM 부족 시 성능 저하나 크래시가 발생할 수 있습니다.</p>
+              </>
+            ) : (
+              <>
+                <p className="font-medium">사전 더빙과 실시간 더빙 동시 실행 중</p>
+                <p className="text-ark-yellow/70 mt-0.5">VRAM 부족 시 OCR 품질 저하 또는 크래시가 발생할 수 있습니다</p>
+              </>
+            )}
           </div>
         </div>
       )}

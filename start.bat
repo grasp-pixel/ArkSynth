@@ -8,6 +8,14 @@ set "PYTHONIOENCODING=utf-8"
 set "UV_LINK_MODE=copy"
 set "BACKEND_HOST=127.0.0.1"
 set "BACKEND_PORT=8000"
+set "START_DIR=%~dp0"
+
+REM === 배포 구조 감지: app/ 폴더가 있으면 그 안에서 실행 ===
+set "APP_DIR=%START_DIR%"
+if exist "%START_DIR%app\pyproject.toml" (
+    set "APP_DIR=%START_DIR%app\"
+)
+cd /d "%APP_DIR%"
 
 REM === 1. uv 설치 확인 ===
 where uv >nul 2>&1
@@ -67,15 +75,15 @@ REM === 5. Electron 앱 실행 ===
 :start_app
 echo [ArkSynth] 앱을 시작합니다...
 
-if exist "%~dp0ArkSynth.exe" (
-    start "" "%~dp0ArkSynth.exe"
+if exist "%APP_DIR%ArkSynth.exe" (
+    start "" "%APP_DIR%ArkSynth.exe"
 ) else (
     echo [ArkSynth] ArkSynth.exe를 찾을 수 없습니다.
     echo [ArkSynth] 브라우저에서 http://%BACKEND_HOST%:%BACKEND_PORT%/docs 로 접속하세요.
 )
 
 REM === 6. 종료 대기 ===
-if exist "%~dp0ArkSynth.exe" (
+if exist "%APP_DIR%ArkSynth.exe" (
     echo [ArkSynth] 앱을 종료하면 서버도 자동으로 종료됩니다.
     :wait_app
     timeout /t 3 /nobreak >nul
@@ -101,3 +109,4 @@ for /f "tokens=2" %%a in ('wmic process where "commandline like '%%uvicorn%%core
 
 echo [ArkSynth] 종료되었습니다.
 endlocal
+exit

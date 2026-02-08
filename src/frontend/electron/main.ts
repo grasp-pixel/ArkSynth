@@ -79,6 +79,21 @@ app.whenReady().then(() => {
   })
 })
 
+// 앱 종료 전 백엔드 셧다운 요청
+app.on('before-quit', () => {
+  // fire-and-forget으로 백엔드 종료 신호 전송
+  const http = require('http')
+  const req = http.request({
+    hostname: '127.0.0.1',
+    port: 8000,
+    path: '/api/settings/shutdown',
+    method: 'POST',
+    timeout: 3000,
+  })
+  req.on('error', () => {})  // 이미 종료되었을 수 있으므로 에러 무시
+  req.end()
+})
+
 // 모든 윈도우 닫힘
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

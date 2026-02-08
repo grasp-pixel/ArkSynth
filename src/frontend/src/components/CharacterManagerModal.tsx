@@ -652,7 +652,10 @@ export default function CharacterManagerModal({
             <div className="w-px h-4 bg-ark-border" />
             {/* 일괄 준비/학습 버튼 */}
             <button
-              onClick={() => startBatchTraining(selectedIds, "prepare")}
+              onClick={() => {
+                if (confirm(`${selectedCharIds.size}개 캐릭터를 준비합니다. 캐릭터당 수 분이 소요될 수 있습니다. 계속하시겠습니까?`))
+                  startBatchTraining(selectedIds, "prepare")
+              }}
               disabled={isTrainingActive || selectedCharIds.size === 0}
               className="text-xs px-2 py-1 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               title="선택된 캐릭터 일괄 준비 (Zero-shot)"
@@ -660,7 +663,10 @@ export default function CharacterManagerModal({
               일괄 준비{selectedCharIds.size > 0 ? ` (${selectedCharIds.size})` : ""}
             </button>
             <button
-              onClick={() => startFullBatchTraining(selectedIds)}
+              onClick={() => {
+                if (confirm(`${selectedCharIds.size}개 캐릭터를 준비+학습합니다. 캐릭터당 수 분~수십 분이 소요될 수 있습니다. 계속하시겠습니까?`))
+                  startFullBatchTraining(selectedIds)
+              }}
               disabled={isTrainingActive || selectedCharIds.size === 0}
               className="text-xs px-2 py-1 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               title="선택된 캐릭터 준비 후 자동으로 학습 시작"
@@ -668,7 +674,10 @@ export default function CharacterManagerModal({
               준비+학습{selectedCharIds.size > 0 ? ` (${selectedCharIds.size})` : ""}
             </button>
             <button
-              onClick={() => startBatchTraining(selectedIds, "finetune")}
+              onClick={() => {
+                if (confirm(`${selectedCharIds.size}개 캐릭터를 학습합니다. 캐릭터당 수십 분이 소요될 수 있습니다. 계속하시겠습니까?`))
+                  startBatchTraining(selectedIds, "finetune")
+              }}
               disabled={isTrainingActive || selectedCharIds.size === 0}
               className="text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               title="선택된 캐릭터 일괄 학습 (Fine-tuning)"
@@ -1314,6 +1323,22 @@ export default function CharacterManagerModal({
         {/* 음성 테스트 섹션 */}
         <div className="p-4 border-t border-ark-border bg-ark-black/30 space-y-3">
           <div className="flex items-center gap-3">
+            {/* 테스트 캐릭터 썸네일 */}
+            {testCharId ? (
+              <img
+                src={voiceApi.getImageUrl(testCharId)}
+                alt=""
+                className="w-10 h-10 rounded-full object-cover bg-ark-panel flex-shrink-0 border border-ark-border"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                onLoad={(e) => { (e.target as HTMLImageElement).style.display = '' }}
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-ark-panel flex-shrink-0 border border-ark-border flex items-center justify-center">
+                <svg viewBox="0 0 24 24" className="w-5 h-5 text-ark-gray/30" fill="currentColor">
+                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                </svg>
+              </div>
+            )}
             <span className="text-sm text-ark-gray whitespace-nowrap">
               음성 테스트:
             </span>

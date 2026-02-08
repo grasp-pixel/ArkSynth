@@ -245,6 +245,13 @@ export default function GroupSetupPanel() {
   // 일괄 실행
   const handleBatchExecute = async () => {
     if (!selectedGroupId) return
+
+    // 학습 포함 시 시간 안내
+    if (batchTasks.prepare || batchTasks.finetune) {
+      const taskDesc = batchTasks.finetune ? '준비 및 학습' : '준비'
+      if (!confirm(`캐릭터 모델 ${taskDesc}은 캐릭터당 수 분~수십 분이 소요될 수 있습니다. 계속하시겠습니까?`)) return
+    }
+
     setIsExecuting(true)
     setPendingStep(null)
 

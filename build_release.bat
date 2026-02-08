@@ -48,27 +48,28 @@ echo [2/4] 배포 폴더 구성 중...
 :: 기존 폴더 정리
 if exist "%RELEASE_DIR%" rmdir /s /q "%RELEASE_DIR%"
 mkdir "%RELEASE_DIR%"
+mkdir "%RELEASE_DIR%\app"
 
-:: Python 소스 복사
-xcopy "%PROJECT_ROOT%src\core" "%RELEASE_DIR%\src\core\" /e /i /q /y >nul
-xcopy "%PROJECT_ROOT%src\tools" "%RELEASE_DIR%\src\tools\" /e /i /q /y >nul
-if exist "%PROJECT_ROOT%src\__init__.py" copy "%PROJECT_ROOT%src\__init__.py" "%RELEASE_DIR%\src\" >nul
+:: Python 소스 복사 (app/ 하위)
+xcopy "%PROJECT_ROOT%src\core" "%RELEASE_DIR%\app\src\core\" /e /i /q /y >nul
+xcopy "%PROJECT_ROOT%src\tools" "%RELEASE_DIR%\app\src\tools\" /e /i /q /y >nul
+if exist "%PROJECT_ROOT%src\__init__.py" copy "%PROJECT_ROOT%src\__init__.py" "%RELEASE_DIR%\app\src\" >nul
 
-:: 프로젝트 설정 파일
-copy "%PROJECT_ROOT%pyproject.toml" "%RELEASE_DIR%\" >nul
-copy "%PROJECT_ROOT%uv.lock" "%RELEASE_DIR%\" >nul
+:: 프로젝트 설정 파일 (app/ 하위)
+copy "%PROJECT_ROOT%pyproject.toml" "%RELEASE_DIR%\app\" >nul
+copy "%PROJECT_ROOT%uv.lock" "%RELEASE_DIR%\app\" >nul
 
-:: 실행 스크립트
+:: 실행 스크립트 (루트에 배치)
 copy "%PROJECT_ROOT%start.bat" "%RELEASE_DIR%\" >nul
 
-:: README
+:: README (루트에 배치)
 copy "%PROJECT_ROOT%README.txt" "%RELEASE_DIR%\" >nul 2>&1
 
-:: Electron portable exe 복사
+:: Electron portable exe 복사 (app/ 하위)
 set "EXE_FOUND=0"
 for %%f in ("%FRONTEND_DIR%\release\ArkSynth.exe") do (
     if exist "%%f" (
-        copy "%%f" "%RELEASE_DIR%\" >nul
+        copy "%%f" "%RELEASE_DIR%\app\" >nul
         set "EXE_FOUND=1"
     )
 )
@@ -77,7 +78,7 @@ if "!EXE_FOUND!"=="0" (
     :: 다른 이름으로 빌드되었을 수 있으므로 exe 파일 검색
     for %%f in ("%FRONTEND_DIR%\release\*.exe") do (
         echo   발견: %%~nxf
-        copy "%%f" "%RELEASE_DIR%\ArkSynth.exe" >nul
+        copy "%%f" "%RELEASE_DIR%\app\ArkSynth.exe" >nul
         set "EXE_FOUND=1"
         goto :exe_done
     )

@@ -50,6 +50,9 @@ function App() {
     // 에피소드 선택 해제
     clearEpisode,
     goHome,
+    // 전체 새로고침
+    isRefreshingAll,
+    refreshAll,
   } = useAppStore()
 
   useEffect(() => {
@@ -206,6 +209,18 @@ function App() {
             </span>
           </div>
 
+          {/* 새로고침 버튼 */}
+          <button
+            onClick={refreshAll}
+            disabled={isRefreshingAll}
+            className="flex items-center gap-1.5 px-2 py-1.5 text-ark-gray hover:text-ark-white border border-ark-border hover:border-ark-cyan/50 rounded transition-colors disabled:opacity-50"
+            title="전체 새로고침"
+          >
+            <svg viewBox="0 0 24 24" className={`w-4 h-4 ${isRefreshingAll ? 'animate-spin' : ''}`} fill="currentColor">
+              <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+            </svg>
+          </button>
+
           {/* 설정 버튼 */}
           <button
             onClick={() => setIsSettingsOpen(true)}
@@ -255,8 +270,31 @@ function App() {
         </button>
       </div>
 
+      {/* 백엔드 미연결 안내 */}
+      {backendStatus === 'disconnected' && (
+        <div className="flex-1 flex items-center justify-center bg-ark-black">
+          <div className="text-center max-w-md mx-auto p-8">
+            <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-red-500/10 flex items-center justify-center">
+              <svg viewBox="0 0 24 24" className="w-8 h-8 text-red-400" fill="currentColor">
+                <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+              </svg>
+            </div>
+            <h2 className="text-lg font-bold text-ark-white mb-2">백엔드 서버에 연결할 수 없습니다</h2>
+            <p className="text-sm text-ark-gray mb-6">
+              <span className="text-ark-orange font-mono">start.bat</span>으로 앱을 실행해주세요.
+              <br />
+              start.bat이 백엔드 서버와 앱을 함께 시작합니다.
+            </p>
+            <div className="p-3 bg-ark-panel/50 rounded border border-ark-border text-xs text-ark-gray/70 font-mono">
+              서버 주소: http://127.0.0.1:8000
+            </div>
+            <p className="mt-4 text-xs text-ark-gray/50">연결되면 자동으로 전환됩니다</p>
+          </div>
+        </div>
+      )}
+
       {/* 메인 컨텐츠 */}
-      <main className={`flex-1 flex flex-col overflow-hidden transition-all ${
+      {backendStatus !== 'disconnected' && <main className={`flex-1 flex flex-col overflow-hidden transition-all ${
         isDubbingMode ? 'pb-16' : ''
       }`}>
         <div className="flex-1 flex overflow-hidden">
@@ -493,7 +531,7 @@ function App() {
             </div>
           </aside>
         </div>
-      </main>
+      </main>}
 
       {/* 더빙 대시보드 (더빙 모드 시 하단 고정) */}
       <DubbingDashboard />

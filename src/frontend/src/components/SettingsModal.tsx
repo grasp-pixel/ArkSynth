@@ -6,9 +6,11 @@ import {
   createExtractStream,
   imageExtractApi,
   createImageExtractStream,
+  createFFmpegInstallStream,
   gamedataApi,
   createGamedataUpdateStream,
   voiceApi,
+  ttsApi,
   aliasesApi,
   type SettingsResponse,
   type DependencyStatus,
@@ -47,6 +49,10 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [show7ZipGuide, setShow7ZipGuide] = useState(false);
   const [showFlatcGuide, setShowFlatcGuide] = useState(false);
   const [showGptSovitsInstall, setShowGptSovitsInstall] = useState(false);
+  const [isInstallingFFmpeg, setIsInstallingFFmpeg] = useState(false);
+  const [ffmpegInstallMsg, setFFmpegInstallMsg] = useState<string | null>(null);
+  const [ffmpegInstallError, setFFmpegInstallError] = useState<string | null>(null);
+  const ffmpegInstallStreamRef = useRef<{ close: () => void } | null>(null);
   const [isRefreshingCharacters, setIsRefreshingCharacters] = useState(false);
 
   // TTS 엔진 설정
@@ -66,6 +72,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [imageAssetsStatus, setImageAssetsStatus] =
     useState<ImageAssetsStatus | null>(null);
   const [isExtractingImages, setIsExtractingImages] = useState(false);
+  const [extractingImageTarget, setExtractingImageTarget] = useState<'characters' | 'chararts' | null>(null);
   const [imageExtractProgress, setImageExtractProgress] =
     useState<ImageExtractProgress | null>(null);
   const [imageExtractError, setImageExtractError] = useState<string | null>(
@@ -136,6 +143,31 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setShowFFmpegGuide(true);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const startFFmpegInstall = async () => {
+    setIsInstallingFFmpeg(true);
+    setFFmpegInstallMsg("설치 시작 중...");
+    setFFmpegInstallError(null);
+    try {
+      await settingsApi.startFFmpegInstall();
+      ffmpegInstallStreamRef.current = createFFmpegInstallStream({
+        onProgress: (p) => setFFmpegInstallMsg(p.message),
+        onComplete: () => {
+          setIsInstallingFFmpeg(false);
+          setFFmpegInstallMsg("FFmpeg 설치 완료! 새로고침하세요.");
+          loadSettings();
+        },
+        onError: (error) => {
+          setIsInstallingFFmpeg(false);
+          setFFmpegInstallError(error);
+          setFFmpegInstallMsg(null);
+        },
+      });
+    } catch (err) {
+      setIsInstallingFFmpeg(false);
+      setFFmpegInstallError(err instanceof Error ? err.message : "FFmpeg 설치 시작 실패");
     }
   };
 
@@ -218,16 +250,19 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
-  const startImageExtraction = async () => {
-    if (!imageAssetsStatus?.exists || !imageAssetsStatus?.characters_exists)
-      return;
+  const startImageExtraction = async (target: 'characters' | 'chararts') => {
+    const folderReady = target === 'characters'
+      ? imageAssetsStatus?.characters_exists
+      : imageAssetsStatus?.chararts_exists;
+    if (!imageAssetsStatus?.exists || !folderReady) return;
 
     setIsExtractingImages(true);
+    setExtractingImageTarget(target);
     setImageExtractProgress(null);
     setImageExtractError(null);
 
     try {
-      await imageExtractApi.startExtract();
+      await imageExtractApi.startExtract(target);
 
       imageExtractStreamRef.current = createImageExtractStream({
         onProgress: (progress) => {
@@ -430,9 +465,12 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const refreshDependencies = async () => {
     try {
-      const data = await settingsApi.checkDependencies();
+      const [depData] = await Promise.all([
+        settingsApi.refreshDependencies(),
+        ttsApi.reinitGptSovits().catch(() => {}),
+      ]);
       if (settings) {
-        setSettings({ ...settings, dependencies: data.dependencies });
+        setSettings({ ...settings, dependencies: depData.dependencies });
       }
     } catch (err) {
       console.error(err);
@@ -552,12 +590,21 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           </div>
                         </div>
                         {!dep.installed && dep.name === "FFmpeg" && (
-                          <button
-                            onClick={loadFFmpegGuide}
-                            className="text-xs text-ark-orange hover:underline"
-                          >
-                            설치 방법
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={startFFmpegInstall}
+                              disabled={isInstallingFFmpeg}
+                              className="text-xs text-ark-orange hover:underline disabled:opacity-50"
+                            >
+                              {isInstallingFFmpeg ? '설치 중...' : '자동 설치'}
+                            </button>
+                            <button
+                              onClick={loadFFmpegGuide}
+                              className="text-xs text-ark-gray hover:underline"
+                            >
+                              수동
+                            </button>
+                          </div>
                         )}
                         {!dep.installed && dep.name === "FFprobe" && (
                           <span className="text-xs text-ark-gray">
@@ -651,6 +698,27 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           ))}
                         </ol>
                       </div>
+                    </div>
+                  )}
+
+                  {/* FFmpeg 설치 진행/결과 */}
+                  {(isInstallingFFmpeg || ffmpegInstallMsg || ffmpegInstallError) && (
+                    <div className="mt-3 p-3 bg-ark-panel rounded border border-ark-border">
+                      {isInstallingFFmpeg && (
+                        <div className="flex items-center gap-2">
+                          <svg className="animate-spin w-4 h-4 text-ark-orange" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                          <span className="text-xs text-ark-white">{ffmpegInstallMsg}</span>
+                        </div>
+                      )}
+                      {!isInstallingFFmpeg && ffmpegInstallMsg && (
+                        <p className="text-xs text-green-400">{ffmpegInstallMsg}</p>
+                      )}
+                      {ffmpegInstallError && (
+                        <p className="text-xs text-red-400">{ffmpegInstallError}</p>
+                      )}
                     </div>
                   )}
 
@@ -1122,158 +1190,184 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     이미지 추출
                   </h3>
                   <p className="text-[11px] text-ark-gray/70 mb-3">
-                    캐릭터 일러스트 번들에서 이미지를 추출합니다.
+                    캐릭터 일러스트 번들에서 이미지를 추출합니다. 두 종류의 이미지를 각각 추출할 수 있습니다.
                   </p>
-                  <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
-                    {imageAssetsStatus === null ? (
+
+                  {imageAssetsStatus === null ? (
+                    <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
                       <p className="text-sm text-ark-gray">확인 중...</p>
-                    ) : !imageAssetsStatus.exists ? (
-                      <div>
-                        <p className="text-sm text-red-400 mb-2">
-                          {imageAssetsStatus.message}
-                        </p>
-                        <p className="text-xs text-ark-gray">
-                          {imageAssetsStatus.hint}
-                        </p>
-                      </div>
-                    ) : !imageAssetsStatus.characters_exists ? (
-                      <div>
-                        <p className="text-sm text-yellow-400 mb-2">
-                          Assets/Image/avg/characters 폴더가 없습니다
-                        </p>
-                        <p className="text-xs text-ark-gray">
-                          게임 번들의 files/bundles/avg/characters를
-                          복사해주세요
-                        </p>
-                      </div>
-                    ) : (
-                      <div>
-                        <div className="flex items-center justify-between mb-3">
+                    </div>
+                  ) : !imageAssetsStatus.exists ? (
+                    <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
+                      <p className="text-sm text-red-400 mb-2">
+                        {imageAssetsStatus.message}
+                      </p>
+                      <p className="text-xs text-ark-gray">
+                        {imageAssetsStatus.hint}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {/* 카드 1: 캐릭터 일러스트 (characters) */}
+                      <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
+                        <div className="flex items-center justify-between mb-2">
                           <div>
-                            <p className="text-sm text-ark-white">
-                              Assets/Image 준비됨
-                            </p>
-                            <p className="text-xs text-ark-gray mt-1">
-                              {imageAssetsStatus.total_bundles}개 번들
-                            </p>
+                            <p className="text-sm text-ark-white font-medium">캐릭터 일러스트</p>
+                            <p className="text-[10px] text-ark-gray mt-0.5">대화 화면에 표시되는 캐릭터 전신 일러스트</p>
                           </div>
-                          {!isExtractingImages &&
-                            imageExtractProgress?.stage !== "complete" && (
-                              <button
-                                onClick={startImageExtraction}
-                                className="ark-btn ark-btn-primary text-sm"
-                              >
-                                이미지 추출
-                              </button>
-                            )}
+                          {imageAssetsStatus.characters_exists && !isExtractingImages && (
+                            <button
+                              onClick={() => startImageExtraction('characters')}
+                              className="ark-btn ark-btn-primary text-xs"
+                            >
+                              추출
+                            </button>
+                          )}
                         </div>
 
-                        {/* 추출 진행률 */}
-                        {isExtractingImages && imageExtractProgress && (
-                          <div className="mt-3">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs text-ark-gray">
-                                {imageExtractProgress.message}
-                              </span>
-                              <button
-                                onClick={cancelImageExtraction}
-                                className="text-xs text-red-400 hover:text-red-300"
-                              >
-                                취소
-                              </button>
-                            </div>
-                            {imageExtractProgress.total > 0 && (
-                              <div className="relative h-2 bg-ark-panel rounded overflow-hidden">
-                                <div
-                                  className="absolute inset-y-0 left-0 bg-ark-orange transition-all duration-300"
-                                  style={{
-                                    width: `${(imageExtractProgress.processed / imageExtractProgress.total) * 100}%`,
-                                  }}
-                                />
+                        {!imageAssetsStatus.characters_exists ? (
+                          <div className="p-2 bg-yellow-500/10 border border-yellow-500/30 rounded">
+                            <p className="text-xs text-yellow-400">폴더 없음 — 게임 번들의 avg/characters를 복사해주세요</p>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-green-400/80">{imageAssetsStatus.characters_bundles ?? 0}개 번들 준비됨</p>
+                        )}
+
+                        {/* 진행률/완료 (이 카드 대상일 때만) */}
+                        {extractingImageTarget === 'characters' && (
+                          <>
+                            {isExtractingImages && imageExtractProgress && (
+                              <div className="mt-3">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-xs text-ark-gray">{imageExtractProgress.message}</span>
+                                  <button onClick={cancelImageExtraction} className="text-xs text-red-400 hover:text-red-300">취소</button>
+                                </div>
+                                {imageExtractProgress.total > 0 && (
+                                  <div className="relative h-2 bg-ark-panel rounded overflow-hidden">
+                                    <div className="absolute inset-y-0 left-0 bg-ark-orange transition-all duration-300" style={{ width: `${(imageExtractProgress.processed / imageExtractProgress.total) * 100}%` }} />
+                                  </div>
+                                )}
+                                <p className="text-xs text-ark-gray mt-1">{imageExtractProgress.processed} / {imageExtractProgress.total} 처리됨 • {imageExtractProgress.extracted}개 추출</p>
                               </div>
                             )}
-                            <p className="text-xs text-ark-gray mt-1">
-                              {imageExtractProgress.processed} /{" "}
-                              {imageExtractProgress.total} 파일 처리됨 •{" "}
-                              {imageExtractProgress.extracted}개 추출됨
-                            </p>
-                          </div>
+                            {imageExtractProgress?.stage === "complete" && !isExtractingImages && (
+                              <div className="mt-2 p-2 bg-green-500/10 border border-green-500/30 rounded">
+                                <p className="text-xs text-green-400">{imageExtractProgress.message}</p>
+                              </div>
+                            )}
+                          </>
                         )}
 
-                        {/* 완료 메시지 */}
-                        {imageExtractProgress?.stage === "complete" &&
-                          !isExtractingImages && (
-                            <div className="mt-3 p-2 bg-green-500/10 border border-green-500/30 rounded">
-                              <p className="text-xs text-green-400">
-                                {imageExtractProgress.message}
-                              </p>
-                            </div>
+                        <div className="mt-2 pt-2 border-t border-ark-border flex items-center justify-between">
+                          <p className="text-[10px] text-ark-gray/60">
+                            <span className="text-ark-gray">경로:</span> Assets/Image/avg/characters
+                          </p>
+                          <button
+                            onClick={async () => {
+                              try {
+                                if (imageAssetsStatus?.characters_exists) {
+                                  await settingsApi.openFolder('Assets/Image/avg/characters');
+                                } else {
+                                  await settingsApi.createFolder('Assets/Image/avg/characters');
+                                  checkImageAssets();
+                                }
+                              } catch (err) {
+                                console.error('폴더 작업 실패:', err);
+                              }
+                            }}
+                            className="text-[10px] text-ark-cyan hover:text-ark-white transition-colors"
+                          >
+                            {imageAssetsStatus?.characters_exists ? '열기' : '폴더 생성'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 카드 2: 캐릭터 초상화 (chararts) */}
+                      <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <p className="text-sm text-ark-white font-medium">캐릭터 초상화</p>
+                            <p className="text-[10px] text-ark-gray mt-0.5">캐릭터 얼굴 아이콘 (프로필, 매핑 표시용)</p>
+                          </div>
+                          {imageAssetsStatus.chararts_exists && !isExtractingImages && (
+                            <button
+                              onClick={() => startImageExtraction('chararts')}
+                              className="ark-btn ark-btn-primary text-xs"
+                            >
+                              추출
+                            </button>
                           )}
+                        </div>
 
-                        {/* 에러 메시지 */}
-                        {imageExtractError && (
-                          <div className="mt-3 p-2 bg-red-500/10 border border-red-500/30 rounded">
-                            <p className="text-xs text-red-400">
-                              {imageExtractError}
-                            </p>
+                        {!imageAssetsStatus.chararts_exists ? (
+                          <div className="p-2 bg-yellow-500/10 border border-yellow-500/30 rounded">
+                            <p className="text-xs text-yellow-400">폴더 없음 — 게임 번들의 chararts를 복사해주세요</p>
                           </div>
+                        ) : (
+                          <p className="text-xs text-green-400/80">{imageAssetsStatus.chararts_bundles ?? 0}개 번들 준비됨</p>
                         )}
-                      </div>
-                    )}
-                    {/* 경로 안내 (항상 표시) */}
-                    <div className="mt-3 pt-3 border-t border-ark-border space-y-1">
-                      <p className="text-[10px] text-ark-gray/60">
-                        <span className="text-ark-gray">게임 원본:</span> .../Bundles/avg/characters, .../Bundles/chararts
-                      </p>
-                      <div className="flex items-center justify-between">
-                        <p className="text-[10px] text-ark-gray/60">
-                          <span className="text-ark-gray">복사 위치:</span> Assets/Image/avg/characters
-                        </p>
-                        <button
-                          onClick={async () => {
-                            try {
-                              if (imageAssetsStatus?.characters_exists) {
-                                await settingsApi.openFolder('Assets/Image/avg/characters');
-                              } else {
-                                await settingsApi.createFolder('Assets/Image/avg/characters');
-                                checkImageAssets();
+
+                        {/* 진행률/완료 (이 카드 대상일 때만) */}
+                        {extractingImageTarget === 'chararts' && (
+                          <>
+                            {isExtractingImages && imageExtractProgress && (
+                              <div className="mt-3">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-xs text-ark-gray">{imageExtractProgress.message}</span>
+                                  <button onClick={cancelImageExtraction} className="text-xs text-red-400 hover:text-red-300">취소</button>
+                                </div>
+                                {imageExtractProgress.total > 0 && (
+                                  <div className="relative h-2 bg-ark-panel rounded overflow-hidden">
+                                    <div className="absolute inset-y-0 left-0 bg-ark-orange transition-all duration-300" style={{ width: `${(imageExtractProgress.processed / imageExtractProgress.total) * 100}%` }} />
+                                  </div>
+                                )}
+                                <p className="text-xs text-ark-gray mt-1">{imageExtractProgress.processed} / {imageExtractProgress.total} 처리됨 • {imageExtractProgress.extracted}개 추출</p>
+                              </div>
+                            )}
+                            {imageExtractProgress?.stage === "complete" && !isExtractingImages && (
+                              <div className="mt-2 p-2 bg-green-500/10 border border-green-500/30 rounded">
+                                <p className="text-xs text-green-400">{imageExtractProgress.message}</p>
+                              </div>
+                            )}
+                          </>
+                        )}
+
+                        <div className="mt-2 pt-2 border-t border-ark-border flex items-center justify-between">
+                          <p className="text-[10px] text-ark-gray/60">
+                            <span className="text-ark-gray">경로:</span> Assets/Image/chararts
+                          </p>
+                          <button
+                            onClick={async () => {
+                              try {
+                                if (imageAssetsStatus?.chararts_exists) {
+                                  await settingsApi.openFolder('Assets/Image/chararts');
+                                } else {
+                                  await settingsApi.createFolder('Assets/Image/chararts');
+                                  checkImageAssets();
+                                }
+                              } catch (err) {
+                                console.error('폴더 작업 실패:', err);
                               }
-                            } catch (err) {
-                              console.error('폴더 작업 실패:', err);
-                            }
-                          }}
-                          className="text-[10px] text-ark-cyan hover:text-ark-white transition-colors"
-                        >
-                          {imageAssetsStatus?.characters_exists ? '열기' : '폴더 생성'}
-                        </button>
+                            }}
+                            className="text-[10px] text-ark-cyan hover:text-ark-white transition-colors"
+                          >
+                            {imageAssetsStatus?.chararts_exists ? '열기' : '폴더 생성'}
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <p className="text-[10px] text-ark-gray/60">
-                          <span className="text-ark-gray ml-[52px]">Assets/Image/chararts</span>
-                        </p>
-                        <button
-                          onClick={async () => {
-                            try {
-                              if (imageAssetsStatus?.chararts_exists) {
-                                await settingsApi.openFolder('Assets/Image/chararts');
-                              } else {
-                                await settingsApi.createFolder('Assets/Image/chararts');
-                                checkImageAssets();
-                              }
-                            } catch (err) {
-                              console.error('폴더 작업 실패:', err);
-                            }
-                          }}
-                          className="text-[10px] text-ark-cyan hover:text-ark-white transition-colors"
-                        >
-                          {imageAssetsStatus?.chararts_exists ? '열기' : '폴더 생성'}
-                        </button>
-                      </div>
+
+                      {/* 에러 메시지 (공통) */}
+                      {imageExtractError && (
+                        <div className="p-2 bg-red-500/10 border border-red-500/30 rounded">
+                          <p className="text-xs text-red-400">{imageExtractError}</p>
+                        </div>
+                      )}
+
                       <p className="text-[10px] text-ark-gray/60">
                         <span className="text-ark-gray">추출 결과:</span> extracted/images/ 폴더에 PNG 생성
                       </p>
                     </div>
-                  </div>
+                  )}
                 </section>
 
                 {/* ===== 음성 설정 ===== */}

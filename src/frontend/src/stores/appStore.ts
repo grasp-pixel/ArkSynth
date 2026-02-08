@@ -87,6 +87,7 @@ interface AppState {
   matchSimilarity: number  // 매칭 유사도
   isMatching: boolean  // 매칭 진행 중
   dubbingWarning: string | null  // 더빙 모드 경고 (캐시 없음 등)
+  showNoCacheWarning: boolean  // 사전 더빙 미완료 경고 표시
   showCapturePreview: boolean  // 캡처 미리보기 표시
 
   // 더빙 준비 관련
@@ -147,6 +148,10 @@ interface AppState {
   // 패널 접기 상태
   isLeftPanelCollapsed: boolean
   isRightPanelCollapsed: boolean
+
+  // 전체 새로고침
+  isRefreshingAll: boolean
+  refreshAll: () => Promise<void>
 
   // 액션
   checkBackendStatus: () => Promise<void>
@@ -214,6 +219,8 @@ interface AppState {
   loadVoiceMappings: () => Promise<void>  // 백엔드에서 음성 매핑 로드
   toggleAutoPlay: () => void
   startDubbing: () => void
+  confirmStartDubbing: () => void  // showNoCacheWarning 확인 후 더빙 시작
+  dismissNoCacheWarning: () => void
   stopDubbing: () => void
 
   // 음성 모델 학습
@@ -466,6 +473,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   matchSimilarity: 0,
   isMatching: false,
   dubbingWarning: null,
+  showNoCacheWarning: false,
   showCapturePreview: false,
 
   // 더빙 준비 초기 상태
@@ -526,6 +534,29 @@ export const useAppStore = create<AppState>((set, get) => ({
   // 패널 접기 초기 상태 (localStorage에서 복원)
   isLeftPanelCollapsed: persistedState.isLeftPanelCollapsed ?? false,
   isRightPanelCollapsed: persistedState.isRightPanelCollapsed ?? false,
+
+  // 전체 새로고침
+  isRefreshingAll: false,
+  refreshAll: async () => {
+    set({ isRefreshingAll: true })
+    try {
+      await Promise.all([
+        settingsApi.refreshAll(),
+        ttsApi.reinitGptSovits().catch(() => {}),
+      ])
+      // 캐릭터/매핑 데이터도 새로고침
+      const { selectedGroupId, loadVoiceCharacters, loadTrainedModels, loadGroupCharacters } = get()
+      await Promise.all([
+        loadVoiceCharacters(),
+        loadTrainedModels(),
+        selectedGroupId ? loadGroupCharacters(selectedGroupId) : Promise.resolve(),
+      ])
+    } catch (err) {
+      console.error('전체 새로고침 실패:', err)
+    } finally {
+      set({ isRefreshingAll: false })
+    }
+  },
 
   // 백엔드 상태 확인
   checkBackendStatus: async () => {
@@ -1499,17 +1530,31 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // 더빙 준비 시작
   prepareForDubbing: async () => {
-    const { selectedGroupId, loadGroupCharacters, loadWindows } = get()
+    const { selectedGroupId, loadGroupCharacters, loadWindows, loadVoiceCharacters, loadTrainedModels, loadRenderStatus } = get()
 
     if (!selectedGroupId) {
       set({ ocrError: '스토리 그룹을 먼저 선택하세요' })
       return
     }
 
-    // 윈도우 목록 새로고침 (병렬 실행)
-    loadWindows()
-    await loadGroupCharacters(selectedGroupId)
-    set({ isPrepared: true })
+    set({ isLoadingCharacters: true, ocrError: null })
+
+    try {
+      // 모든 필수 데이터를 병렬 로드
+      await Promise.all([
+        loadGroupCharacters(selectedGroupId),
+        loadVoiceCharacters(),
+        loadTrainedModels(),
+        loadRenderStatus(),
+      ])
+      // 윈도우 목록은 실패해도 무방 (별도)
+      loadWindows()
+      // 모든 로드가 성공한 후에만 플래그 설정
+      set({ isPrepared: true })
+    } catch (error) {
+      console.error('더빙 준비 실패:', error)
+      set({ isPrepared: false, ocrError: '더빙 준비 중 오류가 발생했습니다' })
+    }
   },
 
   // 준비 취소
@@ -1681,16 +1726,35 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // 더빙 시작
   startDubbing: () => {
-    const { selectedWindowHwnd, startMonitoring } = get()
+    const { selectedWindowHwnd, selectedEpisodeId, cachedEpisodes, partialEpisodes } = get()
 
     if (!selectedWindowHwnd) {
       set({ ocrError: '캡처할 윈도우를 선택하세요' })
       return
     }
 
+    // 사전 더빙 상태 확인
+    if (selectedEpisodeId) {
+      const safeId = selectedEpisodeId.replace(/\//g, '_').replace(/\\/g, '_')
+      const hasCachedAudio = cachedEpisodes.includes(safeId) || partialEpisodes.includes(safeId)
+      if (!hasCachedAudio) {
+        set({ showNoCacheWarning: true })
+        return
+      }
+    }
+
     // 윈도우 캡처 모드로 설정 후 더빙 시작
     set({ isDubbingMode: true, captureMode: 'window' })
-    startMonitoring()
+    get().startMonitoring()
+  },
+
+  confirmStartDubbing: () => {
+    set({ showNoCacheWarning: false, isDubbingMode: true, captureMode: 'window' })
+    get().startMonitoring()
+  },
+
+  dismissNoCacheWarning: () => {
+    set({ showNoCacheWarning: false })
   },
 
   // 더빙 중지

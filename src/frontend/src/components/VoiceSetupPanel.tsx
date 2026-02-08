@@ -190,10 +190,33 @@ export default function VoiceSetupPanel() {
     return 'none'
   }, [selectedEpisodeId, cachedEpisodes, partialEpisodes, renderProgress])
 
+  // 나레이터/??? 미설정 경고 확인
+  const [showNarratorWarning, setShowNarratorWarning] = useState(false)
+  const [pendingRenderForce, setPendingRenderForce] = useState(false)
+
   // 사전 더빙 시작
   const handleStartRender = async (force: boolean = false) => {
+    if (!selectedEpisodeId) return
+
+    // 나레이터/??? 미설정 시 경고
+    const hasNarration = episodeNarrationCount > 0
+    const hasUnknownSpeaker = unknownSpeakerCount > 0
+    const missingNarrator = hasNarration && !narratorCharId
+    const missingUnknown = hasUnknownSpeaker && !unknownSpeakerCharId
+
+    if (missingNarrator || missingUnknown) {
+      setPendingRenderForce(force)
+      setShowNarratorWarning(true)
+      return
+    }
+
+    await startRender(selectedEpisodeId, force)
+  }
+
+  const confirmRenderWithWarning = async () => {
+    setShowNarratorWarning(false)
     if (selectedEpisodeId) {
-      await startRender(selectedEpisodeId, force)
+      await startRender(selectedEpisodeId, pendingRenderForce)
     }
   }
 
@@ -282,9 +305,14 @@ export default function VoiceSetupPanel() {
         <div className="p-4 border-b border-ark-border">
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-sm font-medium text-ark-gray">등장 캐릭터</h4>
-            <span className="text-xs text-ark-gray">
-              음성 {characterStats.withVoice}/{characterStats.total}
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-ark-gray">
+                음성 {characterStats.withVoice}/{characterStats.total}
+              </span>
+              <span className={`text-xs ${characterStats.trained === characterStats.withVoice ? 'text-green-400' : 'text-ark-yellow'}`}>
+                준비 {characterStats.trained}/{characterStats.withVoice}
+              </span>
+            </div>
           </div>
           {isLoadingEpisodeCharacters ? (
             <div className="text-center text-ark-gray py-4 ark-pulse">로딩 중...</div>
@@ -751,6 +779,51 @@ export default function VoiceSetupPanel() {
         </div>
 
       </div>
+
+      {/* 나레이터/??? 미설정 경고 다이얼로그 */}
+      {showNarratorWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="bg-ark-dark border border-ark-border rounded-lg p-6 max-w-md mx-4 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 24 24" className="w-5 h-5 text-amber-400" fill="currentColor">
+                  <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+                </svg>
+              </div>
+              <h3 className="text-base font-bold text-ark-white">화자 설정 확인</h3>
+            </div>
+            <div className="space-y-2 mb-6">
+              {episodeNarrationCount > 0 && !narratorCharId && (
+                <p className="text-sm text-amber-400">
+                  나레이터가 설정되지 않았습니다 ({episodeNarrationCount}개 나레이션 대사)
+                </p>
+              )}
+              {unknownSpeakerCount > 0 && !unknownSpeakerCharId && (
+                <p className="text-sm text-amber-400">
+                  ??? 화자가 설정되지 않았습니다 ({unknownSpeakerCount}개 대사)
+                </p>
+              )}
+              <p className="text-xs text-ark-gray">
+                해당 대사는 건너뜁니다. 캐릭터 관리에서 설정할 수 있습니다.
+              </p>
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowNarratorWarning(false)}
+                className="ark-btn text-sm px-4 py-2"
+              >
+                취소
+              </button>
+              <button
+                onClick={confirmRenderWithWarning}
+                className="ark-btn ark-btn-primary text-sm px-4 py-2"
+              >
+                계속 진행
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -202,6 +202,12 @@ export const ttsApi = {
     return res.data
   },
 
+  // GPT-SoVITS 재초기화
+  reinitGptSovits: async () => {
+    const res = await api.post<{ installed: boolean; message: string }>('/api/tts/gpt-sovits/reinit')
+    return res.data
+  },
+
   // GPT-SoVITS 진단 정보
   diagnoseGptSovits: async () => {
     const res = await api.get<GptSovitsDiagnosis>('/api/tts/gpt-sovits/diagnose')
@@ -1266,6 +1272,18 @@ export const settingsApi = {
     return res.data
   },
 
+  // 의존성 재검사
+  refreshDependencies: async () => {
+    const res = await api.post<{ dependencies: DependencyStatus[] }>('/api/settings/refresh-dependencies')
+    return res.data
+  },
+
+  // 전체 새로고침
+  refreshAll: async () => {
+    const res = await api.post<{ dependencies: DependencyStatus[]; message: string }>('/api/settings/refresh-all')
+    return res.data
+  },
+
   // 폴더 열기
   openFolder: async (path: string) => {
     const res = await api.post<{ status: string }>('/api/settings/open-folder', null, {
@@ -1285,6 +1303,12 @@ export const settingsApi = {
   // FFmpeg 설치 가이드
   getFFmpegGuide: async () => {
     const res = await api.get<FFmpegInstallGuide>('/api/settings/ffmpeg/install-guide')
+    return res.data
+  },
+
+  // FFmpeg 자동 설치
+  startFFmpegInstall: async () => {
+    const res = await api.post<{ status: string; message: string }>('/api/settings/ffmpeg/install')
     return res.data
   },
 
@@ -1548,6 +1572,45 @@ export function createInstallStream(
   }
 }
 
+// FFmpeg 설치 진행률 SSE 스트림
+export function createFFmpegInstallStream(
+  options: {
+    onProgress?: (progress: { stage: string; progress: number; message: string; error?: string }) => void
+    onComplete?: () => void
+    onError?: (error: string) => void
+  } = {}
+): { close: () => void } {
+  const { onProgress, onComplete, onError } = options
+
+  const eventSource = new EventSource(`${API_BASE}/api/settings/ffmpeg/install/stream`)
+
+  eventSource.addEventListener('progress', (event) => {
+    const progress = JSON.parse(event.data)
+    onProgress?.(progress)
+  })
+
+  eventSource.addEventListener('complete', () => {
+    onComplete?.()
+    eventSource.close()
+  })
+
+  eventSource.addEventListener('error', (event) => {
+    if (event instanceof MessageEvent) {
+      const data = JSON.parse(event.data)
+      onError?.(data.error || 'FFmpeg 설치 실패')
+    }
+    eventSource.close()
+  })
+
+  eventSource.onerror = () => {
+    // 연결 오류는 무시 (ping 타임아웃일 수 있음)
+  }
+
+  return {
+    close: () => { eventSource.close() }
+  }
+}
+
 // === 게임 데이터 API ===
 
 export interface GamedataStatus {
@@ -1677,6 +1740,8 @@ export interface ImageAssetsStatus {
   path?: string
   characters_exists?: boolean
   chararts_exists?: boolean
+  characters_bundles?: number
+  chararts_bundles?: number
   total_bundles?: number
   message?: string
   hint?: string
@@ -1697,10 +1762,12 @@ export const imageExtractApi = {
     return res.data
   },
 
-  // 추출 시작
-  startExtract: async () => {
+  // 추출 시작 (target: 'characters' | 'chararts' | 'all')
+  startExtract: async (target: string = 'all') => {
     const res = await api.post<{ status: string; message: string }>(
-      '/api/settings/extract/images/start'
+      '/api/settings/extract/images/start',
+      null,
+      { params: { target } }
     )
     return res.data
   },

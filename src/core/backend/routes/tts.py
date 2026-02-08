@@ -218,6 +218,22 @@ async def gpt_sovits_status():
         }
 
 
+@router.post("/gpt-sovits/reinit")
+async def reinit_gpt_sovits():
+    """GPT-SoVITS synthesizer 재초기화 (설치 후 반영용)"""
+    global _gpt_synthesizer, _gpt_model_manager
+    _gpt_synthesizer = None
+    _gpt_model_manager = None
+    try:
+        synthesizer = get_gpt_synthesizer()
+        return {
+            "installed": synthesizer.config.is_gpt_sovits_installed,
+            "message": "GPT-SoVITS 재초기화 완료",
+        }
+    except Exception as e:
+        return {"installed": False, "message": f"재초기화 실패: {e}"}
+
+
 @router.post("/gpt-sovits/start")
 async def start_gpt_sovits_api():
     """GPT-SoVITS API 서버 시작 (명시적 요청)"""
