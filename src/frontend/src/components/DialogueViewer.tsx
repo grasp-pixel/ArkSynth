@@ -61,7 +61,7 @@ function SpeakerCard({ speakerId, speakerName, speakerColor, dialogueType }: {
   return (
     <>
       <div
-        className="w-10 shrink-0 ml-1 flex items-center overflow-hidden cursor-pointer hover:brightness-110 transition-all"
+        className="w-10 shrink-0 ml-1 relative overflow-hidden cursor-pointer hover:brightness-110 transition-all"
         onClick={() => setShowFull(true)}
         title="클릭하여 크게 보기"
       >
@@ -69,7 +69,7 @@ function SpeakerCard({ speakerId, speakerName, speakerColor, dialogueType }: {
           src={imageUrl}
           alt={alt}
           loading="lazy"
-          className="w-full h-full max-h-32 object-cover object-top"
+          className="absolute inset-0 w-full h-full object-cover object-top"
           onError={() => setHasError(true)}
         />
       </div>
@@ -115,6 +115,7 @@ export default function DialogueViewer() {
     renderProgress,
     isRendering,
     resolveDialogueVoice,
+    getModelType,
     voiceCharacters,
     deleteDialogueAudio,
     cachedEpisodes,
@@ -132,24 +133,6 @@ export default function DialogueViewer() {
       }
     }
     return map
-  }, [groupCharacters])
-
-  // 음성 있는 캐릭터 ID Set (빠른 조회용)
-  const voicedCharacterIds = useMemo(() => {
-    const ids = new Set<string>()
-    groupCharacters
-      .filter(c => c.has_voice && c.char_id)
-      .forEach(c => ids.add(c.char_id!))
-    return ids
-  }, [groupCharacters])
-
-  // 음성 있는 캐릭터 이름 Set
-  const voicedCharacterNames = useMemo(() => {
-    const names = new Set<string>()
-    groupCharacters
-      .filter(c => c.has_voice)
-      .forEach(c => names.add(c.name))
-    return names
   }, [groupCharacters])
 
   const matchedRef = useRef<HTMLDivElement>(null)
@@ -238,12 +221,11 @@ export default function DialogueViewer() {
         {selectedEpisode.dialogues.map((dialogue, index) => {
           const isMatched = isDubbingMode && matchedDialogue?.id === dialogue.id
 
-          // 음성 있는 캐릭터인지 확인
-          const hasVoice = dialogue.speaker_id
-            ? voicedCharacterIds.has(dialogue.speaker_id)
-            : voicedCharacterNames.has(dialogue.speaker_name || '')
+          // 매핑된 캐릭터의 음성이 준비/학습됨 상태인지 판정
+          const resolvedCharId = resolveDialogueVoice(dialogue)
+          const hasVoice = !!resolvedCharId && getModelType(resolvedCharId) !== 'none'
 
-          // 음성 있으면 이름 해시 기반 고유 색상
+          // 음성 있는 캐릭터의 이름 해시 기반 고유 색상
           const speakerColor = hasVoice && dialogue.speaker_name
             ? getColorFromName(dialogue.speaker_name)
             : undefined
@@ -253,10 +235,7 @@ export default function DialogueViewer() {
           const isCachedEpisode = safeEpisodeId ? cachedEpisodes.includes(safeEpisodeId) : false
           const isRendered = isCachedEpisode || (renderProgress ? index < renderProgress.completed : false)
 
-          // 사용될 캐릭터 ID 계산 (디버그용, resolveDialogueVoice 통합 함수 사용)
-          const resolvedCharId = showCharIds ? resolveDialogueVoice(dialogue) : null
-
-          // 캐릭터 이름 조회
+          // 캐릭터 이름 조회 (디버그용)
           const resolvedCharName = resolvedCharId
             ? voiceCharacters.find(v => v.char_id === resolvedCharId)?.name
             : null
@@ -273,6 +252,7 @@ export default function DialogueViewer() {
                 isMatched={isMatched}
                 matchSimilarity={isMatched ? matchSimilarity : 0}
                 speakerColor={speakerColor}
+                hasVoice={hasVoice}
                 isPrepared={isPrepared}
                 isRendered={isRendered}
                 isRendering={isRendering && renderProgress?.completed === index}
@@ -302,6 +282,7 @@ interface DialogueItemProps {
   isMatched?: boolean
   matchSimilarity?: number
   speakerColor?: string  // 음성 있는 캐릭터의 고유 색상
+  hasVoice?: boolean     // 음성 재생 가능 여부
   isPrepared?: boolean   // 더빙 준비 완료 여부
   isRendered?: boolean   // 사전 렌더링 완료 여부
   isRendering?: boolean  // 현재 렌더링 중인 대사
@@ -313,13 +294,12 @@ interface DialogueItemProps {
   resolvedCharName?: string | null  // 캐릭터 이름
 }
 
-function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, speakerColor, isPrepared, isRendered, isRendering, imageSpeakerId, onPlay, onDelete, showCharId, resolvedCharId, resolvedCharName }: DialogueItemProps) {
+function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, speakerColor, hasVoice, isPrepared, isRendered, isRendering, imageSpeakerId, onPlay, onDelete, showCharId, resolvedCharId, resolvedCharName }: DialogueItemProps) {
   const { getModelType } = useAppStore()
   const isSubtitle = dialogue.dialogue_type === 'subtitle'
   const isSticker = dialogue.dialogue_type === 'sticker'
   const isPopup = dialogue.dialogue_type === 'popup'
   const isNarration = dialogue.dialogue_type === 'narration'
-  const hasVoice = !!speakerColor
 
   return (
     <div
