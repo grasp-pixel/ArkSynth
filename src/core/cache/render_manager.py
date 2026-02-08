@@ -281,6 +281,22 @@ class RenderManager:
             rendered_indices = {a.index for a in meta.audios}
             self._progress.completed = len(rendered_indices)
 
+            # 이름 기반 상속 맵 구축
+            # 같은 speaker_name이 char_id 있는 대사와 없는 대사로 모두 등장할 때,
+            # char_id 없는 대사도 같은 음성 매핑을 상속받도록 함
+            # 예: "바운티 헌터" → char_id="avg_npc_009"(일부) + char_id=None(일부)
+            name_to_voice: dict[str, str] = {}
+            for d in job.dialogues:
+                cid = d.get("char_id")
+                sname = d.get("speaker_name")
+                if cid and sname and sname not in name_to_voice:
+                    resolved_cid = resolve_to_table_id(cid)
+                    if resolved_cid in job.speaker_voice_map:
+                        name_to_voice[sname] = job.speaker_voice_map[resolved_cid]
+
+            if name_to_voice:
+                logger.info(f"[RenderManager] 이름 상속 맵: {name_to_voice}")
+
             # 대사별 렌더링
             logger.info(f"[RenderManager] 렌더링 시작 - episode: {episode_id}, total dialogues: {len(job.dialogues)}")
             if job.dialogues:
@@ -361,6 +377,10 @@ class RenderManager:
                         mapped = job.speaker_voice_map[mapping_key]
                         logger.info(f"[RenderManager] 수동 매핑 사용: {mapping_key} → {mapped}")
                         char_id_to_use = mapped
+                    elif speaker_name and speaker_name in name_to_voice:
+                        # 이름 상속: 같은 이름의 다른 대사에서 char_id 매핑 사용
+                        char_id_to_use = name_to_voice[speaker_name]
+                        logger.info(f"[RenderManager] 이름 상속 매핑: {speaker_name} → {char_id_to_use}")
                     else:
                         # 나레이션/기본 음성 사용
                         char_id_to_use = job.narrator_char_id or job.default_char_id
@@ -377,6 +397,10 @@ class RenderManager:
                     mapped = job.speaker_voice_map[char_id_to_use]
                     logger.info(f"[RenderManager] 수동 매핑 사용: {char_id_to_use} → {mapped}")
                     char_id_to_use = mapped
+                elif speaker_name and speaker_name in name_to_voice:
+                    # 이름 상속: 같은 이름의 다른 char_id에서 매핑 사용
+                    char_id_to_use = name_to_voice[speaker_name]
+                    logger.info(f"[RenderManager] 이름 상속 매핑: {char_id_to_use} ({speaker_name})")
                 else:
                     # 모델도 없고 매핑도 없으면 - default_char_id 사용
                     logger.info(f"[RenderManager] 기본 음성 사용: {char_id_to_use} → {job.default_char_id}")
