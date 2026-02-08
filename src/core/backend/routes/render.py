@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from ..config import config
-from ...cache import RenderCache, RenderManager, RenderProgress, RenderStatus, GroupRenderProgress
+from ...cache import RenderCache, RenderManager, RenderProgress, RenderStatus
 from ..shared_loaders import get_story_loader
 
 logger = logging.getLogger(__name__)
@@ -43,11 +43,8 @@ class StartRenderRequest(BaseModel):
     """렌더링 시작 요청"""
 
     language: str = "ko"
-    default_char_id: Optional[str] = None  # 모델 없는 캐릭터용 기본 음성
-    narrator_char_id: Optional[str] = None  # 나레이션용 캐릭터
-    speaker_voice_map: Optional[dict[str, str]] = None  # 화자별 음성 매핑 {char_id: voice_char_id}
-    default_female_voices: Optional[list[str]] = None  # 여성 기본음성 목록
-    default_male_voices: Optional[list[str]] = None  # 남성 기본음성 목록
+    voice_assignments: Optional[dict[int, str]] = None  # {대사인덱스: char_id} - 프론트엔드 최종 결정
+    default_char_id: Optional[str] = None  # 모델 준비 실패 시 폴백 음성
     force: bool = False  # 기존 캐시 무시하고 다시 렌더링
 
 
@@ -62,18 +59,6 @@ class RenderProgressResponse(BaseModel):
     current_index: Optional[int] = None
     current_text: Optional[str] = None
     error: Optional[str] = None
-
-
-class StartGroupRenderRequest(BaseModel):
-    """그룹 렌더링 시작 요청"""
-
-    language: str = "ko"
-    default_char_id: Optional[str] = None
-    narrator_char_id: Optional[str] = None
-    speaker_voice_map: Optional[dict[str, str]] = None
-    default_female_voices: Optional[list[str]] = None
-    default_male_voices: Optional[list[str]] = None
-    force: bool = False
 
 
 # === 엔드포인트 ===
@@ -183,16 +168,18 @@ async def start_render(
             detail="렌더링할 대사가 없습니다",
         )
 
+    # voice_assignments의 키를 int로 변환 (JSON에서는 문자열 키로 전달됨)
+    voice_assignments: dict[int, str] | None = None
+    if request.voice_assignments:
+        voice_assignments = {int(k): v for k, v in request.voice_assignments.items()}
+
     # 렌더링 시작
     progress = await manager.start_render(
         episode_id,
         dialogues,
         request.language,
+        voice_assignments=voice_assignments,
         default_char_id=request.default_char_id,
-        narrator_char_id=request.narrator_char_id,
-        speaker_voice_map=request.speaker_voice_map,
-        default_female_voices=request.default_female_voices,
-        default_male_voices=request.default_male_voices,
         force=request.force,
     )
 
@@ -442,208 +429,3 @@ async def render_progress_stream(episode_id: str):
         },
     )
 
-
-# === 그룹 렌더링 엔드포인트 ===
-
-
-@router.get("/group-status")
-async def get_group_render_status():
-    """그룹 렌더링 상태 조회"""
-    manager = get_render_manager()
-
-    group_progress = manager.get_group_progress()
-
-    return {
-        "is_group_rendering": manager.is_group_rendering,
-        "current_group_id": manager.current_group_id,
-        "group_progress": (
-            {
-                "group_id": group_progress.group_id,
-                "status": group_progress.status.value,
-                "total_episodes": group_progress.total_episodes,
-                "completed_episodes": group_progress.completed_episodes,
-                "current_episode_id": group_progress.current_episode_id,
-                "current_episode_progress": group_progress.current_episode_progress,
-                "overall_progress": group_progress.overall_progress,
-                "error": group_progress.error,
-            }
-            if group_progress
-            else None
-        ),
-    }
-
-
-@router.post("/start-group/{group_id}")
-async def start_group_render(
-    group_id: str,
-    request: StartGroupRenderRequest,
-):
-    """그룹 전체 렌더링 시작
-
-    Args:
-        group_id: 그룹 ID (예: main, memory, etc.)
-    """
-    manager = get_render_manager()
-    loader = get_story_loader()
-
-    # 이미 렌더링 중인지 확인
-    if manager.is_group_rendering:
-        raise HTTPException(
-            status_code=400,
-            detail=f"이미 그룹 렌더링 중: {manager.current_group_id}",
-        )
-
-    if manager.is_rendering:
-        raise HTTPException(
-            status_code=400,
-            detail=f"에피소드 렌더링 중: {manager.current_episode_id}",
-        )
-
-    # 그룹의 에피소드 목록 조회
-    try:
-        episodes = loader.list_episodes_by_group(group_id)
-        if not episodes:
-            raise HTTPException(
-                status_code=404,
-                detail=f"그룹에 에피소드가 없습니다: {group_id}",
-            )
-        episode_ids = [ep["id"] for ep in episodes]
-        logger.info(f"[GroupRender] 그룹 {group_id}: {len(episode_ids)}개 에피소드")
-    except Exception as e:
-        logger.error(f"그룹 에피소드 조회 실패: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"그룹 에피소드 조회 실패: {str(e)}",
-        )
-
-    # 대사 목록 가져오는 함수
-    def get_dialogues(episode_id: str) -> list[dict]:
-        try:
-            episode = loader.load_episode(episode_id)
-            if not episode:
-                return []
-            dialogues = []
-            for i, dialogue in enumerate(episode.dialogues):
-                if dialogue.text:
-                    dialogues.append({
-                        "index": i,
-                        "char_id": dialogue.speaker_id,
-                        "speaker_name": dialogue.speaker_name,
-                        "text": dialogue.text,
-                    })
-            return dialogues
-        except Exception as e:
-            logger.error(f"에피소드 대사 로드 실패 ({episode_id}): {e}")
-            return []
-
-    # 그룹 렌더링 시작
-    progress = await manager.start_group_render(
-        group_id=group_id,
-        episode_ids=episode_ids,
-        get_dialogues=get_dialogues,
-        language=request.language,
-        default_char_id=request.default_char_id,
-        narrator_char_id=request.narrator_char_id,
-        speaker_voice_map=request.speaker_voice_map,
-        default_female_voices=request.default_female_voices,
-        default_male_voices=request.default_male_voices,
-        force=request.force,
-    )
-
-    return {
-        "group_id": group_id,
-        "status": progress.status.value,
-        "total_episodes": progress.total_episodes,
-        "completed_episodes": progress.completed_episodes,
-        "overall_progress": progress.overall_progress,
-        "message": "그룹 렌더링 시작됨",
-    }
-
-
-@router.delete("/cancel-group")
-async def cancel_group_render():
-    """그룹 렌더링 취소"""
-    manager = get_render_manager()
-
-    if not manager.is_group_rendering:
-        raise HTTPException(
-            status_code=400,
-            detail="그룹 렌더링 중인 작업이 없습니다",
-        )
-
-    success = await manager.cancel_group_render()
-
-    return {"cancelled": success, "group_id": manager.current_group_id}
-
-
-@router.get("/stream-group/{group_id}")
-async def group_render_progress_stream(group_id: str):
-    """그룹 렌더링 진행률 SSE 스트리밍"""
-    manager = get_render_manager()
-
-    async def event_generator():
-        queue: asyncio.Queue[GroupRenderProgress] = asyncio.Queue()
-
-        def on_progress(progress: GroupRenderProgress):
-            if progress.group_id == group_id:
-                try:
-                    queue.put_nowait(progress)
-                except asyncio.QueueFull:
-                    pass
-
-        manager.add_group_progress_callback(on_progress)
-
-        try:
-            # 초기 상태 전송
-            initial = manager.get_group_progress()
-            if initial and initial.group_id == group_id:
-                data = {
-                    "group_id": initial.group_id,
-                    "status": initial.status.value,
-                    "total_episodes": initial.total_episodes,
-                    "completed_episodes": initial.completed_episodes,
-                    "current_episode_id": initial.current_episode_id,
-                    "current_episode_progress": initial.current_episode_progress,
-                    "overall_progress": initial.overall_progress,
-                }
-                yield f"event: progress\ndata: {json.dumps(data)}\n\n"
-
-            while True:
-                try:
-                    progress = await asyncio.wait_for(queue.get(), timeout=30.0)
-                    data = {
-                        "group_id": progress.group_id,
-                        "status": progress.status.value,
-                        "total_episodes": progress.total_episodes,
-                        "completed_episodes": progress.completed_episodes,
-                        "current_episode_id": progress.current_episode_id,
-                        "current_episode_progress": progress.current_episode_progress,
-                        "overall_progress": progress.overall_progress,
-                        "error": progress.error,
-                    }
-                    yield f"event: progress\ndata: {json.dumps(data)}\n\n"
-
-                    # 완료/취소/실패 시 스트림 종료
-                    if progress.status in (
-                        RenderStatus.COMPLETED,
-                        RenderStatus.CANCELLED,
-                        RenderStatus.FAILED,
-                    ):
-                        yield f"event: complete\ndata: {json.dumps(data)}\n\n"
-                        break
-
-                except asyncio.TimeoutError:
-                    # 킵얼라이브
-                    yield f"event: ping\ndata: {{}}\n\n"
-
-        finally:
-            manager.remove_group_progress_callback(on_progress)
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-        },
-    )

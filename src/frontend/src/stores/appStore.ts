@@ -12,7 +12,6 @@ import {
   createDialogueStream,
   createTrainingStream,
   createRenderStream,
-  createGroupRenderStream,
   type EpisodeDetail,
   type DialogueInfo,
   type EpisodeSummary,
@@ -28,11 +27,30 @@ import {
   type TrainingJob,
   type TrainedModel,
   type RenderProgress,
-  type GroupRenderProgress,
   type VoiceCharacter,
 } from '../services/api'
 
 type CaptureMode = 'monitor' | 'window'
+
+// 에피소드별 렌더링 결과 (그룹 렌더링 대시보드용)
+export interface EpisodeRenderResult {
+  episodeId: string
+  title: string
+  status: 'pending' | 'loading' | 'rendering' | 'completed' | 'failed' | 'skipped'
+  totalDialogues: number
+  completedDialogues: number
+  error?: string
+}
+
+// 그룹 렌더링 전체 상태 (프론트엔드 관리)
+export interface GroupRenderState {
+  groupId: string
+  status: 'idle' | 'running' | 'completed' | 'cancelled' | 'failed'
+  episodes: EpisodeRenderResult[]
+  currentEpisodeIndex: number  // -1이면 시작 전
+  currentDialogueText: string | null
+  startedAt: string | null
+}
 
 interface AppState {
   // 연결 상태
@@ -124,7 +142,7 @@ interface AppState {
 
   // 그룹 렌더링 관련
   isGroupRendering: boolean  // 그룹 렌더링 진행 중
-  groupRenderProgress: GroupRenderProgress | null  // 그룹 렌더링 진행률
+  groupRenderState: GroupRenderState | null  // 그룹 렌더링 상태 (프론트엔드 관리)
   groupRenderError: string | null  // 그룹 렌더링 오류
 
   // GPT-SoVITS 관련
@@ -254,8 +272,6 @@ interface AppState {
   // 그룹 렌더링
   startGroupRender: (groupId: string, force?: boolean) => Promise<void>
   cancelGroupRender: () => Promise<void>
-  subscribeToGroupRenderProgress: (groupId: string) => void
-  unsubscribeFromGroupRenderProgress: () => void
 
   // GPT-SoVITS
   checkGptSovitsStatus: () => Promise<void>
@@ -569,7 +585,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // 그룹 렌더링 초기 상태
   isGroupRendering: false,
-  groupRenderProgress: null,
+  groupRenderState: null,
   groupRenderError: null,
 
   // GPT-SoVITS 초기 상태
@@ -2076,89 +2092,49 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // 렌더링 시작
   startRender: async (episodeId: string, force: boolean = false) => {
-    const { defaultCharId, narratorCharId, unknownSpeakerCharId, speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices, getSpeakerVoice, loadEpisodeCharacters, loadVoiceCharacters } = get()
+    const { defaultCharId, resolveDialogueVoice, loadEpisodeCharacters, loadVoiceCharacters, selectedEpisode } = get()
 
-    // voiceCharacters가 비어있으면 먼저 로드 (getSpeakerVoice에서 사용)
-    let { voiceCharacters } = get()
-    if (voiceCharacters.length === 0) {
-      console.log('[startRender] voiceCharacters 비어있음, 로드 중...')
+    // voiceCharacters가 비어있으면 먼저 로드 (resolveDialogueVoice에서 사용)
+    if (get().voiceCharacters.length === 0) {
       await loadVoiceCharacters()
-      voiceCharacters = get().voiceCharacters
-      console.log('[startRender] voiceCharacters 로드 완료:', voiceCharacters.length)
     }
 
     // episodeCharacters가 비어있으면 먼저 로드
-    let { episodeCharacters } = get()
-    if (episodeCharacters.length === 0) {
-      console.log('[startRender] episodeCharacters 비어있음, 로드 중...')
+    if (get().episodeCharacters.length === 0) {
       await loadEpisodeCharacters(episodeId)
-      // 로드 후 다시 가져오기
-      episodeCharacters = get().episodeCharacters
-      console.log('[startRender] episodeCharacters 로드 완료:', episodeCharacters.length)
     }
 
-    // 1. episodeCharacters에서 voice_char_id가 있는 캐릭터들의 매핑 추가
-    // (실시간 재생과 동일한 로직 적용)
-    const resolvedVoiceMap: Record<string, string> = {}
-
-    console.log('[startRender] episodeCharacters 수:', episodeCharacters.length)
-
-    // voice_char_id가 있는 캐릭터들 자동 매핑
-    for (const char of episodeCharacters) {
-      // char_id가 있는 경우: char_id와 name: 키 모두 매핑
-      if (char.char_id) {
-        const voiceId = getSpeakerVoice(char.char_id, char.name)
-        if (voiceId) {
-          resolvedVoiceMap[char.char_id] = voiceId
-          console.log(`[startRender] 캐릭터 매핑: ${char.char_id} (${char.name}) → ${voiceId}`)
-
-          // name: 키도 추가 (speaker_id가 없는 대사용)
-          // 단, 미스터리 이름(???)은 전파하지 않음 (unknownSpeakerCharId로 처리)
-          if (!isMysteryName(char.name)) {
-            const nameKey = `name:${char.name}`
-            if (!resolvedVoiceMap[nameKey]) {
-              resolvedVoiceMap[nameKey] = voiceId
-            }
-          }
-        } else {
-          console.log(`[startRender] 캐릭터 음성 없음: ${char.char_id} (${char.name})`)
-        }
-      }
-      // char_id가 없지만 voice_char_id가 있는 경우: 별칭 캐릭터 (예: '오니' → 하루카)
-      else if (char.voice_char_id && char.name) {
-        const nameKey = `name:${char.name}`
-        resolvedVoiceMap[nameKey] = char.voice_char_id
-        console.log(`[startRender] 별칭 매핑: ${char.name} → ${char.voice_char_id}`)
-      }
+    // 에피소드 데이터 확인
+    const episode = selectedEpisode
+    if (!episode || !episode.dialogues.length) {
+      set({ renderError: '에피소드 데이터가 없습니다' })
+      return
     }
 
-    // 2. speakerVoiceMap 해석 + 알 수 없는 화자 매핑 (공통 함수 사용)
-    const speakerResolved = resolveSpeakerMappings(speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices, unknownSpeakerCharId)
-    Object.assign(resolvedVoiceMap, speakerResolved)
+    // 대사별 최종 음성 결정 맵 빌드 (resolveDialogueVoice 사용)
+    const voiceAssignments: Record<number, string> = {}
+    episode.dialogues.forEach((dialogue, index) => {
+      if (dialogue.text) {
+        const charId = resolveDialogueVoice(dialogue)
+        if (charId) voiceAssignments[index] = charId
+      }
+    })
 
     try {
       set({ renderError: null })
 
       console.log('[startRender] 렌더링 시작 요청:', {
         episodeId,
-        defaultCharId,
-        narratorCharId,
-        speakerVoiceMap: Object.keys(speakerVoiceMap).length,
-        resolvedVoiceMap,
-        defaultFemaleVoices,
-        defaultMaleVoices,
+        voiceAssignments: Object.keys(voiceAssignments).length,
         force,
       })
 
       const progress = await renderApi.startRender(
         episodeId,
         'ko',
+        Object.keys(voiceAssignments).length > 0 ? voiceAssignments : undefined,
         defaultCharId || undefined,
-        narratorCharId || undefined,
-        Object.keys(resolvedVoiceMap).length > 0 ? resolvedVoiceMap : undefined,
         force,
-        defaultFemaleVoices.length > 0 ? defaultFemaleVoices : undefined,
-        defaultMaleVoices.length > 0 ? defaultMaleVoices : undefined,
       )
 
       set({
@@ -2296,99 +2272,239 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // === 그룹 렌더링 ===
 
-  // 그룹 렌더링 시작
+  // 그룹 렌더링 시작 (프론트엔드 루프)
   startGroupRender: async (groupId: string, force: boolean = false) => {
-    const { defaultCharId, narratorCharId, unknownSpeakerCharId, speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices } = get()
+    const { groupEpisodes, cachedEpisodes, defaultCharId, resolveDialogueVoice, loadVoiceCharacters } = get()
 
-    // speakerVoiceMap 해석 + 알 수 없는 화자 매핑 (공통 함수 사용)
-    const resolvedVoiceMap = resolveSpeakerMappings(speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices, unknownSpeakerCharId)
+    if (groupEpisodes.length === 0) {
+      set({ groupRenderError: '렌더링할 에피소드가 없습니다' })
+      return
+    }
 
+    // voiceCharacters 로드 (resolveDialogueVoice에서 사용)
+    if (get().voiceCharacters.length === 0) {
+      await loadVoiceCharacters()
+    }
+
+    // GroupRenderState 초기화
+    const episodes: EpisodeRenderResult[] = groupEpisodes.map(ep => {
+      const safeId = ep.id.replace(/\//g, '_').replace(/\\/g, '_')
+      const isCached = !force && cachedEpisodes.includes(safeId)
+      return {
+        episodeId: ep.id,
+        title: ep.display_name || ep.name,
+        status: isCached ? 'skipped' as const : 'pending' as const,
+        totalDialogues: 0,
+        completedDialogues: 0,
+      }
+    })
+
+    const groupState: GroupRenderState = {
+      groupId,
+      status: 'running',
+      episodes,
+      currentEpisodeIndex: -1,
+      currentDialogueText: null,
+      startedAt: new Date().toISOString(),
+    }
+
+    groupRenderCancelled = false
+    set({
+      isGroupRendering: true,
+      groupRenderState: groupState,
+      groupRenderError: null,
+    })
+
+    console.log('[startGroupRender] 그룹 렌더링 시작:', {
+      groupId,
+      totalEpisodes: episodes.length,
+      skipped: episodes.filter(e => e.status === 'skipped').length,
+      force,
+    })
+
+    // 에피소드별 순차 렌더링 루프
     try {
-      set({ groupRenderError: null })
+      for (let i = 0; i < episodes.length; i++) {
+        if (groupRenderCancelled) {
+          set(state => ({
+            groupRenderState: state.groupRenderState ? {
+              ...state.groupRenderState,
+              status: 'cancelled',
+            } : null,
+            isGroupRendering: false,
+          }))
+          console.log('[startGroupRender] 그룹 렌더링 취소됨')
+          return
+        }
 
-      console.log('[startGroupRender] 그룹 렌더링 시작 요청:', {
-        groupId,
-        defaultCharId,
-        narratorCharId,
-        speakerVoiceMap: Object.keys(resolvedVoiceMap).length,
-        force,
-      })
+        const ep = episodes[i]
+        if (ep.status === 'skipped') continue
 
-      const progress = await renderApi.startGroupRender(
-        groupId,
-        'ko',
-        defaultCharId || undefined,
-        narratorCharId || undefined,
-        Object.keys(resolvedVoiceMap).length > 0 ? resolvedVoiceMap : undefined,
-        force,
-        defaultFemaleVoices.length > 0 ? defaultFemaleVoices : undefined,
-        defaultMaleVoices.length > 0 ? defaultMaleVoices : undefined,
-      )
+        // 현재 에피소드 인덱스 업데이트
+        set(state => ({
+          groupRenderState: state.groupRenderState ? {
+            ...state.groupRenderState,
+            currentEpisodeIndex: i,
+            episodes: state.groupRenderState.episodes.map((e, idx) =>
+              idx === i ? { ...e, status: 'loading' as const } : e
+            ),
+          } : null,
+        }))
 
-      set({
-        isGroupRendering: progress.status === 'rendering',
-        groupRenderProgress: progress,
-      })
+        try {
+          // 에피소드 데이터 로드
+          const episodeData = await episodesApi.getEpisode(ep.episodeId)
+          if (!episodeData || !episodeData.dialogues.length) {
+            set(state => ({
+              groupRenderState: state.groupRenderState ? {
+                ...state.groupRenderState,
+                episodes: state.groupRenderState.episodes.map((e, idx) =>
+                  idx === i ? { ...e, status: 'skipped' as const } : e
+                ),
+              } : null,
+            }))
+            continue
+          }
 
-      // 렌더링 진행 중이면 구독 시작
-      if (progress.status === 'rendering') {
-        get().subscribeToGroupRenderProgress(groupId)
+          // 에피소드 캐릭터 로드 (resolveDialogueVoice에서 사용)
+          const charData = await episodesApi.getEpisodeCharacters(ep.episodeId)
+          set({ episodeCharacters: charData.characters })
+
+          // voice_assignments 빌드
+          const voiceAssignments: Record<number, string> = {}
+          let dialogueCount = 0
+          episodeData.dialogues.forEach((dialogue, index) => {
+            if (dialogue.text) {
+              dialogueCount++
+              const charId = resolveDialogueVoice(dialogue)
+              if (charId) voiceAssignments[index] = charId
+            }
+          })
+
+          // 에피소드 상태를 rendering으로 업데이트
+          set(state => ({
+            groupRenderState: state.groupRenderState ? {
+              ...state.groupRenderState,
+              episodes: state.groupRenderState.episodes.map((e, idx) =>
+                idx === i ? { ...e, status: 'rendering' as const, totalDialogues: dialogueCount } : e
+              ),
+            } : null,
+          }))
+
+          // 렌더링 시작
+          await renderApi.startRender(
+            ep.episodeId,
+            'ko',
+            Object.keys(voiceAssignments).length > 0 ? voiceAssignments : undefined,
+            defaultCharId || undefined,
+            force,
+          )
+
+          // SSE로 대사별 진행률 수신하며 완료 대기
+          await new Promise<void>((resolve, reject) => {
+            let cancelCheck: ReturnType<typeof setInterval>
+
+            const cleanup = () => {
+              clearInterval(cancelCheck)
+              stream.close()
+            }
+
+            const stream = createRenderStream(ep.episodeId, {
+              onProgress: (progress) => {
+                set(state => ({
+                  groupRenderState: state.groupRenderState ? {
+                    ...state.groupRenderState,
+                    currentDialogueText: progress.current_text,
+                    episodes: state.groupRenderState.episodes.map((e, idx) =>
+                      idx === i ? { ...e, completedDialogues: progress.completed, totalDialogues: progress.total } : e
+                    ),
+                  } : null,
+                }))
+              },
+              onComplete: (progress) => {
+                set(state => ({
+                  groupRenderState: state.groupRenderState ? {
+                    ...state.groupRenderState,
+                    currentDialogueText: null,
+                    episodes: state.groupRenderState.episodes.map((e, idx) =>
+                      idx === i ? { ...e, status: 'completed' as const, completedDialogues: progress.completed, totalDialogues: progress.total } : e
+                    ),
+                  } : null,
+                }))
+                cleanup()
+                resolve()
+              },
+              onError: (error) => {
+                cleanup()
+                reject(new Error(error))
+              },
+            })
+
+            // 취소 감지를 위한 폴링
+            cancelCheck = setInterval(() => {
+              if (groupRenderCancelled) {
+                cleanup()
+                renderApi.cancelRender(ep.episodeId).catch(() => {})
+                resolve()
+              }
+            }, 500)
+          })
+
+        } catch (error: any) {
+          console.error(`[startGroupRender] 에피소드 렌더링 실패: ${ep.episodeId}`, error)
+          set(state => ({
+            groupRenderState: state.groupRenderState ? {
+              ...state.groupRenderState,
+              episodes: state.groupRenderState.episodes.map((e, idx) =>
+                idx === i ? { ...e, status: 'failed' as const, error: error?.message || '렌더링 실패' } : e
+              ),
+            } : null,
+          }))
+          // 실패해도 다음 에피소드 계속
+        }
+      }
+
+      // 전체 완료
+      if (!groupRenderCancelled) {
+        set(state => ({
+          groupRenderState: state.groupRenderState ? {
+            ...state.groupRenderState,
+            status: 'completed',
+            currentDialogueText: null,
+          } : null,
+          isGroupRendering: false,
+        }))
+        // 캐시 목록 갱신
+        get().loadRenderStatus()
+        console.log('[startGroupRender] 그룹 렌더링 완료')
       }
     } catch (error: any) {
-      console.error('Failed to start group render:', error)
-      const errorMsg = error?.response?.data?.detail || '그룹 렌더링 시작 실패'
-      set({ groupRenderError: errorMsg })
+      console.error('[startGroupRender] 그룹 렌더링 실패:', error)
+      set({
+        groupRenderState: get().groupRenderState ? {
+          ...get().groupRenderState!,
+          status: 'failed',
+        } : null,
+        isGroupRendering: false,
+        groupRenderError: error?.message || '그룹 렌더링 실패',
+      })
     }
   },
 
   // 그룹 렌더링 취소
   cancelGroupRender: async () => {
-    try {
-      await renderApi.cancelGroupRender()
-      set({
-        isGroupRendering: false,
-        groupRenderProgress: null,
-      })
-      get().unsubscribeFromGroupRenderProgress()
-    } catch (error) {
-      console.error('Failed to cancel group render:', error)
-      set({ groupRenderError: '그룹 렌더링 취소 실패' })
-    }
-  },
-
-  // 그룹 렌더링 진행 상황 구독
-  subscribeToGroupRenderProgress: (groupId: string) => {
-    if (groupRenderStream) {
-      groupRenderStream.close()
-    }
-
-    groupRenderStream = createGroupRenderStream(groupId, {
-      onProgress: (progress) => {
-        set({
-          groupRenderProgress: progress,
-          isGroupRendering: progress.status === 'rendering',
-        })
-      },
-      onComplete: (progress) => {
-        set({
-          groupRenderProgress: progress,
-          isGroupRendering: false,
-        })
-        // 캐시 목록 갱신
-        get().loadRenderStatus()
-      },
-      onError: (error) => {
-        console.error('Group render stream error:', error)
-        set({ groupRenderError: error })
-      },
-    })
-  },
-
-  // 그룹 렌더링 진행 상황 구독 해제
-  unsubscribeFromGroupRenderProgress: () => {
-    if (groupRenderStream) {
-      groupRenderStream.close()
-      groupRenderStream = null
+    groupRenderCancelled = true
+    // 현재 진행 중인 에피소드 렌더링도 취소
+    const groupState = get().groupRenderState
+    if (groupState) {
+      const currentEp = groupState.episodes[groupState.currentEpisodeIndex]
+      if (currentEp && currentEp.status === 'rendering') {
+        try {
+          await renderApi.cancelRender(currentEp.episodeId)
+        } catch {
+          // 무시
+        }
+      }
     }
   },
 
@@ -2521,5 +2637,5 @@ let trainingStream: { close: () => void } | null = null
 // 렌더링 스트림 참조
 let renderStream: { close: () => void } | null = null
 
-// 그룹 렌더링 스트림 참조
-let groupRenderStream: { close: () => void } | null = null
+// 그룹 렌더링 취소 플래그
+let groupRenderCancelled = false

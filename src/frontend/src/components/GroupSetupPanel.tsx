@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
-import { useAppStore, isMysteryName } from '../stores/appStore'
+import { useAppStore, isMysteryName, type GroupRenderState, type EpisodeRenderResult } from '../stores/appStore'
 import VoiceMappingModal from './VoiceMappingModal'
 
 interface BatchTasks {
@@ -15,6 +15,126 @@ interface FinetuneTarget {
 
 // 대기 중인 다음 단계
 type PendingStep = 'finetune' | 'render' | null
+
+// 에피소드 상태 아이콘
+function EpisodeStatusIcon({ status }: { status: EpisodeRenderResult['status'] }) {
+  switch (status) {
+    case 'completed':
+      return <span className="text-green-400 flex-shrink-0">&#10003;</span>
+    case 'skipped':
+      return <span className="text-ark-gray flex-shrink-0">&ndash;</span>
+    case 'rendering':
+      return <span className="text-ark-orange flex-shrink-0 ark-pulse">&#9654;</span>
+    case 'loading':
+      return <span className="text-ark-orange flex-shrink-0 ark-pulse">&#9678;</span>
+    case 'failed':
+      return <span className="text-red-400 flex-shrink-0">&#10007;</span>
+    default:
+      return <span className="text-ark-gray/50 flex-shrink-0">&#9675;</span>
+  }
+}
+
+// 그룹 렌더링 대시보드
+function GroupRenderDashboard({ state, onCancel }: { state: GroupRenderState; onCancel: () => void }) {
+  const currentRef = useRef<HTMLDivElement>(null)
+
+  // 현재 진행 중인 에피소드로 자동 스크롤
+  useEffect(() => {
+    currentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [state.currentEpisodeIndex])
+
+  // 전체 진행률 계산
+  const completedCount = state.episodes.filter(e => e.status === 'completed' || e.status === 'skipped').length
+  const totalCount = state.episodes.length
+  const overallPercent = totalCount > 0 ? (completedCount / totalCount) * 100 : 0
+
+  return (
+    <div className="space-y-3 p-3 bg-ark-black/50 rounded border border-ark-border">
+      {/* 헤더 + 전체 진행률 */}
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-ark-white font-medium">그룹 사전 더빙</span>
+        <span className="text-ark-orange">
+          {completedCount}/{totalCount} ({overallPercent.toFixed(0)}%)
+        </span>
+      </div>
+      <div className="w-full bg-ark-black rounded-full h-2 overflow-hidden">
+        <div
+          className="bg-ark-orange h-2 rounded-full transition-all duration-300"
+          style={{ width: `${overallPercent}%` }}
+        />
+      </div>
+
+      {/* 에피소드 리스트 */}
+      <div className="max-h-64 overflow-y-auto space-y-1">
+        {state.episodes.map((ep, idx) => (
+          <div
+            key={ep.episodeId}
+            ref={idx === state.currentEpisodeIndex ? currentRef : undefined}
+            className={`px-2 py-1.5 rounded text-xs ${
+              ep.status === 'rendering' || ep.status === 'loading'
+                ? 'bg-ark-orange/10 border border-ark-orange/30'
+                : 'bg-ark-black/30'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <EpisodeStatusIcon status={ep.status} />
+              <span className={`truncate flex-1 ${
+                ep.status === 'completed' ? 'text-green-400' :
+                ep.status === 'failed' ? 'text-red-400' :
+                ep.status === 'skipped' ? 'text-ark-gray' :
+                ep.status === 'rendering' || ep.status === 'loading' ? 'text-ark-white' :
+                'text-ark-gray/70'
+              }`}>
+                {ep.title}
+              </span>
+              {ep.status === 'skipped' && (
+                <span className="text-[10px] text-ark-gray">(캐시됨)</span>
+              )}
+              {ep.status === 'rendering' && ep.totalDialogues > 0 && (
+                <span className="text-[10px] text-ark-orange">
+                  {ep.completedDialogues}/{ep.totalDialogues}
+                </span>
+              )}
+              {ep.status === 'loading' && (
+                <span className="text-[10px] text-ark-orange">음성 설정 중...</span>
+              )}
+            </div>
+            {/* 현재 렌더링 중인 에피소드: 대사 진행률 바 + 텍스트 */}
+            {ep.status === 'rendering' && ep.totalDialogues > 0 && (
+              <div className="mt-1 ml-5">
+                <div className="w-full bg-ark-black rounded-full h-1 overflow-hidden">
+                  <div
+                    className="bg-ark-orange/70 h-1 rounded-full transition-all duration-300"
+                    style={{ width: `${ep.totalDialogues > 0 ? (ep.completedDialogues / ep.totalDialogues) * 100 : 0}%` }}
+                  />
+                </div>
+                {state.currentDialogueText && (
+                  <p className="text-[10px] text-ark-gray/70 mt-0.5 truncate">
+                    &ldquo;{state.currentDialogueText}&rdquo;
+                  </p>
+                )}
+              </div>
+            )}
+            {/* 실패한 에피소드: 에러 메시지 */}
+            {ep.status === 'failed' && ep.error && (
+              <p className="text-[10px] text-red-400/70 mt-0.5 ml-5 truncate">
+                {ep.error}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* 취소 버튼 */}
+      <button
+        onClick={onCancel}
+        className="w-full ark-btn text-sm text-red-400 hover:text-red-300 border-red-400/30"
+      >
+        취소
+      </button>
+    </div>
+  )
+}
 
 export default function GroupSetupPanel() {
   const [isVoiceMappingModalOpen, setIsVoiceMappingModalOpen] = useState(false)
@@ -54,7 +174,7 @@ export default function GroupSetupPanel() {
     gptSovitsStatus,
     // 그룹 렌더링
     isGroupRendering,
-    groupRenderProgress,
+    groupRenderState,
     groupRenderError,
     startGroupRender,
     cancelGroupRender,
@@ -503,34 +623,11 @@ export default function GroupSetupPanel() {
               )}
 
               {/* 그룹 렌더링 진행 중 */}
-              {isGroupRendering && groupRenderProgress && (
-                <div className="space-y-3 p-3 bg-ark-black/50 rounded border border-ark-border">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-ark-white">
-                      에피소드 {groupRenderProgress.completed_episodes}/{groupRenderProgress.total_episodes}
-                    </span>
-                    <span className="text-ark-orange">
-                      {groupRenderProgress.overall_progress.toFixed(0)}%
-                    </span>
-                  </div>
-                  <div className="w-full bg-ark-black rounded-full h-2 overflow-hidden">
-                    <div
-                      className="bg-ark-orange h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${groupRenderProgress.overall_progress}%` }}
-                    />
-                  </div>
-                  {groupRenderProgress.current_episode_id && (
-                    <p className="text-xs text-ark-gray truncate">
-                      현재: {groupRenderProgress.current_episode_id.split('/').pop()}
-                    </p>
-                  )}
-                  <button
-                    onClick={cancelGroupRender}
-                    className="w-full ark-btn text-sm text-red-400 hover:text-red-300 border-red-400/30"
-                  >
-                    취소
-                  </button>
-                </div>
+              {isGroupRendering && groupRenderState && (
+                <GroupRenderDashboard
+                  state={groupRenderState}
+                  onCancel={cancelGroupRender}
+                />
               )}
             </div>
           ) : (

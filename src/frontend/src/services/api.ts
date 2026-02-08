@@ -829,23 +829,6 @@ export interface RenderStatusResponse {
   current_progress: RenderProgress | null
 }
 
-export interface GroupRenderProgress {
-  group_id: string
-  status: 'idle' | 'rendering' | 'completed' | 'cancelled' | 'failed'
-  total_episodes: number
-  completed_episodes: number
-  current_episode_id: string | null
-  current_episode_progress: number  // 0~1
-  overall_progress: number  // 0~100
-  error: string | null
-}
-
-export interface GroupRenderStatusResponse {
-  is_group_rendering: boolean
-  current_group_id: string | null
-  group_progress: GroupRenderProgress | null
-}
-
 export interface CacheInfo {
   episode_id: string
   total_dialogues: number
@@ -872,22 +855,16 @@ export const renderApi = {
   startRender: async (
     episodeId: string,
     language: string = 'ko',
+    voiceAssignments?: Record<number, string>,
     defaultCharId?: string,
-    narratorCharId?: string,
-    speakerVoiceMap?: Record<string, string>,
     force: boolean = false,
-    defaultFemaleVoices?: string[],
-    defaultMaleVoices?: string[],
   ) => {
     const res = await api.post<RenderProgress>(
       `/api/render/start/${encodeURIComponent(episodeId)}`,
       {
         language,
+        voice_assignments: voiceAssignments,
         default_char_id: defaultCharId,
-        narrator_char_id: narratorCharId,
-        speaker_voice_map: speakerVoiceMap,
-        default_female_voices: defaultFemaleVoices,
-        default_male_voices: defaultMaleVoices,
         force
       }
     )
@@ -939,47 +916,6 @@ export const renderApi = {
     return res.data
   },
 
-  // === 그룹 렌더링 ===
-
-  // 그룹 렌더링 상태
-  getGroupStatus: async () => {
-    const res = await api.get<GroupRenderStatusResponse>('/api/render/group-status')
-    return res.data
-  },
-
-  // 그룹 렌더링 시작
-  startGroupRender: async (
-    groupId: string,
-    language: string = 'ko',
-    defaultCharId?: string,
-    narratorCharId?: string,
-    speakerVoiceMap?: Record<string, string>,
-    force: boolean = false,
-    defaultFemaleVoices?: string[],
-    defaultMaleVoices?: string[],
-  ) => {
-    const res = await api.post<GroupRenderProgress & { message: string }>(
-      `/api/render/start-group/${encodeURIComponent(groupId)}`,
-      {
-        language,
-        default_char_id: defaultCharId,
-        narrator_char_id: narratorCharId,
-        speaker_voice_map: speakerVoiceMap,
-        default_female_voices: defaultFemaleVoices,
-        default_male_voices: defaultMaleVoices,
-        force
-      }
-    )
-    return res.data
-  },
-
-  // 그룹 렌더링 취소
-  cancelGroupRender: async () => {
-    const res = await api.delete<{ cancelled: boolean; group_id: string | null }>(
-      '/api/render/cancel-group'
-    )
-    return res.data
-  },
 }
 
 // 렌더링 진행률 SSE 스트림
@@ -1013,46 +949,6 @@ export function createRenderStream(
 
   eventSource.onerror = () => {
     onError?.('Render stream connection failed')
-  }
-
-  return {
-    close: () => {
-      eventSource.close()
-    }
-  }
-}
-
-// 그룹 렌더링 진행률 SSE 스트림
-export function createGroupRenderStream(
-  groupId: string,
-  options: {
-    onProgress?: (progress: GroupRenderProgress) => void
-    onComplete?: (progress: GroupRenderProgress) => void
-    onError?: (error: string) => void
-  } = {}
-): { close: () => void } {
-  const { onProgress, onComplete, onError } = options
-
-  const eventSource = new EventSource(
-    `${API_BASE}/api/render/stream-group/${encodeURIComponent(groupId)}`
-  )
-
-  eventSource.addEventListener('progress', (event) => {
-    const progress = JSON.parse(event.data) as GroupRenderProgress
-    onProgress?.(progress)
-  })
-
-  eventSource.addEventListener('complete', (event) => {
-    const progress = JSON.parse(event.data) as GroupRenderProgress
-    onComplete?.(progress)
-  })
-
-  eventSource.addEventListener('ping', () => {
-    // 킵얼라이브, 무시
-  })
-
-  eventSource.onerror = () => {
-    onError?.('Group render stream connection failed')
   }
 
   return {
