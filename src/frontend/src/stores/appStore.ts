@@ -238,12 +238,14 @@ interface AppState {
   getModelType: (charId: string) => 'none' | 'prepared' | 'finetuned'
   canFinetune: (charId: string) => boolean
   getSegmentCount: (charId: string) => number
+  getTxtCount: (charId: string) => number
 
   // 렌더링
   loadRenderStatus: () => Promise<void>
   startRender: (episodeId: string, force?: boolean) => Promise<void>
   cancelRender: () => Promise<void>
   deleteRenderCache: (episodeId: string) => Promise<void>
+  deleteDialogueAudio: (episodeId: string, index: number) => Promise<void>
   subscribeToRenderProgress: (episodeId: string) => void
   unsubscribeFromRenderProgress: () => void
   getRenderedAudioUrl: (index: number) => string | null
@@ -838,13 +840,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       currentAudio = null
     }
 
-    // char_id 없으면 재생 불가
-    if (!charIdToUse) {
-      console.warn('[playDialogue] 캐릭터 ID 없음 - 재생 불가')
-      isPlayStarting = false
-      return
-    }
-
     // 캐시 확인 - 배열 인덱스 찾기 (line_number가 아닌 실제 배열 인덱스 사용)
     const { selectedEpisode } = get()
     const dialogueIndex = selectedEpisode?.dialogues.findIndex(d => d.id === dialogue.id) ?? -1
@@ -909,9 +904,14 @@ export const useAppStore = create<AppState>((set, get) => ({
           return
         }
         // 테스트 모드: 캐시 실패 시 실시간 합성으로 폴백
+        if (!charIdToUse) {
+          set({ isPlaying: false, currentDialogue: null })
+          isPlayStarting = false
+          return
+        }
         console.log('[playDialogue] 캐시 실패 → 실시간 합성 폴백')
         try {
-          await synthesizeAndPlayDialogue(dialogue.text, charIdToUse!, set, get)
+          await synthesizeAndPlayDialogue(dialogue.text, charIdToUse, set, get)
         } finally {
           isPlayStarting = false
         }
@@ -927,6 +927,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         currentDialogue: null,
         dubbingWarning: '사전 더빙이 필요합니다. 먼저 에피소드 더빙을 진행하세요.',
       })
+      isPlayStarting = false
+      return
+    }
+
+    // char_id 없으면 실시간 합성 불가
+    if (!charIdToUse) {
+      console.warn('[playDialogue] 캐릭터 ID 없음 - 실시간 합성 불가')
+      set({ isPlaying: false, currentDialogue: null })
       isPlayStarting = false
       return
     }
@@ -1764,14 +1772,20 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // 더빙 시작
   startDubbing: () => {
-    const { selectedWindowHwnd, selectedEpisodeId, cachedEpisodes, partialEpisodes } = get()
+    const { selectedWindowHwnd, selectedEpisodeId, cachedEpisodes, partialEpisodes, isRendering } = get()
 
     if (!selectedWindowHwnd) {
       set({ ocrError: '캡처할 윈도우를 선택하세요' })
       return
     }
 
-    // 사전 더빙 상태 확인
+    // 렌더링 중이면 GPU 잠금 안내 표시 (더빙 시작 옵션 포함)
+    if (isRendering) {
+      set({ showNoCacheWarning: true })
+      return
+    }
+
+    // 캐시 없으면 안내 표시 (정보만)
     if (selectedEpisodeId) {
       const safeId = selectedEpisodeId.replace(/\//g, '_').replace(/\\/g, '_')
       const hasCachedAudio = cachedEpisodes.includes(safeId) || partialEpisodes.includes(safeId)
@@ -1781,7 +1795,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
 
-    // 윈도우 캡처 모드로 설정 후 더빙 시작
+    // 캐시 있고 렌더링 안 중이면 바로 시작
     set({ isDubbingMode: true, captureMode: 'window' })
     get().startMonitoring()
   },
@@ -2033,6 +2047,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     return model?.segment_count ?? 0
   },
 
+  // 전처리된 텍스트 수 조회
+  getTxtCount: (charId: string) => {
+    const model = get().trainedModels.find(m => m.char_id === charId)
+    return model?.txt_count ?? 0
+  },
+
   // === 렌더링 ===
 
   // 렌더링 상태 로드
@@ -2041,7 +2061,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       const status = await renderApi.getStatus()
       set({
         isRendering: status.is_rendering,
-        renderProgress: status.current_progress,
+        // 렌더링 중이면 current_progress로 갱신, 아니면 기존 renderProgress 유지
+        // (selectEpisode에서 설정한 에피소드별 진행률을 보존)
+        ...(status.current_progress ? { renderProgress: status.current_progress } : {}),
         cachedEpisodes: status.cached_episodes,
         partialEpisodes: status.partial_episodes || [],
         renderError: null,
@@ -2184,6 +2206,34 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (error) {
       console.error('Failed to delete render cache:', error)
       set({ renderError: '캐시 삭제 실패' })
+    }
+  },
+
+  // 개별 대사 렌더 오디오 삭제
+  deleteDialogueAudio: async (episodeId: string, index: number) => {
+    try {
+      const result = await renderApi.deleteAudio(episodeId, index)
+      // renderProgress 갱신
+      const { renderProgress } = get()
+      if (renderProgress) {
+        set({
+          renderProgress: {
+            ...renderProgress,
+            completed: result.rendered_count,
+            progress_percent: renderProgress.total > 0
+              ? (result.rendered_count / renderProgress.total) * 100
+              : 0,
+            status: result.rendered_count >= renderProgress.total ? 'completed'
+              : result.rendered_count > 0 ? 'partial'
+              : 'not_started',
+          },
+        })
+      }
+      // 캐시 목록 갱신
+      await get().loadRenderStatus()
+    } catch (error) {
+      console.error('Failed to delete dialogue audio:', error)
+      set({ renderError: '오디오 삭제 실패' })
     }
   },
 

@@ -185,6 +185,10 @@ class TrainingManager:
                         job.status = TrainingStatus.FAILED
                         job.error_message = self.trainer.last_error or "학습 실패"
 
+                    # prepare 모드에서 취소/실패 시 부분 생성 파일 정리
+                    if job.mode == "prepare":
+                        self._cleanup_partial_prepare(job.char_id)
+
                 job.completed_at = datetime.now()
                 self._notify_progress(job)
                 self._current_job = None
@@ -197,6 +201,23 @@ class TrainingManager:
                     self._current_job.completed_at = datetime.now()
                     self._notify_progress(self._current_job)
                     self._current_job = None
+
+    def _cleanup_partial_prepare(self, char_id: str):
+        """prepare 취소/실패 시 부분 생성 파일 정리"""
+        import shutil
+
+        # info.json이 없으면 불완전한 준비 → preprocessed 폴더 삭제
+        info_path = self.config.get_model_path(char_id) / "info.json"
+        if info_path.exists():
+            return  # 완료된 준비는 건드리지 않음
+
+        preprocessed_dir = self.config.get_preprocessed_audio_path(char_id)
+        if preprocessed_dir.exists():
+            try:
+                shutil.rmtree(preprocessed_dir)
+                logger.info(f"부분 준비 파일 정리: {char_id}")
+            except Exception as e:
+                logger.error(f"부분 준비 파일 정리 실패 ({char_id}): {e}")
 
     def _get_audio_files(self, char_id: str) -> list[Path]:
         """캐릭터 오디오 파일 목록 (extracted/{lang_folder}/{char_id}/ 구조)"""

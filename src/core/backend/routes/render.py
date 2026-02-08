@@ -342,6 +342,28 @@ async def delete_cache(episode_id: str):
     return {"deleted": success}
 
 
+@router.delete("/audio/{episode_id:path}/{index}")
+async def delete_audio(episode_id: str, index: int):
+    """개별 렌더링 오디오 삭제"""
+    cache = get_render_cache()
+
+    if not cache.has_cache(episode_id):
+        raise HTTPException(
+            status_code=404,
+            detail=f"캐시 없음: {episode_id}",
+        )
+
+    success = cache.delete_audio(episode_id, index)
+    if not success:
+        raise HTTPException(
+            status_code=500,
+            detail=f"오디오 삭제 실패: {episode_id}[{index}]",
+        )
+
+    completed, total = cache.get_progress(episode_id)
+    return {"deleted": True, "rendered_count": completed}
+
+
 @router.get("/stream/{episode_id:path}")
 async def render_progress_stream(episode_id: str):
     """렌더링 진행률 SSE 스트리밍"""

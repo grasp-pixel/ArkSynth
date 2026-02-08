@@ -1358,13 +1358,13 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </section>
 
-                {/* TTS 추론 파라미터 */}
-                <TTSParamsSection />
-
                 {/* ===== 고급 설정 ===== */}
                 <div className="ark-divider mt-2">
                   <span>고급 설정</span>
                 </div>
+
+                {/* TTS 추론 파라미터 */}
+                <TTSParamsSection />
 
                 {/* 언어 설정 */}
                 <section>
@@ -1490,10 +1490,11 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   );
 }
 
-// TTS 추론 파라미터 섹션
+// TTS 추론 파라미터 섹션 (접기/펼치기)
 function TTSParamsSection() {
   const { ttsParams, loadTtsParams, updateTtsParams } = useAppStore()
   const [isLoaded, setIsLoaded] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false)
 
   useEffect(() => {
     loadTtsParams().then(() => setIsLoaded(true))
@@ -1526,54 +1527,66 @@ function TTSParamsSection() {
     },
   ]
 
-  if (!isLoaded) {
-    return (
-      <section>
-        <h3 className="text-sm font-medium text-ark-white mb-3">TTS 추론 파라미터</h3>
-        <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
-          <p className="text-sm text-ark-gray">로딩 중...</p>
-        </div>
-      </section>
-    )
-  }
-
   return (
     <section>
-      <h3 className="text-sm font-medium text-ark-white mb-3">
-        TTS 추론 파라미터
-      </h3>
-      <div className="p-4 bg-ark-black/50 rounded border border-ark-border space-y-4">
-        <p className="text-xs text-ark-gray">
-          음성 합성 품질에 영향을 주는 파라미터입니다. 변경 즉시 적용됩니다.
-        </p>
-        {params.map(({ key, label, desc, min, max, step }) => (
-          <div key={key}>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs text-ark-gray">{label}</label>
-              <span className="text-xs text-ark-white font-mono w-12 text-right">
-                {key === 'top_k' ? ttsParams[key] : ttsParams[key].toFixed(2)}
-              </span>
-            </div>
-            <input
-              type="range"
-              min={min}
-              max={max}
-              step={step}
-              value={ttsParams[key]}
-              onChange={(e) => {
-                const value = key === 'top_k' ? parseInt(e.target.value) : parseFloat(e.target.value)
-                updateTtsParams({ [key]: value })
-              }}
-              className="w-full h-1.5 bg-ark-border rounded-lg appearance-none cursor-pointer accent-ark-orange"
-            />
-            <div className="flex justify-between mt-0.5">
-              <span className="text-[10px] text-ark-gray/50">{min}</span>
-              <span className="text-[10px] text-ark-gray/50">{desc}</span>
-              <span className="text-[10px] text-ark-gray/50">{max}</span>
-            </div>
-          </div>
-        ))}
-      </div>
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center justify-between mb-2 group"
+      >
+        <div>
+          <h3 className="text-sm font-medium text-ark-white">TTS 추론 파라미터</h3>
+          <p className="text-[11px] text-ark-gray/70 text-left">
+            기본값 권장. 음성 합성 품질에 영향을 주는 파라미터입니다.
+          </p>
+        </div>
+        <svg
+          viewBox="0 0 24 24"
+          className={`w-4 h-4 text-ark-gray group-hover:text-ark-white transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+          fill="currentColor"
+        >
+          <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z" />
+        </svg>
+      </button>
+      {isExpanded && (
+        <div className="p-4 bg-ark-black/50 rounded border border-ark-border space-y-4">
+          {!isLoaded ? (
+            <p className="text-sm text-ark-gray">로딩 중...</p>
+          ) : (
+            <>
+              <p className="text-xs text-ark-gray">
+                변경 즉시 적용됩니다.
+              </p>
+              {params.map(({ key, label, desc, min, max, step }) => (
+                <div key={key}>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs text-ark-gray">{label}</label>
+                    <span className="text-xs text-ark-white font-mono w-12 text-right">
+                      {key === 'top_k' ? ttsParams[key] : ttsParams[key].toFixed(2)}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={min}
+                    max={max}
+                    step={step}
+                    value={ttsParams[key]}
+                    onChange={(e) => {
+                      const value = key === 'top_k' ? parseInt(e.target.value) : parseFloat(e.target.value)
+                      updateTtsParams({ [key]: value })
+                    }}
+                    className="w-full h-1.5 bg-ark-border rounded-lg appearance-none cursor-pointer accent-ark-orange"
+                  />
+                  <div className="flex justify-between mt-0.5">
+                    <span className="text-[10px] text-ark-gray/50">{min}</span>
+                    <span className="text-[10px] text-ark-gray/50">{desc}</span>
+                    <span className="text-[10px] text-ark-gray/50">{max}</span>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
     </section>
   )
 }

@@ -294,12 +294,14 @@ async def list_trained_models():
         # 전처리 상태 확인 (preprocessed 폴더에 WAV + TXT 파일 있는지)
         preprocessed_dir = gpt_config.get_preprocessed_audio_path(m.char_id)
         segment_count = 0
+        txt_count = 0
         is_preprocessed = False
         if preprocessed_dir.exists():
             wav_files = list(preprocessed_dir.glob("*.wav"))
             txt_files = list(preprocessed_dir.glob("*.txt"))
             segment_count = len(wav_files)
-            is_preprocessed = segment_count > 0 and len(txt_files) > 0
+            txt_count = len(txt_files)
+            is_preprocessed = segment_count > 0 and txt_count > 0
         can_finetune = model_type == "prepared" and is_preprocessed
 
         result_models.append({
@@ -312,6 +314,7 @@ async def list_trained_models():
             "epochs_gpt": m.epochs_gpt,
             "is_preprocessed": is_preprocessed,
             "segment_count": segment_count,
+            "txt_count": txt_count,
             "can_finetune": can_finetune,
         })
 
@@ -340,12 +343,14 @@ async def get_model_type(char_id: str):
     )
     preprocessed_dir = gpt_config.get_preprocessed_audio_path(char_id)
     segment_count = 0
+    txt_count = 0
     is_preprocessed = False
     if preprocessed_dir.exists():
         wav_files = list(preprocessed_dir.glob("*.wav"))
         txt_files = list(preprocessed_dir.glob("*.txt"))
         segment_count = len(wav_files)
-        is_preprocessed = segment_count > 0 and len(txt_files) > 0
+        txt_count = len(txt_files)
+        is_preprocessed = segment_count > 0 and txt_count > 0
 
     # finetune 가능 여부: prepared 상태이고 전처리 완료됨
     can_finetune = model_type == "prepared" and is_preprocessed
@@ -355,6 +360,7 @@ async def get_model_type(char_id: str):
         "model_type": model_type,
         "is_preprocessed": is_preprocessed,
         "segment_count": segment_count,
+        "txt_count": txt_count,
         "can_finetune": can_finetune,
     }
 
@@ -380,19 +386,22 @@ async def check_preprocessing_status(char_id: str):
 
     is_preprocessed = False
     segment_count = 0
+    txt_count = 0
 
     # 새 구조: preprocessed 폴더에서 WAV + TXT 파일 쌍 확인
     if preprocessed_dir.exists():
         wav_files = list(preprocessed_dir.glob("*.wav"))
         txt_files = list(preprocessed_dir.glob("*.txt"))
         segment_count = len(wav_files)
+        txt_count = len(txt_files)
         # WAV와 TXT 파일이 모두 있어야 전처리 완료
-        is_preprocessed = segment_count > 0 and len(txt_files) > 0
+        is_preprocessed = segment_count > 0 and txt_count > 0
 
     return {
         "char_id": char_id,
         "is_preprocessed": is_preprocessed,
         "segment_count": segment_count,
+        "txt_count": txt_count,
         "preprocessed_path": str(preprocessed_dir) if is_preprocessed else None,
     }
 
@@ -419,12 +428,14 @@ async def get_engine_specific_model_status(char_id: str):
     )
     preprocessed_dir = gpt_config.get_preprocessed_audio_path(char_id)
     segment_count = 0
+    txt_count = 0
     is_preprocessed = False
     if preprocessed_dir.exists():
         wav_files = list(preprocessed_dir.glob("*.wav"))
         txt_files = list(preprocessed_dir.glob("*.txt"))
         segment_count = len(wav_files)
-        is_preprocessed = segment_count > 0 and len(txt_files) > 0
+        txt_count = len(txt_files)
+        is_preprocessed = segment_count > 0 and txt_count > 0
 
     gpt_can_finetune = gpt_model_type == "prepared" and is_preprocessed
 
@@ -434,6 +445,7 @@ async def get_engine_specific_model_status(char_id: str):
             "model_type": gpt_model_type,
             "is_preprocessed": is_preprocessed,
             "segment_count": segment_count,
+            "txt_count": txt_count,
             "can_finetune": gpt_can_finetune,
         },
     }

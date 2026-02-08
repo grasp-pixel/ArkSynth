@@ -42,6 +42,7 @@ export default function CharacterManagerModal({
     deleteModel,
     getModelType,
     getSegmentCount,
+    getTxtCount,
     gptSovitsStatus,
     checkGptSovitsStatus,
     trainingQueue,
@@ -652,10 +653,7 @@ export default function CharacterManagerModal({
             <div className="w-px h-4 bg-ark-border" />
             {/* 일괄 준비/학습 버튼 */}
             <button
-              onClick={() => {
-                if (confirm(`${selectedCharIds.size}개 캐릭터를 준비합니다. 캐릭터당 수 분이 소요될 수 있습니다. 계속하시겠습니까?`))
-                  startBatchTraining(selectedIds, "prepare")
-              }}
+              onClick={() => startBatchTraining(selectedIds, "prepare")}
               disabled={isTrainingActive || selectedCharIds.size === 0}
               className="text-xs px-2 py-1 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               title="선택된 캐릭터 일괄 준비 (Zero-shot)"
@@ -663,24 +661,18 @@ export default function CharacterManagerModal({
               일괄 준비{selectedCharIds.size > 0 ? ` (${selectedCharIds.size})` : ""}
             </button>
             <button
-              onClick={() => {
-                if (confirm(`${selectedCharIds.size}개 캐릭터를 준비+학습합니다. 캐릭터당 수 분~수십 분이 소요될 수 있습니다. 계속하시겠습니까?`))
-                  startFullBatchTraining(selectedIds)
-              }}
+              onClick={() => startFullBatchTraining(selectedIds)}
               disabled={isTrainingActive || selectedCharIds.size === 0}
               className="text-xs px-2 py-1 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title="선택된 캐릭터 준비 후 자동으로 학습 시작"
+              title="캐릭터당 수십 분 소요. 선택된 캐릭터 준비 후 자동으로 학습 시작"
             >
               준비+학습{selectedCharIds.size > 0 ? ` (${selectedCharIds.size})` : ""}
             </button>
             <button
-              onClick={() => {
-                if (confirm(`${selectedCharIds.size}개 캐릭터를 학습합니다. 캐릭터당 수십 분이 소요될 수 있습니다. 계속하시겠습니까?`))
-                  startBatchTraining(selectedIds, "finetune")
-              }}
+              onClick={() => startBatchTraining(selectedIds, "finetune")}
               disabled={isTrainingActive || selectedCharIds.size === 0}
               className="text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title="선택된 캐릭터 일괄 학습 (Fine-tuning)"
+              title="캐릭터당 수십 분 소요. 선택된 캐릭터 일괄 학습 (Fine-tuning)"
             >
               일괄 학습{selectedCharIds.size > 0 ? ` (${selectedCharIds.size})` : ""}
             </button>
@@ -1078,17 +1070,25 @@ export default function CharacterManagerModal({
                             </span>
                           </div>
                           <div className="flex justify-between">
-                            <span>음성</span>
+                            <span>추출</span>
                             <span className="text-white font-medium">
                               {char.file_count}개
                             </span>
                           </div>
-                          {isReady && (
-                            <div className="flex justify-between text-green-300">
-                              <span>세그먼트</span>
-                              <span>{getSegmentCount(char.char_id)}개</span>
-                            </div>
-                          )}
+                          {(() => {
+                            const wavCount = getSegmentCount(char.char_id)
+                            const txtCount = getTxtCount(char.char_id)
+                            if (wavCount === 0 && txtCount === 0) return null
+                            const isIntact = wavCount > 0 && wavCount === txtCount
+                            return (
+                              <div className={`flex justify-between ${isIntact ? 'text-green-300' : 'text-amber-300'}`}>
+                                <span>전처리</span>
+                                <span title={`WAV: ${wavCount}, TXT: ${txtCount}`}>
+                                  {isIntact ? `${wavCount}개` : `${wavCount}/${txtCount}`}
+                                </span>
+                              </div>
+                            )
+                          })()}
                         </div>
 
                         {/* 상태 */}

@@ -246,12 +246,6 @@ export default function GroupSetupPanel() {
   const handleBatchExecute = async () => {
     if (!selectedGroupId) return
 
-    // 학습 포함 시 시간 안내
-    if (batchTasks.prepare || batchTasks.finetune) {
-      const taskDesc = batchTasks.finetune ? '준비 및 학습' : '준비'
-      if (!confirm(`캐릭터 모델 ${taskDesc}은 캐릭터당 수 분~수십 분이 소요될 수 있습니다. 계속하시겠습니까?`)) return
-    }
-
     setIsExecuting(true)
     setPendingStep(null)
 
@@ -598,6 +592,9 @@ export default function GroupSetupPanel() {
                       {finetunedCount}/{characterStats.withVoice} 완료
                     </span>
                   </label>
+                  <p className="text-[10px] text-ark-yellow/70 mt-1 ml-7">
+                    캐릭터당 수십 분이 소요될 수 있습니다
+                  </p>
 
                   {/* 학습 대상 (모델 학습 선택 시만 표시) */}
                   {batchTasks.finetune && (

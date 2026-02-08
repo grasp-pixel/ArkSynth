@@ -19,8 +19,6 @@ export default function DubbingControlBar() {
     isRendering,
     gpuSemaphoreEnabled,
     showNoCacheWarning,
-    startRender,
-    selectedEpisodeId,
   } = useAppStore()
 
   // 미리보기 이미지 URL 주기적 갱신 (깜빡임 방지)
@@ -217,40 +215,79 @@ export default function DubbingControlBar() {
         </div>
       )}
 
-      {/* 사전 더빙 미완료 경고 다이얼로그 */}
+      {/* 더빙 시작 안내 다이얼로그 */}
       {showNoCacheWarning && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
           <div className="bg-ark-dark border border-ark-border rounded-lg p-6 max-w-md mx-4 shadow-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0">
-                <svg viewBox="0 0 24 24" className="w-5 h-5 text-amber-400" fill="currentColor">
-                  <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
-                </svg>
-              </div>
-              <h3 className="text-base font-bold text-ark-white">사전 더빙 필요</h3>
-            </div>
-            <p className="text-sm text-ark-gray mb-6">
-              사전 더빙이 되어있지 않아 음성 재생이 불가합니다.
-              <br />
-              사전 더빙을 먼저 실행하거나, 사전 더빙과 함께 시작할 수 있습니다.
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={dismissNoCacheWarning}
-                className="ark-btn text-sm px-4 py-2"
-              >
-                취소
-              </button>
-              <button
-                onClick={() => {
-                  if (selectedEpisodeId) startRender(selectedEpisodeId, false)
-                  confirmStartDubbing()
-                }}
-                className="ark-btn ark-btn-primary text-sm px-4 py-2"
-              >
-                사전 더빙과 함께 시작
-              </button>
-            </div>
+            {isRendering ? (
+              /* 렌더링 중: GPU 잠금 안내 + 더빙 시작 옵션 */
+              <>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-full bg-ark-yellow/10 flex items-center justify-center flex-shrink-0">
+                    <svg viewBox="0 0 24 24" className="w-5 h-5 text-ark-yellow" fill="currentColor">
+                      <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+                    </svg>
+                  </div>
+                  <h3 className="text-base font-bold text-ark-white">사전 더빙 실행 중</h3>
+                </div>
+                <div className="text-sm text-ark-gray mb-4">
+                  사전 더빙 중에 더빙 모드를 시작하면 OCR과 사전 더빙이 동시에 GPU를 사용합니다.
+                </div>
+                <div className="p-3 rounded border mb-6 text-xs bg-ark-yellow/5 border-ark-yellow/30 text-ark-yellow">
+                  {gpuSemaphoreEnabled ? (
+                    <>
+                      <p className="font-medium">GPU 잠금이 활성화되어 OCR과 사전 더빙이 순차적으로 진행됩니다.</p>
+                      <p className="text-ark-yellow/70 mt-1">동시에 실행하려면 우상단에서 GPU 잠금을 해제하세요.</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-medium">GPU 잠금이 비활성화 상태입니다.</p>
+                      <p className="text-ark-yellow/70 mt-1">VRAM 부족 시 OCR 품질 저하 또는 크래시가 발생할 수 있습니다.</p>
+                    </>
+                  )}
+                </div>
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={dismissNoCacheWarning}
+                    className="ark-btn text-sm px-4 py-2"
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={confirmStartDubbing}
+                    className="ark-btn ark-btn-primary text-sm px-4 py-2"
+                  >
+                    더빙 시작
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* 캐시 없음: 안내만 표시 */
+              <>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                    <svg viewBox="0 0 24 24" className="w-5 h-5 text-amber-400" fill="currentColor">
+                      <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+                    </svg>
+                  </div>
+                  <h3 className="text-base font-bold text-ark-white">사전 더빙 필요</h3>
+                </div>
+                <p className="text-sm text-ark-gray mb-2">
+                  사전 더빙이 되어있지 않아 음성 재생이 불가합니다.
+                </p>
+                <p className="text-xs text-ark-gray/70 mb-6">
+                  사전 더빙 중에도 동시에 더빙 모드를 시작할 수 있습니다.
+                </p>
+                <div className="flex justify-end">
+                  <button
+                    onClick={dismissNoCacheWarning}
+                    className="ark-btn text-sm px-4 py-2"
+                  >
+                    확인
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

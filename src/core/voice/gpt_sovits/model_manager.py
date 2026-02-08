@@ -53,12 +53,13 @@ class GPTSoVITSModelManager:
     def is_zero_shot_ready(self, char_id: str) -> bool:
         """Zero-shot 합성 준비 여부 (참조 오디오만 필요)
 
-        새 구조: preprocessed/ 폴더에 WAV + TXT 파일이 있으면 준비 완료
+        새 구조: preprocessed/ 폴더에 WAV + TXT 파일 + info.json이 있으면 준비 완료
         레거시 구조: ref.wav + ref.txt 파일이 있으면 준비 완료
         """
-        # 새 구조: preprocessed 폴더 확인
+        # 새 구조: preprocessed 폴더 + info.json 확인 (원자적 완료 보장)
         preprocessed_dir = self.config.get_preprocessed_audio_path(char_id)
-        if preprocessed_dir.exists():
+        info_path = self.config.get_model_path(char_id) / "info.json"
+        if preprocessed_dir.exists() and info_path.exists():
             wav_files = list(preprocessed_dir.glob("*.wav"))
             txt_files = list(preprocessed_dir.glob("*.txt"))
             if wav_files and txt_files:

@@ -193,6 +193,37 @@ class RenderCache:
             return 0, 0
         return meta.rendered_count, meta.total_dialogues
 
+    def delete_audio(self, episode_id: str, index: int) -> bool:
+        """개별 오디오 파일 삭제
+
+        Args:
+            episode_id: 에피소드 ID
+            index: 대사 인덱스
+
+        Returns:
+            삭제 성공 여부
+        """
+        meta = self.get_meta(episode_id)
+        if meta is None:
+            return False
+
+        audio_path = self.get_audio_path(episode_id, index)
+        if audio_path.exists():
+            try:
+                audio_path.unlink()
+            except Exception as e:
+                logger.error(f"오디오 삭제 실패 ({episode_id}/{index}): {e}")
+                return False
+
+        # 메타에서 해당 인덱스 항목 제거
+        meta.audios = [a for a in meta.audios if a.index != index]
+        meta.rendered_count = len(meta.audios)
+        meta.rendered_at = datetime.now().isoformat()
+        self.save_meta(meta)
+
+        logger.info(f"오디오 삭제: {episode_id}/{index} (남은 {meta.rendered_count}개)")
+        return True
+
     def delete_cache(self, episode_id: str) -> bool:
         """에피소드 캐시 삭제"""
         episode_path = self.get_episode_path(episode_id)

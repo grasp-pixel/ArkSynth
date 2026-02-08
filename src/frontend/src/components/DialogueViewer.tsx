@@ -101,6 +101,7 @@ function SpeakerCard({ speakerId, speakerName, speakerColor, dialogueType }: {
 export default function DialogueViewer() {
   const {
     selectedEpisode,
+    selectedEpisodeId,
     isLoadingEpisode,
     playDialogue,
     isPlaying,
@@ -115,6 +116,8 @@ export default function DialogueViewer() {
     isRendering,
     resolveDialogueVoice,
     voiceCharacters,
+    deleteDialogueAudio,
+    cachedEpisodes,
   } = useAppStore()
 
   // 디버그: 캐릭터 ID 표시 토글
@@ -225,6 +228,9 @@ export default function DialogueViewer() {
             {selectedEpisode.characters.length}명 캐릭터
           </span>
         </div>
+        <p className="text-[10px] text-ark-gray/50 mt-1.5">
+          음성이 준비된 대사는 재생 버튼으로 미리 들어볼 수 있습니다. 사전 합성된 음성이 있으면 우선 재생됩니다.
+        </p>
       </div>
 
       {/* 대사 목록 */}
@@ -242,8 +248,10 @@ export default function DialogueViewer() {
             ? getColorFromName(dialogue.speaker_name)
             : undefined
 
-          // 렌더링 상태 확인
-          const isRendered = renderProgress ? index < renderProgress.completed : false
+          // 렌더링 상태 확인 (renderProgress 또는 cachedEpisodes 기반)
+          const safeEpisodeId = selectedEpisodeId?.replace(/\//g, '_').replace(/\\/g, '_')
+          const isCachedEpisode = safeEpisodeId ? cachedEpisodes.includes(safeEpisodeId) : false
+          const isRendered = isCachedEpisode || (renderProgress ? index < renderProgress.completed : false)
 
           // 사용될 캐릭터 ID 계산 (디버그용, resolveDialogueVoice 통합 함수 사용)
           const resolvedCharId = showCharIds ? resolveDialogueVoice(dialogue) : null
@@ -270,6 +278,11 @@ export default function DialogueViewer() {
                 isRendering={isRendering && renderProgress?.completed === index}
                 imageSpeakerId={!dialogue.speaker_id && dialogue.speaker_name ? nameToCharId[dialogue.speaker_name] : null}
                 onPlay={() => handlePlayClick(dialogue)}
+                onDelete={isRendered && selectedEpisodeId ? () => {
+                  if (window.confirm('이 대사의 렌더 음성을 삭제하시겠습니까?')) {
+                    deleteDialogueAudio(selectedEpisodeId, index)
+                  }
+                } : undefined}
                 showCharId={showCharIds}
                 resolvedCharId={resolvedCharId}
                 resolvedCharName={resolvedCharName}
@@ -294,12 +307,13 @@ interface DialogueItemProps {
   isRendering?: boolean  // 현재 렌더링 중인 대사
   imageSpeakerId?: string | null  // 이름 매칭으로 상속된 이미지용 speaker_id
   onPlay: () => void
+  onDelete?: () => void  // 렌더 오디오 삭제
   showCharId?: boolean   // 캐릭터 ID 표시 여부
   resolvedCharId?: string | null  // 실제 사용될 캐릭터 ID
   resolvedCharName?: string | null  // 캐릭터 이름
 }
 
-function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, speakerColor, isPrepared, isRendered, isRendering, imageSpeakerId, onPlay, showCharId, resolvedCharId, resolvedCharName }: DialogueItemProps) {
+function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, speakerColor, isPrepared, isRendered, isRendering, imageSpeakerId, onPlay, onDelete, showCharId, resolvedCharId, resolvedCharName }: DialogueItemProps) {
   const { getModelType } = useAppStore()
   const isSubtitle = dialogue.dialogue_type === 'subtitle'
   const isSticker = dialogue.dialogue_type === 'sticker'
@@ -420,29 +434,41 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
           </p>
         </div>
 
-        {/* 재생 버튼 - 더빙 준비 완료 시에만 활성화 */}
-        {isPrepared ? (
-          <button
-            onClick={onPlay}
-            className={`shrink-0 w-9 h-9 flex items-center justify-center rounded transition-all ${
-              isPlaying
-                ? 'bg-ark-orange text-ark-black ark-glow'
-                : isMatched
-                  ? 'bg-ark-orange/30 text-ark-orange hover:bg-ark-orange hover:text-ark-black'
-                  : 'bg-ark-panel text-ark-white hover:bg-ark-orange hover:text-ark-black border border-ark-border hover:border-ark-orange'
-            }`}
-            title={isPlaying ? '재생 중...' : '재생'}
-          >
-            {isPlaying ? (
-              <svg viewBox="0 0 24 24" className="w-4 h-4 ark-pulse" fill="currentColor">
-                <path d="M8 5v14l11-7z"/>
-              </svg>
-            ) : (
-              <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
-                <path d="M8 5v14l11-7z"/>
-              </svg>
-            )}
-          </button>
+        {/* 재생 버튼 + 타입 표시 */}
+        {(isPrepared || isRendered) ? (
+          <div className="shrink-0 flex flex-col items-center gap-0.5">
+            <div className="flex items-center gap-1">
+              <button
+                onClick={onPlay}
+                className={`w-9 h-9 flex items-center justify-center rounded transition-all ${
+                  isPlaying
+                    ? 'bg-ark-orange text-ark-black ark-glow'
+                    : isMatched
+                      ? 'bg-ark-orange/30 text-ark-orange hover:bg-ark-orange hover:text-ark-black'
+                      : 'bg-ark-panel text-ark-white hover:bg-ark-orange hover:text-ark-black border border-ark-border hover:border-ark-orange'
+                }`}
+                title={isPlaying ? '재생 중...' : '재생'}
+              >
+                <svg viewBox="0 0 24 24" className={`w-4 h-4 ${isPlaying ? 'ark-pulse' : ''}`} fill="currentColor">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+              </button>
+              {isRendered && onDelete && (
+                <button
+                  onClick={onDelete}
+                  className="w-5 h-5 flex items-center justify-center rounded text-ark-gray/40 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                  title="렌더 음성 삭제"
+                >
+                  <svg viewBox="0 0 24 24" className="w-3 h-3" fill="currentColor">
+                    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                  </svg>
+                </button>
+              )}
+            </div>
+            <span className={`text-[10px] leading-none ${isRendered ? 'text-green-400' : 'text-ark-gray'}`}>
+              {isRendered ? '렌더' : '실시간'}
+            </span>
+          </div>
         ) : (
           <div
             className="shrink-0 w-9 h-9 flex items-center justify-center rounded bg-ark-black/30 text-ark-gray/30"

@@ -706,7 +706,7 @@ export default function VoiceSetupPanel() {
                 </button>
               </div>
             </div>
-          ) : episodeCacheStatus === 'partial' && renderProgress ? (
+          ) : episodeCacheStatus === 'partial' ? (
             // 부분 완료 (일부 대사만 렌더링됨)
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -716,16 +716,20 @@ export default function VoiceSetupPanel() {
                   </svg>
                   <span className="text-sm">부분 완료</span>
                 </div>
-                <span className="text-xs text-ark-gray">
-                  {renderProgress.completed}/{renderProgress.total}
-                </span>
+                {renderProgress && (
+                  <span className="text-xs text-ark-gray">
+                    {renderProgress.completed}/{renderProgress.total}
+                  </span>
+                )}
               </div>
-              <div className="w-full bg-ark-black rounded-full h-2 overflow-hidden">
-                <div
-                  className="bg-ark-yellow h-2 rounded-full"
-                  style={{ width: `${(renderProgress.completed / renderProgress.total) * 100}%` }}
-                />
-              </div>
+              {renderProgress && renderProgress.total > 0 && (
+                <div className="w-full bg-ark-black rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-ark-yellow h-2 rounded-full"
+                    style={{ width: `${(renderProgress.completed / renderProgress.total) * 100}%` }}
+                  />
+                </div>
+              )}
               <p className="text-xs text-ark-gray/70">
                 일부 대사만 캐시됨. 나머지는 실시간 합성됩니다.
               </p>

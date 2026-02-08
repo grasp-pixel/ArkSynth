@@ -702,7 +702,8 @@ export interface TrainedModel {
   epochs_sovits: number
   epochs_gpt: number
   is_preprocessed: boolean  // 전처리 완료 여부
-  segment_count: number     // 전처리된 세그먼트 수
+  segment_count: number     // 전처리된 세그먼트 수 (WAV)
+  txt_count: number         // 전처리된 텍스트 수 (TXT)
   can_finetune: boolean     // finetune 가능 여부 (prepared이고 전처리 완료됨)
 }
 
@@ -713,6 +714,7 @@ export interface EngineSpecificModelStatus {
     model_type: 'none' | 'prepared' | 'finetuned'
     is_preprocessed: boolean
     segment_count: number
+    txt_count: number
     can_finetune: boolean
   }
 }
@@ -921,6 +923,14 @@ export const renderApi = {
   deleteCache: async (episodeId: string) => {
     const res = await api.delete<{ deleted: boolean }>(
       `/api/render/cache/${encodeURIComponent(episodeId)}`
+    )
+    return res.data
+  },
+
+  // 개별 오디오 삭제
+  deleteAudio: async (episodeId: string, index: number) => {
+    const res = await api.delete<{ deleted: boolean; rendered_count: number }>(
+      `/api/render/audio/${encodeURIComponent(episodeId)}/${index}`
     )
     return res.data
   },
