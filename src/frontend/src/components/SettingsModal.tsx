@@ -23,8 +23,6 @@ import {
   type ImageExtractProgress,
   type GamedataStatus,
   type GamedataUpdateProgress,
-  type TTSEngine,
-  type TTSEngineSetting,
   type AliasListResponse,
 } from "../services/api";
 import GPTSoVITSInstallDialog from "./GPTSoVITSInstallDialog";
@@ -35,7 +33,6 @@ interface SettingsModalProps {
 }
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-  const { loadTtsEngineSetting: syncAppStoreEngine } = useAppStore();
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [ffmpegGuide, setFFmpegGuide] = useState<FFmpegInstallGuide | null>(
     null,
@@ -54,10 +51,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [ffmpegInstallError, setFFmpegInstallError] = useState<string | null>(null);
   const ffmpegInstallStreamRef = useRef<{ close: () => void } | null>(null);
   const [isRefreshingCharacters, setIsRefreshingCharacters] = useState(false);
-
-  // TTS 엔진 설정
-  const [ttsEngineSetting, setTtsEngineSetting] = useState<TTSEngineSetting | null>(null);
-  const [isChangingEngine, setIsChangingEngine] = useState(false);
 
   // 음성 추출 관련 상태
   const [voiceAssetsStatus, setVoiceAssetsStatus] =
@@ -111,7 +104,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       checkImageAssets();
       checkGamedataStatus();
       loadGamedataRepo();
-      loadTTSEngineSetting();
       loadAliasesInfo();
     }
     return () => {
@@ -199,28 +191,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       console.error("캐릭터 데이터 새로고침 실패:", err);
     } finally {
       setIsRefreshingCharacters(false);
-    }
-  };
-
-  const loadTTSEngineSetting = async () => {
-    try {
-      const setting = await settingsApi.getTTSEngineSetting();
-      setTtsEngineSetting(setting);
-    } catch (err) {
-      console.error("TTS 엔진 설정 로드 실패:", err);
-    }
-  };
-
-  const changeTTSEngine = async (engine: TTSEngine) => {
-    setIsChangingEngine(true);
-    try {
-      await settingsApi.setTTSEngineSetting(engine);
-      await loadTTSEngineSetting();
-      await syncAppStoreEngine();  // 헤더 UI 업데이트
-    } catch (err) {
-      console.error("TTS 엔진 변경 실패:", err);
-    } finally {
-      setIsChangingEngine(false);
     }
   };
 
@@ -862,48 +832,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                 </section>
 
-                {/* TTS 엔진 설정 */}
-                <section>
-                  <h3 className="text-sm font-medium text-ark-white mb-3">
-                    TTS 엔진
-                  </h3>
-                  <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
-                    {ttsEngineSetting === null ? (
-                      <p className="text-sm text-ark-gray">로딩 중...</p>
-                    ) : (
-                      <div className="space-y-3">
-                        <p className="text-xs text-ark-gray mb-2">
-                          앱 전체에서 사용할 TTS 엔진을 선택합니다.
-                        </p>
-                        <div className="flex gap-2 flex-wrap">
-                          {/* GPT-SoVITS */}
-                          <button
-                            onClick={() => changeTTSEngine("gpt_sovits")}
-                            disabled={isChangingEngine || !ttsEngineSetting.engine_status.gpt_sovits?.installed}
-                            className={`px-4 py-2 rounded border transition-colors ${
-                              ttsEngineSetting.engine === "gpt_sovits"
-                                ? "bg-ark-orange/20 border-ark-orange text-ark-orange"
-                                : ttsEngineSetting.engine_status.gpt_sovits?.installed
-                                  ? "bg-ark-panel border-ark-border text-ark-gray hover:text-ark-white hover:border-ark-orange/50"
-                                  : "bg-ark-panel/50 border-ark-border/50 text-ark-gray/50 cursor-not-allowed"
-                            }`}
-                          >
-                            <div className="text-sm font-medium">GPT-SoVITS</div>
-                            <div className="text-[10px] opacity-70">
-                              {ttsEngineSetting.engine_status.gpt_sovits?.installed ? "v2" : "미설치"}
-                            </div>
-                          </button>
-                        </div>
-
-                        {/* 엔진 설명 */}
-                        <div className="mt-2 p-2 bg-ark-panel/50 rounded text-xs text-ark-gray">
-                          <span>캐릭터별 학습 후 최상의 품질. 학습 안 된 캐릭터는 제로샷 모드로 동작.</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </section>
-
                 {/* 게임 데이터 업데이트 */}
                 <section>
                   <h3 className="text-sm font-medium text-ark-white mb-2">
@@ -1258,27 +1186,35 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           </>
                         )}
 
-                        <div className="mt-2 pt-2 border-t border-ark-border flex items-center justify-between">
+                        <div className="mt-2 pt-2 border-t border-ark-border space-y-1">
                           <p className="text-[10px] text-ark-gray/60">
-                            <span className="text-ark-gray">경로:</span> Assets/Image/avg/characters
+                            <span className="text-ark-gray">게임 원본:</span> Android/Data/com.YoStarKR.Arknights/files/Bundles/Assets/Image/avg/characters
                           </p>
-                          <button
-                            onClick={async () => {
-                              try {
-                                if (imageAssetsStatus?.characters_exists) {
-                                  await settingsApi.openFolder('Assets/Image/avg/characters');
-                                } else {
-                                  await settingsApi.createFolder('Assets/Image/avg/characters');
-                                  checkImageAssets();
+                          <div className="flex items-center justify-between">
+                            <p className="text-[10px] text-ark-gray/60">
+                              <span className="text-ark-gray">복사 위치:</span> Assets/Image/avg/characters
+                            </p>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  if (imageAssetsStatus?.characters_exists) {
+                                    await settingsApi.openFolder('Assets/Image/avg/characters');
+                                  } else {
+                                    await settingsApi.createFolder('Assets/Image/avg/characters');
+                                    checkImageAssets();
+                                  }
+                                } catch (err) {
+                                  console.error('폴더 작업 실패:', err);
                                 }
-                              } catch (err) {
-                                console.error('폴더 작업 실패:', err);
-                              }
-                            }}
-                            className="text-[10px] text-ark-cyan hover:text-ark-white transition-colors"
-                          >
-                            {imageAssetsStatus?.characters_exists ? '열기' : '폴더 생성'}
-                          </button>
+                              }}
+                              className="text-[10px] text-ark-cyan hover:text-ark-white transition-colors"
+                            >
+                              {imageAssetsStatus?.characters_exists ? '열기' : '폴더 생성'}
+                            </button>
+                          </div>
+                          <p className="text-[10px] text-ark-gray/60">
+                            <span className="text-ark-gray">추출 결과:</span> extracted/images/ 폴더에 PNG 생성
+                          </p>
                         </div>
                       </div>
 
@@ -1332,27 +1268,35 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           </>
                         )}
 
-                        <div className="mt-2 pt-2 border-t border-ark-border flex items-center justify-between">
+                        <div className="mt-2 pt-2 border-t border-ark-border space-y-1">
                           <p className="text-[10px] text-ark-gray/60">
-                            <span className="text-ark-gray">경로:</span> Assets/Image/chararts
+                            <span className="text-ark-gray">게임 원본:</span> Android/Data/com.YoStarKR.Arknights/files/Bundles/Assets/Image/chararts
                           </p>
-                          <button
-                            onClick={async () => {
-                              try {
-                                if (imageAssetsStatus?.chararts_exists) {
-                                  await settingsApi.openFolder('Assets/Image/chararts');
-                                } else {
-                                  await settingsApi.createFolder('Assets/Image/chararts');
-                                  checkImageAssets();
+                          <div className="flex items-center justify-between">
+                            <p className="text-[10px] text-ark-gray/60">
+                              <span className="text-ark-gray">복사 위치:</span> Assets/Image/chararts
+                            </p>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  if (imageAssetsStatus?.chararts_exists) {
+                                    await settingsApi.openFolder('Assets/Image/chararts');
+                                  } else {
+                                    await settingsApi.createFolder('Assets/Image/chararts');
+                                    checkImageAssets();
+                                  }
+                                } catch (err) {
+                                  console.error('폴더 작업 실패:', err);
                                 }
-                              } catch (err) {
-                                console.error('폴더 작업 실패:', err);
-                              }
-                            }}
-                            className="text-[10px] text-ark-cyan hover:text-ark-white transition-colors"
-                          >
-                            {imageAssetsStatus?.chararts_exists ? '열기' : '폴더 생성'}
-                          </button>
+                              }}
+                              className="text-[10px] text-ark-cyan hover:text-ark-white transition-colors"
+                            >
+                              {imageAssetsStatus?.chararts_exists ? '열기' : '폴더 생성'}
+                            </button>
+                          </div>
+                          <p className="text-[10px] text-ark-gray/60">
+                            <span className="text-ark-gray">추출 결과:</span> extracted/images/ 폴더에 PNG 생성
+                          </p>
                         </div>
                       </div>
 
@@ -1362,10 +1306,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           <p className="text-xs text-red-400">{imageExtractError}</p>
                         </div>
                       )}
-
-                      <p className="text-[10px] text-ark-gray/60">
-                        <span className="text-ark-gray">추출 결과:</span> extracted/images/ 폴더에 PNG 생성
-                      </p>
                     </div>
                   )}
                 </section>
