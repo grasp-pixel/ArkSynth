@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..config import config
-from ...data import GamedataUpdater
+from ...data import GamedataSource, create_gamedata_source
 
 logger = logging.getLogger(__name__)
 
@@ -19,25 +19,26 @@ router = APIRouter()
 # 업데이트 작업 상태
 _update_task: Optional[asyncio.Task] = None
 _update_progress_queue: Optional[asyncio.Queue] = None
-_updater: Optional[GamedataUpdater] = None
+_source: Optional[GamedataSource] = None
 
 
-def get_updater() -> GamedataUpdater:
-    """GamedataUpdater 인스턴스 가져오기"""
-    global _updater
-    if _updater is None:
-        _updater = GamedataUpdater(
+def get_source() -> GamedataSource:
+    """GamedataSource 인스턴스 가져오기"""
+    global _source
+    if _source is None:
+        _source = create_gamedata_source(
+            config.gamedata_source,
             config.data_path,
             repo=config.gamedata_repo,
             branch=config.gamedata_branch,
         )
-    return _updater
+    return _source
 
 
-def reset_updater():
-    """Updater 인스턴스 리셋 (설정 변경 시)"""
-    global _updater
-    _updater = None
+def reset_source():
+    """소스 인스턴스 리셋 (설정 변경 시)"""
+    global _source
+    _source = None
 
 
 class GamedataStatusResponse(BaseModel):
@@ -69,8 +70,8 @@ class UpdateProgress(BaseModel):
 async def get_gamedata_status(server: str = "kr"):
     """게임 데이터 상태 확인"""
     logger.info(f"[data.py] get_gamedata_status called with server: {server}")
-    updater = get_updater()
-    status = updater.get_status(server)
+    source = get_source()
+    status = source.get_status(server)
     logger.info(f"[data.py] Status: exists={status.exists}, story_count={status.story_count}, path={status.path}")
 
     return GamedataStatusResponse(
@@ -94,8 +95,8 @@ async def start_update(request: UpdateRequest):
         logger.warning("[data.py] Update already in progress")
         raise HTTPException(status_code=409, detail="이미 업데이트가 진행 중입니다")
 
-    updater = get_updater()
-    logger.info(f"[data.py] Got updater, gamedata_path: {updater.gamedata_path}")
+    source = get_source()
+    logger.info(f"[data.py] Got source: {source.source_type}, gamedata_path: {source.gamedata_path}")
 
     # 진행률 큐 생성
     _update_progress_queue = asyncio.Queue()
@@ -116,7 +117,7 @@ async def start_update(request: UpdateRequest):
     async def update_task():
         logger.info(f"[data.py] update_task started for server: {request.server}")
         try:
-            result = await updater.update(
+            result = await source.update(
                 server=request.server,
                 on_progress=progress_callback,
             )
@@ -124,9 +125,9 @@ async def start_update(request: UpdateRequest):
             return result
         except Exception as e:
             logger.exception(f"[data.py] update_task failed with exception: {e}")
-            from ...data.gamedata_updater import UpdateProgress
+            from ...data.gamedata_updater import UpdateProgress as UP
             await progress_callback(
-                UpdateProgress(
+                UP(
                     stage="error",
                     progress=0,
                     message="업데이트 실패",
@@ -214,10 +215,54 @@ async def cancel_update():
     if _update_task is None or _update_task.done():
         raise HTTPException(status_code=404, detail="진행 중인 업데이트가 없습니다")
 
-    updater = get_updater()
-    updater.cancel()
+    source = get_source()
+    source.cancel()
 
     return {"status": "cancelling", "message": "업데이트 취소 요청됨"}
+
+
+# ============================================================================
+# 데이터 소스 설정
+# ============================================================================
+
+
+class SourceSettingRequest(BaseModel):
+    """데이터 소스 설정 요청"""
+
+    source: str  # "github" 또는 "arkprts"
+
+
+@router.get("/source")
+async def get_source_setting():
+    """현재 데이터 소스 설정 조회"""
+    return {
+        "source": config.gamedata_source,
+        "repo": config.gamedata_repo,
+        "branch": config.gamedata_branch,
+    }
+
+
+@router.post("/source")
+async def set_source_setting(request: SourceSettingRequest):
+    """데이터 소스 설정 변경"""
+    valid_sources = ("github", "arkprts")
+    if request.source not in valid_sources:
+        raise HTTPException(
+            status_code=400,
+            detail=f"유효하지 않은 소스: {request.source}. 가능한 값: {valid_sources}",
+        )
+
+    config.gamedata_source = request.source
+    reset_source()
+    return {
+        "source": config.gamedata_source,
+        "message": f"데이터 소스가 '{request.source}'(으)로 변경되었습니다",
+    }
+
+
+# ============================================================================
+# 레포지토리 설정 (하위 호환)
+# ============================================================================
 
 
 class RepoSettingRequest(BaseModel):
@@ -241,7 +286,7 @@ async def set_repo_setting(request: RepoSettingRequest):
     """게임 데이터 레포지토리 설정 변경"""
     config.gamedata_repo = request.repo
     config.gamedata_branch = request.branch
-    reset_updater()
+    reset_source()
     return {
         "repo": config.gamedata_repo,
         "branch": config.gamedata_branch,

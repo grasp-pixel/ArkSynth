@@ -87,6 +87,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [gamedataRepo, setGamedataRepo] = useState('');
   const [gamedataRepoInput, setGamedataRepoInput] = useState('');
   const [isRepoSaving, setIsRepoSaving] = useState(false);
+  const [gamedataSource, setGamedataSource] = useState<string>('github');
 
   // 별칭 추출 관련 상태
   const [aliasesInfo, setAliasesInfo] = useState<AliasListResponse | null>(null);
@@ -103,7 +104,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       checkVoiceAssets();
       checkImageAssets();
       checkGamedataStatus();
-      loadGamedataRepo();
+      loadGamedataSource();
       loadAliasesInfo();
     }
     return () => {
@@ -278,6 +279,26 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setGamedataStatus(status);
     } catch (err) {
       console.error("게임 데이터 상태 확인 실패:", err);
+    }
+  };
+
+  const loadGamedataSource = async () => {
+    try {
+      const { source, repo } = await gamedataApi.getSource();
+      setGamedataSource(source);
+      setGamedataRepo(repo);
+      setGamedataRepoInput(repo);
+    } catch (err) {
+      console.error("데이터 소스 설정 로드 실패:", err);
+    }
+  };
+
+  const changeGamedataSource = async (newSource: string) => {
+    try {
+      await gamedataApi.setSource(newSource);
+      setGamedataSource(newSource);
+    } catch (err) {
+      console.error("데이터 소스 변경 실패:", err);
     }
   };
 
@@ -838,7 +859,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     게임 데이터
                   </h3>
                   <p className="text-[11px] text-ark-gray/70 mb-3">
-                    스토리 텍스트를 GitHub에서 다운로드합니다. 스토리 표시에 필수입니다.
+                    스토리 텍스트를 다운로드합니다. 스토리 표시에 필수입니다.
                   </p>
                   <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
                     {gamedataStatus === null ? (
@@ -936,24 +957,40 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                         <div className="mt-3 pt-3 border-t border-ark-border">
                           <label className="text-xs text-ark-gray block mb-1">
-                            데이터 소스 (GitHub)
+                            데이터 소스
                           </label>
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={gamedataRepoInput}
-                              onChange={(e) => setGamedataRepoInput(e.target.value)}
-                              placeholder="owner/repo"
-                              className="flex-1 px-2 py-1 text-xs bg-ark-black border border-ark-border rounded text-ark-white placeholder:text-ark-gray/50 focus:border-ark-orange focus:outline-none"
-                            />
-                            <button
-                              onClick={saveGamedataRepo}
-                              disabled={isRepoSaving || gamedataRepoInput === gamedataRepo}
-                              className="px-3 py-1 text-xs bg-ark-panel border border-ark-border rounded text-ark-gray hover:text-ark-white disabled:opacity-30 disabled:cursor-default"
-                            >
-                              {isRepoSaving ? '...' : '저장'}
-                            </button>
-                          </div>
+                          <select
+                            value={gamedataSource}
+                            onChange={(e) => changeGamedataSource(e.target.value)}
+                            disabled={isUpdatingGamedata}
+                            className="w-full px-2 py-1 text-xs bg-ark-black border border-ark-border rounded text-ark-white focus:border-ark-orange focus:outline-none disabled:opacity-50"
+                          >
+                            <option value="github">GitHub (ArknightsGamedata)</option>
+                            <option value="arkprts">arkprts (게임 서버 직접)</option>
+                          </select>
+                          {gamedataSource === 'github' && (
+                            <div className="flex gap-2 mt-2">
+                              <input
+                                type="text"
+                                value={gamedataRepoInput}
+                                onChange={(e) => setGamedataRepoInput(e.target.value)}
+                                placeholder="owner/repo"
+                                className="flex-1 px-2 py-1 text-xs bg-ark-black border border-ark-border rounded text-ark-white placeholder:text-ark-gray/50 focus:border-ark-orange focus:outline-none"
+                              />
+                              <button
+                                onClick={saveGamedataRepo}
+                                disabled={isRepoSaving || gamedataRepoInput === gamedataRepo}
+                                className="px-3 py-1 text-xs bg-ark-panel border border-ark-border rounded text-ark-gray hover:text-ark-white disabled:opacity-30 disabled:cursor-default"
+                              >
+                                {isRepoSaving ? '...' : '저장'}
+                              </button>
+                            </div>
+                          )}
+                          {gamedataSource === 'arkprts' && (
+                            <p className="text-[10px] text-ark-gray/60 mt-1">
+                              게임 서버에서 직접 최신 데이터를 다운로드합니다.
+                            </p>
+                          )}
                         </div>
 
                         {/* 수동 캐릭터 새로고침 */}

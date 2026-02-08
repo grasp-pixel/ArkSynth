@@ -1582,6 +1582,23 @@ export const gamedataApi = {
     )
     return res.data
   },
+
+  // 데이터 소스 조회
+  getSource: async () => {
+    const res = await api.get<{ source: string; repo: string; branch: string }>(
+      '/api/data/source'
+    )
+    return res.data
+  },
+
+  // 데이터 소스 변경
+  setSource: async (source: string) => {
+    const res = await api.post<{ source: string; message: string }>(
+      '/api/data/source',
+      { source }
+    )
+    return res.data
+  },
 }
 
 // 게임 데이터 업데이트 진행률 SSE 스트림
