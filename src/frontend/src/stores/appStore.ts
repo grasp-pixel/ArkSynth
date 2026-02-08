@@ -372,6 +372,51 @@ export const isMysteryName = (name: string): boolean => {
   return [...trimmed].every(c => c === '?')
 }
 
+// speakerVoiceMap 항목을 해석하여 resolvedVoiceMap을 구성하는 공통 함수
+// getSpeakerVoice, startRender, startGroupRender에서 동일한 로직을 사용하여 불일치 방지
+export const resolveSpeakerMappings = (
+  speakerVoiceMap: Record<string, string>,
+  defaultFemaleVoices: string[],
+  defaultMaleVoices: string[],
+  unknownSpeakerCharId: string | null,
+): Record<string, string> => {
+  const resolved: Record<string, string> = {}
+
+  for (const [speakerId, voiceId] of Object.entries(speakerVoiceMap)) {
+    // unknownSpeakerCharId가 설정된 경우, 미스터리 키는 건너뜀 (unknownSpeakerCharId로 처리)
+    if (unknownSpeakerCharId) {
+      const isMysteryKey = speakerId.startsWith('name:')
+        ? isMysteryName(speakerId.slice(5))
+        : isMysteryName(speakerId)
+      if (isMysteryKey) continue
+    }
+
+    if (voiceId === AUTO_VOICE_FEMALE) {
+      if (defaultFemaleVoices.length > 0) {
+        const hash = simpleHash(speakerId)
+        resolved[speakerId] = defaultFemaleVoices[hash % defaultFemaleVoices.length]
+      }
+    } else if (voiceId === AUTO_VOICE_MALE) {
+      if (defaultMaleVoices.length > 0) {
+        const hash = simpleHash(speakerId)
+        resolved[speakerId] = defaultMaleVoices[hash % defaultMaleVoices.length]
+      }
+    } else {
+      resolved[speakerId] = voiceId
+    }
+  }
+
+  // 알 수 없는 화자 매핑 (미스터리 키 강제 적용)
+  if (unknownSpeakerCharId) {
+    const mysteryKeys = ['?', '??', '???', '????', '?????', 'name:???', 'name:????', 'name:?????']
+    for (const key of mysteryKeys) {
+      resolved[key] = unknownSpeakerCharId
+    }
+  }
+
+  return resolved
+}
+
 // 오디오 재생 관리
 let currentAudio: HTMLAudioElement | null = null
 let lastPlayStartTime = 0  // 마지막 재생 시작 시간 (중복 방지)
@@ -2072,42 +2117,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
 
-    // 2. speakerVoiceMap의 특수 값들을 실제 char_id로 해석 (수동 매핑 우선)
-    for (const [speakerId, voiceId] of Object.entries(speakerVoiceMap)) {
-      if (voiceId === AUTO_VOICE_FEMALE) {
-        // 여성 자동 → 기본 여성 음성 중 하나
-        if (defaultFemaleVoices.length > 0) {
-          const hash = simpleHash(speakerId)
-          resolvedVoiceMap[speakerId] = defaultFemaleVoices[hash % defaultFemaleVoices.length]
-        }
-      } else if (voiceId === AUTO_VOICE_MALE) {
-        // 남성 자동 → 기본 남성 음성 중 하나
-        if (defaultMaleVoices.length > 0) {
-          const hash = simpleHash(speakerId)
-          resolvedVoiceMap[speakerId] = defaultMaleVoices[hash % defaultMaleVoices.length]
-        }
-      } else {
-        // 일반 매핑 (수동 매핑이 자동 매핑보다 우선)
-        resolvedVoiceMap[speakerId] = voiceId
-      }
-    }
-
-    // 3. 알 수 없는 화자("???" 등) 매핑
-    if (unknownSpeakerCharId) {
-      for (const char of episodeCharacters) {
-        if (char.name && isMysteryName(char.name)) {
-          // name: 키 매핑 (speaker_id 없는 대사용)
-          const nameKey = `name:${char.name}`
-          if (!resolvedVoiceMap[nameKey]) {
-            resolvedVoiceMap[nameKey] = unknownSpeakerCharId
-          }
-          // char_id가 미스터리 이름인 경우도 매핑 (예: char_id="?")
-          if (char.char_id && isMysteryName(char.char_id) && !resolvedVoiceMap[char.char_id]) {
-            resolvedVoiceMap[char.char_id] = unknownSpeakerCharId
-          }
-        }
-      }
-    }
+    // 2. speakerVoiceMap 해석 + 알 수 없는 화자 매핑 (공통 함수 사용)
+    const speakerResolved = resolveSpeakerMappings(speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices, unknownSpeakerCharId)
+    Object.assign(resolvedVoiceMap, speakerResolved)
 
     try {
       set({ renderError: null })
@@ -2243,33 +2255,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   startGroupRender: async (groupId: string, force: boolean = false) => {
     const { defaultCharId, narratorCharId, unknownSpeakerCharId, speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices } = get()
 
-    // 특수 값들을 실제 char_id로 해석
-    const resolvedVoiceMap: Record<string, string> = {}
-    for (const [speakerId, voiceId] of Object.entries(speakerVoiceMap)) {
-      if (voiceId === AUTO_VOICE_FEMALE) {
-        if (defaultFemaleVoices.length > 0) {
-          const hash = simpleHash(speakerId)
-          resolvedVoiceMap[speakerId] = defaultFemaleVoices[hash % defaultFemaleVoices.length]
-        }
-      } else if (voiceId === AUTO_VOICE_MALE) {
-        if (defaultMaleVoices.length > 0) {
-          const hash = simpleHash(speakerId)
-          resolvedVoiceMap[speakerId] = defaultMaleVoices[hash % defaultMaleVoices.length]
-        }
-      } else {
-        resolvedVoiceMap[speakerId] = voiceId
-      }
-    }
-
-    // 알 수 없는 화자("???" 등) 매핑
-    if (unknownSpeakerCharId) {
-      const mysteryKeys = ['?', '??', '???', '????', '?????', 'name:???', 'name:????', 'name:?????']
-      for (const key of mysteryKeys) {
-        if (!resolvedVoiceMap[key]) {
-          resolvedVoiceMap[key] = unknownSpeakerCharId
-        }
-      }
-    }
+    // speakerVoiceMap 해석 + 알 수 없는 화자 매핑 (공통 함수 사용)
+    const resolvedVoiceMap = resolveSpeakerMappings(speakerVoiceMap, defaultFemaleVoices, defaultMaleVoices, unknownSpeakerCharId)
 
     try {
       set({ groupRenderError: null })
