@@ -42,7 +42,7 @@ function SpeakerCard({ speakerId, speakerName, speakerColor, dialogueType }: {
     const initial = speakerName ? speakerName.charAt(0) : '?'
     return (
       <div
-        className="w-10 shrink-0 ml-1 max-h-24 self-center flex items-center justify-center"
+        className="w-10 shrink-0 ml-1 flex items-center justify-center"
         title={speakerName || '알 수 없음'}
       >
         <span
@@ -61,7 +61,7 @@ function SpeakerCard({ speakerId, speakerName, speakerColor, dialogueType }: {
   return (
     <>
       <div
-        className="w-10 shrink-0 ml-1 max-h-24 self-center overflow-hidden cursor-pointer hover:brightness-110 transition-all"
+        className="w-10 shrink-0 ml-1 flex items-center overflow-hidden cursor-pointer hover:brightness-110 transition-all"
         onClick={() => setShowFull(true)}
         title="클릭하여 크게 보기"
       >
@@ -69,7 +69,7 @@ function SpeakerCard({ speakerId, speakerName, speakerColor, dialogueType }: {
           src={imageUrl}
           alt={alt}
           loading="lazy"
-          className="w-full h-full object-cover object-top"
+          className="w-full h-full max-h-32 object-cover object-top"
           onError={() => setHasError(true)}
         />
       </div>
