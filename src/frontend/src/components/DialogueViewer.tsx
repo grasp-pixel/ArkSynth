@@ -435,7 +435,7 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
         </div>
 
         {/* 재생 버튼 + 타입 표시 */}
-        {(isPrepared || isRendered) ? (
+        {hasVoice && (isPrepared || isRendered) ? (
           <div className="shrink-0 flex flex-col items-center gap-0.5">
             <div className="flex items-center gap-1">
               <button
@@ -472,7 +472,7 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
         ) : (
           <div
             className="shrink-0 w-9 h-9 flex items-center justify-center rounded bg-ark-black/30 text-ark-gray/30"
-            title="더빙 준비 후 사용 가능"
+            title={!hasVoice ? '음성이 준비되지 않은 캐릭터' : '더빙 준비 후 사용 가능'}
           >
             <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
               <path d="M8 5v14l11-7z"/>

@@ -122,6 +122,11 @@ async def start_update(request: UpdateRequest):
                 on_progress=progress_callback,
             )
             logger.info(f"[data.py] update_task completed with result: {result}")
+            if result:
+                # 다운로드 성공 시 캐시된 로더 리셋 → 새 데이터 반영
+                from ..shared_loaders import reset_all
+                reset_all()
+                logger.info("[data.py] shared_loaders reset after successful update")
             return result
         except Exception as e:
             logger.exception(f"[data.py] update_task failed with exception: {e}")
