@@ -2156,7 +2156,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         defaultCharId || undefined,
         narratorCharId || undefined,
         Object.keys(resolvedVoiceMap).length > 0 ? resolvedVoiceMap : undefined,
-        force
+        force,
+        defaultFemaleVoices.length > 0 ? defaultFemaleVoices : undefined,
+        defaultMaleVoices.length > 0 ? defaultMaleVoices : undefined,
       )
 
       set({
@@ -2318,7 +2320,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         defaultCharId || undefined,
         narratorCharId || undefined,
         Object.keys(resolvedVoiceMap).length > 0 ? resolvedVoiceMap : undefined,
-        force
+        force,
+        defaultFemaleVoices.length > 0 ? defaultFemaleVoices : undefined,
+        defaultMaleVoices.length > 0 ? defaultMaleVoices : undefined,
       )
 
       set({

@@ -15,6 +15,39 @@ from ..character.id_normalizer import load_char_table_mapping, resolve_to_table_
 
 logger = logging.getLogger(__name__)
 
+# 남성 키워드 (프론트엔드 getSpeakerVoice와 동일)
+MALE_KEYWORDS = ['남자', '남성', '소년', '청년', '신사', '아저씨']
+
+
+def simple_hash(s: str) -> int:
+    """문자열 해시 함수 (프론트엔드 simpleHash와 동일)"""
+    h = 0
+    for ch in s:
+        h = ((h << 5) - h) + ord(ch)
+        # 32bit signed integer 변환 (JavaScript 동작 재현)
+        h = h & 0xFFFFFFFF
+        if h >= 0x80000000:
+            h -= 0x100000000
+    return abs(h)
+
+
+def _resolve_gender_voice(
+    speaker_name: str | None,
+    mapping_key: str | None,
+    default_female_voices: list[str],
+    default_male_voices: list[str],
+) -> str | None:
+    """성별 기반 기본음성 분배 (프론트엔드 getSpeakerVoice step 5와 동일)"""
+    if not mapping_key:
+        return None
+    name_to_check = speaker_name or mapping_key
+    is_male = any(kw in name_to_check for kw in MALE_KEYWORDS)
+    if is_male and default_male_voices:
+        return default_male_voices[simple_hash(mapping_key) % len(default_male_voices)]
+    if default_female_voices:
+        return default_female_voices[simple_hash(mapping_key) % len(default_female_voices)]
+    return None
+
 
 class RenderStatus(str, Enum):
     """렌더링 상태"""
@@ -57,6 +90,8 @@ class RenderJob:
     default_char_id: str | None = None  # 모델 없는 캐릭터용 기본 음성
     narrator_char_id: str | None = None  # 나레이션용 캐릭터
     speaker_voice_map: dict[str, str] = field(default_factory=dict)  # 화자별 음성 매핑
+    default_female_voices: list[str] = field(default_factory=list)  # 여성 기본음성 목록
+    default_male_voices: list[str] = field(default_factory=list)  # 남성 기본음성 목록
     priority: int = 0
 
 
@@ -173,6 +208,8 @@ class RenderManager:
         default_char_id: str | None = None,
         narrator_char_id: str | None = None,
         speaker_voice_map: dict[str, str] | None = None,
+        default_female_voices: list[str] | None = None,
+        default_male_voices: list[str] | None = None,
         force: bool = False,
     ) -> RenderProgress:
         """렌더링 시작
@@ -218,6 +255,8 @@ class RenderManager:
             default_char_id=default_char_id,
             narrator_char_id=narrator_char_id,
             speaker_voice_map=speaker_voice_map or {},
+            default_female_voices=default_female_voices or [],
+            default_male_voices=default_male_voices or [],
         )
 
         # 진행 상태 초기화
@@ -382,9 +421,18 @@ class RenderManager:
                         char_id_to_use = name_to_voice[speaker_name]
                         logger.info(f"[RenderManager] 이름 상속 매핑: {speaker_name} → {char_id_to_use}")
                     else:
-                        # 나레이션/기본 음성 사용
-                        char_id_to_use = job.narrator_char_id or job.default_char_id
-                        logger.info(f"[RenderManager] 나레이션/기본 음성 → {char_id_to_use}")
+                        # 성별 기반 기본음성 분배 시도 (화자 이름이 있는 경우)
+                        gender_voice = _resolve_gender_voice(
+                            speaker_name, mapping_key,
+                            job.default_female_voices, job.default_male_voices,
+                        ) if speaker_name else None
+                        if gender_voice:
+                            char_id_to_use = gender_voice
+                            logger.info(f"[RenderManager] 성별 기본음성: {speaker_name} → {char_id_to_use}")
+                        else:
+                            # 나레이션/기본 음성 사용
+                            char_id_to_use = job.narrator_char_id or job.default_char_id
+                            logger.info(f"[RenderManager] 나레이션/기본 음성 → {char_id_to_use}")
                 elif await ensure_char_ready(char_id_to_use):
                     # 캐릭터 자신의 모델이 있으면 (또는 자동 준비 성공하면) 그대로 사용
                     logger.info(f"[RenderManager] 캐릭터 음성 사용: {char_id_to_use}")
@@ -402,9 +450,17 @@ class RenderManager:
                     char_id_to_use = name_to_voice[speaker_name]
                     logger.info(f"[RenderManager] 이름 상속 매핑: {char_id_to_use} ({speaker_name})")
                 else:
-                    # 모델도 없고 매핑도 없으면 - default_char_id 사용
-                    logger.info(f"[RenderManager] 기본 음성 사용: {char_id_to_use} → {job.default_char_id}")
-                    char_id_to_use = job.default_char_id
+                    # 성별 기반 기본음성 분배 시도
+                    gender_voice = _resolve_gender_voice(
+                        speaker_name, mapping_key,
+                        job.default_female_voices, job.default_male_voices,
+                    )
+                    if gender_voice:
+                        logger.info(f"[RenderManager] 성별 기본음성: {speaker_name} → {gender_voice}")
+                        char_id_to_use = gender_voice
+                    else:
+                        logger.info(f"[RenderManager] 기본 음성 사용: {char_id_to_use} → {job.default_char_id}")
+                        char_id_to_use = job.default_char_id
 
                 # 음성 합성
                 audio_path = self.cache.get_audio_path(episode_id, index)
@@ -499,6 +555,8 @@ class RenderManager:
         default_char_id: str | None = None,
         narrator_char_id: str | None = None,
         speaker_voice_map: dict[str, str] | None = None,
+        default_female_voices: list[str] | None = None,
+        default_male_voices: list[str] | None = None,
         force: bool = False,
     ) -> GroupRenderProgress:
         """그룹 전체 렌더링 시작
@@ -511,6 +569,8 @@ class RenderManager:
             default_char_id: 모델 없는 캐릭터용 기본 음성
             narrator_char_id: 나레이션용 캐릭터
             speaker_voice_map: 화자별 음성 매핑
+            default_female_voices: 여성 기본음성 목록
+            default_male_voices: 남성 기본음성 목록
             force: 기존 캐시 무시하고 다시 렌더링
 
         Returns:
@@ -542,6 +602,8 @@ class RenderManager:
                 default_char_id=default_char_id,
                 narrator_char_id=narrator_char_id,
                 speaker_voice_map=speaker_voice_map or {},
+                default_female_voices=default_female_voices or [],
+                default_male_voices=default_male_voices or [],
                 force=force,
             )
         )
@@ -570,6 +632,8 @@ class RenderManager:
         default_char_id: str | None,
         narrator_char_id: str | None,
         speaker_voice_map: dict[str, str],
+        default_female_voices: list[str],
+        default_male_voices: list[str],
         force: bool,
     ):
         """그룹 렌더링 백그라운드 태스크"""
@@ -614,6 +678,8 @@ class RenderManager:
                         default_char_id=default_char_id,
                         narrator_char_id=narrator_char_id,
                         speaker_voice_map=speaker_voice_map,
+                        default_female_voices=default_female_voices,
+                        default_male_voices=default_male_voices,
                         force=force,
                     )
 

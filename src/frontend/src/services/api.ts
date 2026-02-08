@@ -875,7 +875,9 @@ export const renderApi = {
     defaultCharId?: string,
     narratorCharId?: string,
     speakerVoiceMap?: Record<string, string>,
-    force: boolean = false
+    force: boolean = false,
+    defaultFemaleVoices?: string[],
+    defaultMaleVoices?: string[],
   ) => {
     const res = await api.post<RenderProgress>(
       `/api/render/start/${encodeURIComponent(episodeId)}`,
@@ -884,6 +886,8 @@ export const renderApi = {
         default_char_id: defaultCharId,
         narrator_char_id: narratorCharId,
         speaker_voice_map: speakerVoiceMap,
+        default_female_voices: defaultFemaleVoices,
+        default_male_voices: defaultMaleVoices,
         force
       }
     )
@@ -950,7 +954,9 @@ export const renderApi = {
     defaultCharId?: string,
     narratorCharId?: string,
     speakerVoiceMap?: Record<string, string>,
-    force: boolean = false
+    force: boolean = false,
+    defaultFemaleVoices?: string[],
+    defaultMaleVoices?: string[],
   ) => {
     const res = await api.post<GroupRenderProgress & { message: string }>(
       `/api/render/start-group/${encodeURIComponent(groupId)}`,
@@ -959,6 +965,8 @@ export const renderApi = {
         default_char_id: defaultCharId,
         narrator_char_id: narratorCharId,
         speaker_voice_map: speakerVoiceMap,
+        default_female_voices: defaultFemaleVoices,
+        default_male_voices: defaultMaleVoices,
         force
       }
     )

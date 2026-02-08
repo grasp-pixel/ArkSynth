@@ -46,6 +46,8 @@ class StartRenderRequest(BaseModel):
     default_char_id: Optional[str] = None  # 모델 없는 캐릭터용 기본 음성
     narrator_char_id: Optional[str] = None  # 나레이션용 캐릭터
     speaker_voice_map: Optional[dict[str, str]] = None  # 화자별 음성 매핑 {char_id: voice_char_id}
+    default_female_voices: Optional[list[str]] = None  # 여성 기본음성 목록
+    default_male_voices: Optional[list[str]] = None  # 남성 기본음성 목록
     force: bool = False  # 기존 캐시 무시하고 다시 렌더링
 
 
@@ -69,6 +71,8 @@ class StartGroupRenderRequest(BaseModel):
     default_char_id: Optional[str] = None
     narrator_char_id: Optional[str] = None
     speaker_voice_map: Optional[dict[str, str]] = None
+    default_female_voices: Optional[list[str]] = None
+    default_male_voices: Optional[list[str]] = None
     force: bool = False
 
 
@@ -187,6 +191,8 @@ async def start_render(
         default_char_id=request.default_char_id,
         narrator_char_id=request.narrator_char_id,
         speaker_voice_map=request.speaker_voice_map,
+        default_female_voices=request.default_female_voices,
+        default_male_voices=request.default_male_voices,
         force=request.force,
     )
 
@@ -539,6 +545,8 @@ async def start_group_render(
         default_char_id=request.default_char_id,
         narrator_char_id=request.narrator_char_id,
         speaker_voice_map=request.speaker_voice_map,
+        default_female_voices=request.default_female_voices,
+        default_male_voices=request.default_male_voices,
         force=request.force,
     )
 
