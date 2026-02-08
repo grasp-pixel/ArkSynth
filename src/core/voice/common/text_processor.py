@@ -166,6 +166,45 @@ def _replace_decimal(m: re.Match) -> str:
     return _number_to_sino(integer_part) + "점" + decimal_digits
 
 
+def normalize_time_for_tts(text: str) -> str:
+    """시간 표기를 한국어로 변환
+
+    숫자는 그대로 두고 형식만 변환하여, 이후 숫자 변환 로직에 위임합니다.
+
+    예:
+        "11:37 P.M." → "오후 11시 37분"
+        "PM 10:14"   → "오후 10시 14분"
+        "3:00 p.m."  → "오후 3시"
+    """
+    def _time_postfix(m: re.Match) -> str:
+        hour, minute = int(m.group(1)), int(m.group(2))
+        period = "오전" if m.group(3)[0] in "Aa" else "오후"
+        if minute == 0:
+            return f"{period} {hour}시"
+        return f"{period} {hour}시 {minute}분"
+
+    def _time_prefix(m: re.Match) -> str:
+        period = "오전" if m.group(1)[0] in "Aa" else "오후"
+        hour, minute = int(m.group(2)), int(m.group(3))
+        if minute == 0:
+            return f"{period} {hour}시"
+        return f"{period} {hour}시 {minute}분"
+
+    # 후위: "11:37 P.M." / "8:44 A.M." / "4:30 p.m." / "3:00  p.m."
+    text = re.sub(
+        r"(\d{1,2}):(\d{2})\s*([AaPp]\.?\s*[Mm]\.?)",
+        _time_postfix, text,
+    )
+
+    # 전위: "PM 10:14" / "AM 5:57"
+    text = re.sub(
+        r"([AaPp]\.?\s*[Mm]\.?)\s+(\d{1,2}):(\d{2})",
+        _time_prefix, text,
+    )
+
+    return text
+
+
 def normalize_units_to_korean(text: str) -> str:
     """영문 단위 약어를 한국어로 변환
 
@@ -261,6 +300,9 @@ def preprocess_text_for_tts(text: str) -> str | None:
 
     # 연속된 쉼표 정리
     text = re.sub(r",\s*,+", ",", text)
+
+    # 시간 표기를 한국어로 변환 (11:37 P.M. → 오후 11시 37분)
+    text = normalize_time_for_tts(text)
 
     # 영문 단위 약어를 한국어로 변환
     text = normalize_units_to_korean(text)
