@@ -12,9 +12,8 @@ class ServerConfig(BaseModel):
     debug: bool = False
 
     # 경로 설정
-    data_path: Path = Path("data")  # gamedata, gamedata_yostar 포함
-    gamedata_path: Path = Path("data/gamedata")  # 중국어 원본 데이터
-    gamedata_yostar_path: Path = Path("data/gamedata_yostar")  # 글로벌 서버 데이터
+    data_path: Path = Path("data")  # gamedata 포함
+    gamedata_path: Path = Path("data/gamedata")  # 게임 데이터 (서버별: kr, cn, jp, en)
     extracted_path: Path = Path("extracted")
     models_path: Path = Path("models")
     rendered_path: Path = Path("rendered")

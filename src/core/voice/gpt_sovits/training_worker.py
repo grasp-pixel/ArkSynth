@@ -10,6 +10,7 @@ GPT-SoVITS의 zero-shot 음성 합성을 위해 참조 오디오와 텍스트만
 import argparse
 import json
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -109,6 +110,67 @@ def convert_to_wav(input_path: Path, output_path: Path) -> bool:
             shutil.copy(input_path, output_path)
             return True
         return False
+
+
+def preprocess_audio_whisper_only(
+    char_id: str,
+    audio_dir: Path,
+    output_dir: Path,
+    min_duration: float = 3.0,
+    max_duration: float = 10.0,
+) -> list["AudioSegment"]:
+    """Whisper 전사 전용 오디오 전처리 (charword 데이터 없을 때)
+
+    charword_table에 캐릭터 데이터가 없을 때 사용합니다.
+    Whisper로 직접 전사하여 텍스트를 생성합니다.
+
+    Args:
+        char_id: 캐릭터 ID
+        audio_dir: 원본 오디오 디렉토리
+        output_dir: 전처리된 오디오 출력 디렉토리
+        min_duration: 최소 세그먼트 길이
+        max_duration: 최대 세그먼트 길이
+
+    Returns:
+        AudioSegment 목록
+    """
+    try:
+        from core.voice.gpt_sovits.audio_preprocessor import AudioPreprocessor
+    except ImportError as e:
+        logger.warning(f"audio_preprocessor 임포트 실패: {e}")
+        emit_progress("preprocessing", 0.4, f"Whisper 사용 불가: {e}")
+        return []
+
+    emit_progress("preprocessing", 0.15, "Whisper 전사 모드: 모델 로딩 중...")
+
+    preprocessor = AudioPreprocessor(
+        model_size="large-v3-turbo",
+        language="ko",
+        min_duration=min_duration,
+        max_duration=max_duration,
+    )
+
+    try:
+        def on_progress(progress: float, message: str):
+            emit_progress("preprocessing", 0.15 + progress * 0.25, message)
+
+        segments = preprocessor.preprocess_character_whisper_only(
+            char_id=char_id,
+            audio_dir=audio_dir,
+            output_dir=output_dir,
+            on_progress=on_progress,
+        )
+
+        emit_progress("preprocessing", 0.4, f"Whisper 전사 완료: {len(segments)}개 세그먼트")
+        return segments
+
+    except Exception as e:
+        logger.error(f"Whisper 전사 실패: {e}")
+        emit_progress("preprocessing", 0.4, f"Whisper 전사 실패: {e}")
+        return []
+
+    finally:
+        preprocessor.unload_model()
 
 
 def preprocess_audio_with_whisper(
@@ -227,12 +289,6 @@ def prepare_reference_audio(
     lang_code = "ko_KR" if language == "ko" else "ja_JP" if language == "ja" else "zh_CN"
     transcripts = load_charword_transcripts(char_id, gamedata_path, lang_code)
 
-    if not transcripts:
-        emit_error("대사 텍스트가 없습니다", f"{char_id}의 charword_table 데이터 없음")
-        return False
-
-    emit_progress("preprocessing", 0.14, f"{len(transcripts)}개 대사 텍스트 로드")
-
     # 출력 디렉토리 생성
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -242,21 +298,45 @@ def prepare_reference_audio(
     preprocessed_dir = config.get_preprocessed_audio_path(char_id)
     preprocessed_dir.mkdir(parents=True, exist_ok=True)
 
+    # charword 데이터 없으면 Whisper 전사 전용 모드
+    whisper_only_mode = not transcripts
+
+    if whisper_only_mode:
+        logger.warning(f"charword 데이터 없음: {char_id}, Whisper 전사 모드로 진행")
+        emit_progress("preprocessing", 0.14, "charword 데이터 없음, Whisper 전사 모드로 진행...")
+    else:
+        emit_progress("preprocessing", 0.14, f"{len(transcripts)}개 대사 텍스트 로드")
+
     # Whisper 전처리 시도
     whisper_segments: list["AudioSegment"] = []
     if use_whisper:
-        whisper_segments = preprocess_audio_with_whisper(
-            char_id=char_id,
-            audio_dir=audio_dir,
-            output_dir=preprocessed_dir,
-            transcripts=transcripts,
-            min_duration=min_duration,
-            max_duration=max_duration,
-        )
+        if whisper_only_mode:
+            # charword 없음: Whisper 전사 전용 모드
+            whisper_segments = preprocess_audio_whisper_only(
+                char_id=char_id,
+                audio_dir=audio_dir,
+                output_dir=preprocessed_dir,
+                min_duration=min_duration,
+                max_duration=max_duration,
+            )
+        else:
+            # charword 있음: 기존 방식 (텍스트 정렬 포함)
+            whisper_segments = preprocess_audio_with_whisper(
+                char_id=char_id,
+                audio_dir=audio_dir,
+                output_dir=preprocessed_dir,
+                transcripts=transcripts,
+                min_duration=min_duration,
+                max_duration=max_duration,
+            )
 
         # 전처리 완료 로그 (텍스트는 각 WAV 옆에 .txt로 저장됨)
         if whisper_segments:
             emit_progress("preprocessing", 0.45, f"전처리 완료: {len(whisper_segments)}개 세그먼트")
+    elif whisper_only_mode:
+        # Whisper도 비활성화이고 charword도 없으면 진행 불가
+        emit_error("대사 텍스트가 없습니다", f"{char_id}의 charword_table 데이터 없음 (Whisper 비활성화)")
+        return False
 
     # 후보 오디오 수집
     emit_progress("preprocessing", 0.5, "참조 오디오 선택 중...")
@@ -410,7 +490,7 @@ def main():
     parser.add_argument("--char-name", required=True, help="캐릭터 이름")
     parser.add_argument("--audio-dir", required=True, help="오디오 파일 디렉토리")
     parser.add_argument("--output-dir", required=True, help="출력 디렉토리")
-    parser.add_argument("--gamedata-path", default="data/gamedata_yostar", help="gamedata 경로")
+    parser.add_argument("--gamedata-path", default="data/gamedata", help="gamedata 경로")
     parser.add_argument("--gpt-sovits-path", default="C:/GPT-SoVITS", help="GPT-SoVITS 경로 (미사용)")
     parser.add_argument("--epochs-sovits", type=int, default=8, help="SoVITS 에포크 (미사용)")
     parser.add_argument("--epochs-gpt", type=int, default=15, help="GPT 에포크 (미사용)")
@@ -443,6 +523,12 @@ def main():
 
         # 완료
         emit_complete(args.char_id, args.char_name, str(output_dir))
+
+        # CTranslate2(faster-whisper) 모델 소멸자가 Windows에서 0xC0000409 크래시를
+        # 일으킬 수 있으므로, Python 종료 절차를 건너뛰고 즉시 종료.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(0)
 
     except Exception as e:
         emit_error("예외 발생", str(e))

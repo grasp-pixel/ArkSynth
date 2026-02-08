@@ -27,7 +27,7 @@ def get_voice_mapper() -> CharacterVoiceMapper:
     if _voice_mapper is None:
         _voice_mapper = CharacterVoiceMapper(
             extracted_path=config.extracted_path,
-            gamedata_path=config.gamedata_yostar_path,
+            gamedata_path=config.gamedata_path,
             default_lang=config.voice_language,
         )
     return _voice_mapper

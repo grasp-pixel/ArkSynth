@@ -203,7 +203,7 @@ async def get_settings():
         gpt_sovits_path=str(gpt_config.gpt_sovits_path),
         models_path=str(config.models_path),
         extracted_path=str(config.extracted_path),
-        gamedata_path=str(config.gamedata_yostar_path),
+        gamedata_path=str(config.gamedata_path),
         game_language=config.game_language,
         voice_language=config.voice_language,
         gpt_sovits_language=config.gpt_sovits_language,

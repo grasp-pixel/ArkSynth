@@ -1424,7 +1424,13 @@ def main():
         cleanup=args.cleanup,
     )
 
-    sys.exit(0 if success else 1)
+    if success:
+        # CTranslate2 모델 소멸자 크래시 방지 (training_worker.py 참조)
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(0)
+    else:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

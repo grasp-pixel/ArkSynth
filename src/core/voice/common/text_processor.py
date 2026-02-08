@@ -27,6 +27,10 @@ _SINO_SUFFIXES = frozenset({
     "퍼센트", "프로", "세기", "주년", "주일", "주", "배",
     "미터", "킬로", "그램", "리터", "톤",
     "세", "인분", "인", "차", "위", "시간",
+    # 복합 단위 (영문 약어 변환 후 매칭용)
+    "킬로미터", "센티미터", "밀리미터",
+    "킬로그램", "밀리그램", "밀리리터",
+    "킬로미터퍼아워", "데시벨",
 })
 
 # 고유어 접미사
@@ -36,6 +40,31 @@ _NATIVE_SUFFIXES = frozenset({
     "권", "장", "쪽", "줄", "곳", "가지", "번째",
     "시",  # 3시 = 세 시 (시간은 한자어)
 })
+
+# ============ 영문 단위 → 한국어 매핑 ============
+
+# 숫자 뒤에 바로 붙어도 안전한 단위 (긴 것부터 매칭)
+_UNIT_MAP: dict[str, str] = {
+    "km/h": "킬로미터퍼아워",
+    "km": "킬로미터",
+    "cm": "센티미터",
+    "mm": "밀리미터",
+    "kg": "킬로그램",
+    "mg": "밀리그램",
+    "ml": "밀리리터",
+    "dB": "데시벨",
+    "℃": "도",
+    "°C": "도",
+    "%": "퍼센트",
+}
+
+# 한 글자 단위 — 뒤에 영문자가 이어지지 않을 때만 변환 (5m. 5m → OK, 5million → X)
+_UNIT_MAP_SHORT: dict[str, str] = {
+    "m": "미터",
+    "g": "그램",
+    "t": "톤",
+    "L": "리터",
+}
 
 # 접미사 regex (긴 것부터 매칭)
 _ALL_SUFFIXES_SORTED = sorted(_SINO_SUFFIXES | _NATIVE_SUFFIXES, key=len, reverse=True)
@@ -137,6 +166,30 @@ def _replace_decimal(m: re.Match) -> str:
     return _number_to_sino(integer_part) + "점" + decimal_digits
 
 
+def normalize_units_to_korean(text: str) -> str:
+    """영문 단위 약어를 한국어로 변환
+
+    예:
+        "5km" → "5킬로미터"
+        "3.5cm" → "3.5센티미터"
+        "60km/h" → "60킬로미터퍼아워"
+    """
+    # 일반 단위: 숫자 + 선택적 공백 + 단위 (대소문자 무시)
+    for abbr, korean in _UNIT_MAP.items():
+        pattern = rf"(\d+(?:\.\d+)?)\s*(?i:{re.escape(abbr)})(?![a-zA-Z])"
+        text = re.sub(pattern, rf"\g<1>{korean}", text)
+
+    # 한 글자 단위: 숫자 + 선택적 공백 + 단위 (뒤에 영문자 없을 때만)
+    for abbr, korean in _UNIT_MAP_SHORT.items():
+        if abbr == "L":  # L은 대문자만
+            pattern = rf"(\d+(?:\.\d+)?)\s*(L)(?![a-zA-Z])"
+        else:
+            pattern = rf"(\d+(?:\.\d+)?)\s*(?i:{re.escape(abbr)})(?![a-zA-Z])"
+        text = re.sub(pattern, rf"\g<1>{korean}", text)
+
+    return text
+
+
 def normalize_numbers_for_tts(text: str) -> str:
     """숫자를 한국어 읽기로 변환
 
@@ -208,6 +261,9 @@ def preprocess_text_for_tts(text: str) -> str | None:
 
     # 연속된 쉼표 정리
     text = re.sub(r",\s*,+", ",", text)
+
+    # 영문 단위 약어를 한국어로 변환
+    text = normalize_units_to_korean(text)
 
     # 숫자를 한국어 읽기로 변환
     text = normalize_numbers_for_tts(text)

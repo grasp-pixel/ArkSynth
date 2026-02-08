@@ -90,7 +90,7 @@ async def synthesize(request: SynthesizeRequest):
                 char_id=request.char_id,
                 audio_dir=audio_dir,
                 output_dir=output_dir,
-                gamedata_path=config.gamedata_yostar_path,
+                gamedata_path=config.gamedata_path,
                 language=config.gpt_sovits_language,
                 min_duration=gpt_config.min_ref_audio_length,
                 max_duration=gpt_config.max_ref_audio_length,

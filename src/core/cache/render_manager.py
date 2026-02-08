@@ -243,7 +243,7 @@ class RenderManager:
                 if audio_dir.exists():
                     logger.info(f"[RenderManager] 캐릭터 자동 준비 시도: {cid}")
                     output_dir = config.models_path / "gpt_sovits" / cid
-                    gamedata_path = app_config.gamedata_yostar_path
+                    gamedata_path = app_config.gamedata_path
                     success = prepare_reference_audio(
                         char_id=cid,
                         audio_dir=audio_dir,

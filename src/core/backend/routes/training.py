@@ -50,7 +50,7 @@ def get_character_mapper() -> CharacterVoiceMapper:
     if _character_mapper is None:
         _character_mapper = CharacterVoiceMapper(
             extracted_path=config.extracted_path,
-            gamedata_path=config.gamedata_yostar_path,
+            gamedata_path=config.gamedata_path,
         )
     return _character_mapper
 

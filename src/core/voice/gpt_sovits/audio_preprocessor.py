@@ -142,23 +142,22 @@ class AudioPreprocessor:
                 f"오류: {e}"
             ) from e
 
+    # CTranslate2 모델 소멸자가 Windows에서 0xC0000409 크래시를 일으킬 수 있음.
+    # 모듈 레벨에 참조를 보관하여 소멸자 호출을 지연시킴.
+    _deferred_models: list = []
+
     def unload_model(self) -> None:
-        """모델 언로드 및 메모리 해제"""
+        """모델 언로드 (소멸자 지연)
+
+        CTranslate2 네이티브 소멸자가 Windows에서 CUDA 컨텍스트 정리 중
+        0xC0000409 크래시를 일으킬 수 있으므로, 참조를 모듈 레벨에 보관하여
+        소멸자 호출을 프로세스 종료 시점까지 지연시킴.
+        서브프로세스 워커에서는 os._exit()로 소멸자 실행 없이 종료.
+        """
         if self._model is not None:
-            del self._model
+            AudioPreprocessor._deferred_models.append(self._model)
             self._model = None
-            gc.collect()
-
-            # CUDA 캐시 정리
-            try:
-                import torch
-
-                if torch.cuda.is_initialized():
-                    torch.cuda.empty_cache()
-            except Exception:
-                pass
-
-            logger.info("Whisper 모델 언로드 완료")
+            logger.info("Whisper 모델 언로드 완료 (소멸자 지연)")
 
     def transcribe_audio(
         self,
@@ -850,6 +849,88 @@ class AudioPreprocessor:
             audio_path, expected_text, voice_id, output_dir,
             transcripts_all=transcripts_all
         )
+
+    def preprocess_character_whisper_only(
+        self,
+        char_id: str,
+        audio_dir: Path,
+        output_dir: Path,
+        on_progress: Callable[[float, str], None] | None = None,
+    ) -> list[AudioSegment]:
+        """charword 없이 Whisper 전사만으로 오디오 전처리
+
+        charword_table에 캐릭터 데이터가 없을 때 사용합니다.
+        Whisper로 직접 오디오를 전사하고, 전사 텍스트를 사용합니다.
+
+        Args:
+            char_id: 캐릭터 ID
+            audio_dir: 원본 오디오 디렉토리
+            output_dir: 슬라이싱 출력 디렉토리
+            on_progress: 진행률 콜백 (0-1, 메시지)
+
+        Returns:
+            모든 처리된 AudioSegment 목록
+        """
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        audio_files = list(audio_dir.glob("*.mp3")) + list(audio_dir.glob("*.wav"))
+        total = len(audio_files)
+
+        if total == 0:
+            logger.warning(f"오디오 파일 없음: {audio_dir}")
+            return []
+
+        logger.info(f"Whisper 전사 모드 시작: {char_id}, {total}개 파일")
+
+        all_segments: list[AudioSegment] = []
+
+        for i, audio_path in enumerate(audio_files):
+            if on_progress:
+                progress = (i + 1) / total
+                on_progress(progress, f"Whisper 전사 중: {audio_path.name}")
+
+            voice_id = audio_path.stem
+            duration = self._get_audio_duration(audio_path)
+
+            if duration <= 0 or duration < self.min_duration:
+                continue
+
+            # Whisper 전사
+            segments = self.transcribe_audio(audio_path)
+            if not segments:
+                continue
+
+            whisper_text = " ".join(seg.text for seg in segments)
+            if not whisper_text.strip():
+                continue
+
+            if duration <= self.max_duration:
+                # 적절한 길이: 그대로 변환
+                output_path = output_dir / f"{voice_id}.wav"
+                text_path = output_dir / f"{voice_id}.txt"
+
+                if self._extract_segment(
+                    audio_path, 0, duration, output_path,
+                    audio_duration=duration,
+                ):
+                    text_path.write_text(whisper_text, encoding="utf-8")
+                    all_segments.append(AudioSegment(
+                        audio_path=output_path,
+                        text=whisper_text,
+                        duration=duration,
+                        original_voice_id=voice_id,
+                        segment_index=0,
+                    ))
+            else:
+                # 긴 오디오: Whisper 텍스트 기반으로 분할
+                split_segments = self.split_long_audio(
+                    audio_path, whisper_text, voice_id, output_dir,
+                    transcripts_all=None,
+                )
+                all_segments.extend(split_segments)
+
+        logger.info(f"Whisper 전사 완료: {char_id}, {len(all_segments)}개 세그먼트")
+        return all_segments
 
     def preprocess_character(
         self,

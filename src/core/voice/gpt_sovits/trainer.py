@@ -131,7 +131,7 @@ class GPTSoVITSTrainer:
 
         # gamedata 경로 (charword_table.json 위치)
         from ...backend.config import config as server_config
-        gamedata_path = server_config.gamedata_yostar_path
+        gamedata_path = server_config.gamedata_path
 
         # 모든 경로를 절대 경로로 변환 (subprocess CWD와 무관하게 동작하도록)
         cmd = [
