@@ -73,17 +73,6 @@ def get_num_name_pattern(char_id: str) -> str | None:
     return None
 
 
-def get_char_number(char_id: str) -> str | None:
-    """캐릭터 ID에서 숫자 부분만 추출
-
-    예시:
-    - char_240_wyvern → 240
-    - char_4202_haruka → 4202
-    """
-    if match := re.match(r'(?:char|avg|avgnew)_(\d+)_', char_id.lower()):
-        return match.group(1)
-    return None
-
 
 def _search_in_folder(folder: Path, char_id: str, folder_name: str) -> Path | None:
     """폴더 내에서 이미지 검색 (내부 헬퍼)"""
@@ -220,45 +209,37 @@ def find_local_image(char_id: str, extracted_path: Path = EXTRACTED_IMAGES_PATH)
     folder_name = get_char_name_from_id(char_id)
     char_folder = extracted_path / folder_name
 
-    # 폴더가 없으면 숫자 패턴 또는 유사 폴더명으로 검색
+    # 폴더가 없으면 전체 하위 폴더에서 파일명으로 직접 검색
     if not char_folder.exists():
-        char_number = get_char_number(char_id)
+        lower_id = char_id.lower()
+        best: Path | None = None
+        best_priority = 999
 
-        # 1. 숫자 패턴으로 char_ 파일 우선 검색 (가장 정확)
-        if char_number:
-            # 모든 폴더에서 숫자가 포함된 파일 찾기
-            # char_ 접두사 우선, _1 우선
-            candidates: list[tuple[int, Path]] = []  # (priority, path)
-
-            for folder in extracted_path.iterdir():
-                if not folder.is_dir():
+        # 1. 파일명 기반 검색: char_id로 시작하는 파일
+        for folder in extracted_path.iterdir():
+            if not folder.is_dir():
+                continue
+            for img_file in folder.glob("*.png"):
+                stem = img_file.stem.lower()
+                if stem == lower_id:
+                    return img_file  # 정확한 매칭
+                if not stem.startswith(lower_id):
                     continue
-                for img_file in folder.glob("*.png"):
-                    lower_name = img_file.stem.lower()
+                # char_id 뒤에 구분자가 와야 함 (avg_npc_01 ≠ avg_npc_010)
+                rest = stem[len(lower_id):]
+                if rest and rest[0] not in ('_', '$', '#'):
+                    continue
+                if ('_1' in rest or '$1' in rest) and best_priority > 0:
+                    best = img_file
+                    best_priority = 0
+                elif best_priority > 1:
+                    best = img_file
+                    best_priority = 1
 
-                    # char_XXX_ 패턴 (우선순위 높음)
-                    if lower_name.startswith(f"char_{char_number}_"):
-                        priority = 0
-                        if "_1" in lower_name or "$1" in lower_name:
-                            priority = -1  # _1 더 우선
-                        candidates.append((priority, img_file))
-                    # avg_XXX_ 패턴 (우선순위 중간)
-                    elif lower_name.startswith(f"avg_{char_number}_") or lower_name.startswith(f"avgnew_{char_number}_"):
-                        priority = 10
-                        if "_1" in lower_name or "$1" in lower_name:
-                            priority = 9
-                        candidates.append((priority, img_file))
-                    # npc는 낮은 우선순위
-                    elif f"npc_{char_number}" in lower_name:
-                        candidates.append((20, img_file))
+        if best:
+            return best
 
-            # NPC가 아닌 결과가 있으면 반환
-            non_npc = [c for c in candidates if c[0] < 20]
-            if non_npc:
-                non_npc.sort(key=lambda x: (x[0], x[1].stem.lower()))
-                return non_npc[0][1]
-
-        # 2. 유사 폴더명 검색 (jesica → jessica)
+        # 2. 유사 폴더명 검색 (jesica → jessica 등 오타 대응)
         if len(folder_name) >= 3:
             prefix3 = folder_name[:3].lower()
             matching_folders: list[tuple[int, Path]] = []  # (match_length, folder)
@@ -266,12 +247,8 @@ def find_local_image(char_id: str, extracted_path: Path = EXTRACTED_IMAGES_PATH)
                 if not folder.is_dir():
                     continue
                 folder_lower = folder.name.lower()
-                # npc 폴더는 제외
-                if folder_lower.startswith('npc') or folder_lower.startswith('avg_npc'):
-                    continue
-                # 3글자 접두사 일치 + 길이 유사 (오탐 방지)
+                # 3글자 접두사 일치 + 길이 유사 (오탈자 대응)
                 if folder_lower.startswith(prefix3) and abs(len(folder_lower) - len(folder_name)) <= 2:
-                    # 공통 접두사 길이 계산
                     common_len = 0
                     for i, (a, b) in enumerate(zip(folder_lower, folder_name.lower())):
                         if a == b:
@@ -280,17 +257,11 @@ def find_local_image(char_id: str, extracted_path: Path = EXTRACTED_IMAGES_PATH)
                             break
                     matching_folders.append((common_len, folder))
 
-            # 가장 많이 일치하는 폴더 먼저 시도
             matching_folders.sort(key=lambda x: -x[0])
             for _, folder in matching_folders:
                 result = _search_in_folder(folder, char_id, folder_name)
                 if result:
                     return result
-
-        # 3. NPC 이미지라도 있으면 반환 (최후의 폴백)
-        if char_number and candidates:
-            candidates.sort(key=lambda x: (x[0], x[1].stem.lower()))
-            return candidates[0][1]
 
         return None
 

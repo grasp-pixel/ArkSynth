@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useAppStore } from '../stores/appStore'
+import { useAppStore, isMysteryName } from '../stores/appStore'
 import VoiceMappingModal from './VoiceMappingModal'
 
 export default function VoiceSetupPanel() {
@@ -98,7 +98,7 @@ export default function VoiceSetupPanel() {
   // 알 수 없는 화자("???") 대사 수
   const unknownSpeakerCount = useMemo(() => {
     return episodeCharacters
-      .filter(c => !c.char_id && c.name && [...c.name.trim()].every(ch => ch === '?'))
+      .filter(c => !c.char_id && c.name && isMysteryName(c.name))
       .reduce((sum, c) => sum + c.dialogue_count, 0)
   }, [episodeCharacters])
 

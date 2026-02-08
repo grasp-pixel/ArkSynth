@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
-import { useAppStore, AUTO_VOICE_FEMALE, AUTO_VOICE_MALE, simpleHash } from '../stores/appStore'
+import { useAppStore, AUTO_VOICE_FEMALE, AUTO_VOICE_MALE, simpleHash, isMysteryName } from '../stores/appStore'
 import { voiceApi, type GroupCharacterInfo, API_BASE } from '../services/api'
 
 // 체크 아이콘
@@ -135,14 +135,24 @@ export default function VoiceMappingModal({ isOpen, onClose, characters }: Voice
       .finally(() => setIsLoadingMeta(false))
   }, [isOpen])
 
+  // 이름 → char_id 매핑 (같은 이름의 char_id 있는 캐릭터에서 이미지 상속)
+  const nameToCharId = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const c of targetCharacters) {
+      if (c.char_id && c.name && !map[c.name] && !isMysteryName(c.name)) {
+        map[c.name] = c.char_id
+      }
+    }
+    return map
+  }, [targetCharacters])
+
   // 음성 없는 캐릭터 (매핑 대상)
   // name-only 미스터리 이름(???)은 제외 (알 수 없는 화자 전용 슬롯으로 처리)
   const voicelessCharacters = useMemo(() => {
     return targetCharacters.filter(c => {
       if (!c.name || c.has_voice) return false
       // 미스터리 이름(???) 제외 - char_id 없는 경우와 char_id 자체가 '?'인 경우 모두
-      const nameIsMystery = [...c.name.trim()].every(ch => ch === '?')
-      if (nameIsMystery && (!c.char_id || [...c.char_id.trim()].every(ch => ch === '?'))) return false
+      if (isMysteryName(c.name) && (!c.char_id || isMysteryName(c.char_id))) return false
       return true
     })
   }, [targetCharacters])
@@ -231,6 +241,7 @@ export default function VoiceMappingModal({ isOpen, onClose, characters }: Voice
                 <CharacterMappingRow
                   key={`${char.char_id ?? 'n'}-${char.name}-${idx}`}
                   char={char}
+                  imageCharId={char.char_id || nameToCharId[char.name] || null}
                   genders={genders}
                   availableVoices={availableVoices}
                   voiceCharacters={voiceCharacters}
@@ -517,6 +528,7 @@ function VoiceSelectButtons({
 // 개별 캐릭터 매핑 카드
 interface CharacterMappingRowProps {
   char: GroupCharacterInfo
+  imageCharId: string | null  // 이미지용 char_id (이름 매칭으로 상속 가능)
   genders: Record<string, string>
   availableVoices: { char_id: string; name: string }[]
   voiceCharacters: { char_id: string; name: string }[]
@@ -530,6 +542,7 @@ interface CharacterMappingRowProps {
 
 function CharacterMappingRow({
   char,
+  imageCharId,
   genders,
   availableVoices,
   voiceCharacters,
@@ -590,9 +603,9 @@ function CharacterMappingRow({
       <div className="flex">
         {/* 이미지 영역: NPC → 매핑 캐릭터 */}
         <div className="flex gap-2 p-3 bg-ark-black/30">
-          {/* NPC 이미지 */}
+          {/* NPC 이미지 (이름 매칭으로 상속) */}
           <CharacterStanding
-            charId={char.char_id}
+            charId={imageCharId}
             alt={char.name}
             className="w-28 h-44 rounded"
           />

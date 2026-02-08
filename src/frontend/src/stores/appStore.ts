@@ -359,7 +359,7 @@ export const simpleHash = (str: string): number => {
 
 // 이름이 '???' 같은 미스터리 이름인지 확인 (이름 기반 매핑 상속에서 제외)
 // "바운티 헌터?", "킨베에?" 등 식별 가능한 이름은 미스터리가 아님
-const isMysteryName = (name: string): boolean => {
+export const isMysteryName = (name: string): boolean => {
   if (!name) return true
   const trimmed = name.trim()
   return [...trimmed].every(c => c === '?')

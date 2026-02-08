@@ -1,5 +1,5 @@
 import { useEffect, useRef, useMemo, useState } from 'react'
-import { useAppStore } from '../stores/appStore'
+import { useAppStore, isMysteryName } from '../stores/appStore'
 import { voiceApi, type DialogueInfo } from '../services/api'
 
 // 디버그 모드 (캐릭터 ID 표시)
@@ -33,22 +33,20 @@ function SpeakerCard({ speakerId, speakerName, speakerColor, dialogueType }: {
   const [hasError, setHasError] = useState(false)
   const [showFull, setShowFull] = useState(false)
 
-  // 나레이션/자막/스티커/팝업은 빈 공간으로 정렬 유지
+  // 나레이션/자막/스티커/팝업 중 speaker 없으면 표시 안함
   const isNonDialogue = dialogueType !== 'dialogue'
-  if (isNonDialogue && !speakerId) {
-    return <div className="w-10 h-14 shrink-0" />
-  }
+  if (isNonDialogue && !speakerId) return null
 
   // 이미지 없거나 로드 실패 시 이니셜 폴백
   if (!speakerId || hasError) {
     const initial = speakerName ? speakerName.charAt(0) : '?'
     return (
       <div
-        className="w-10 h-14 shrink-0 rounded bg-ark-panel border border-ark-border flex items-center justify-center"
+        className="w-10 shrink-0 ml-1 max-h-24 self-center flex items-center justify-center"
         title={speakerName || '알 수 없음'}
       >
         <span
-          className="text-sm font-bold"
+          className="text-lg font-bold"
           style={{ color: speakerColor || '#8a8a8a' }}
         >
           {initial}
@@ -63,7 +61,7 @@ function SpeakerCard({ speakerId, speakerName, speakerColor, dialogueType }: {
   return (
     <>
       <div
-        className="w-10 h-14 shrink-0 rounded bg-ark-black/30 border border-ark-border overflow-hidden cursor-pointer hover:border-ark-orange/50 transition-colors"
+        className="w-10 shrink-0 ml-1 max-h-24 self-center overflow-hidden cursor-pointer hover:brightness-110 transition-all"
         onClick={() => setShowFull(true)}
         title="클릭하여 크게 보기"
       >
@@ -124,6 +122,17 @@ export default function DialogueViewer() {
 
   // 디버그: 캐릭터 ID 표시 토글
   const [showCharIds, setShowCharIds] = useState(DEBUG_SHOW_CHAR_ID)
+
+  // 이름 → char_id 매핑 (이름만 있는 화자의 스프라이트 이미지 상속용)
+  const nameToCharId = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const c of groupCharacters) {
+      if (c.char_id && c.name && !map[c.name] && !isMysteryName(c.name)) {
+        map[c.name] = c.char_id
+      }
+    }
+    return map
+  }, [groupCharacters])
 
   // 음성 있는 캐릭터 ID Set (빠른 조회용)
   const voicedCharacterIds = useMemo(() => {
@@ -276,6 +285,7 @@ export default function DialogueViewer() {
                 isPrepared={isPrepared}
                 isRendered={isRendered}
                 isRendering={isRendering && renderProgress?.completed === index}
+                imageSpeakerId={!dialogue.speaker_id && dialogue.speaker_name ? nameToCharId[dialogue.speaker_name] : null}
                 onPlay={() => handlePlayClick(dialogue)}
                 showCharId={showCharIds}
                 resolvedCharId={resolvedCharId}
@@ -299,13 +309,14 @@ interface DialogueItemProps {
   isPrepared?: boolean   // 더빙 준비 완료 여부
   isRendered?: boolean   // 사전 렌더링 완료 여부
   isRendering?: boolean  // 현재 렌더링 중인 대사
+  imageSpeakerId?: string | null  // 이름 매칭으로 상속된 이미지용 speaker_id
   onPlay: () => void
   showCharId?: boolean   // 캐릭터 ID 표시 여부
   resolvedCharId?: string | null  // 실제 사용될 캐릭터 ID
   resolvedCharName?: string | null  // 캐릭터 이름
 }
 
-function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, speakerColor, isPrepared, isRendered, isRendering, onPlay, showCharId, resolvedCharId, resolvedCharName }: DialogueItemProps) {
+function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, speakerColor, isPrepared, isRendered, isRendering, imageSpeakerId, onPlay, showCharId, resolvedCharId, resolvedCharName }: DialogueItemProps) {
   const { getModelType } = useAppStore()
   const isSubtitle = dialogue.dialogue_type === 'subtitle'
   const isSticker = dialogue.dialogue_type === 'sticker'
@@ -315,34 +326,36 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
 
   return (
     <div
-      className={`ark-dialogue ${isPlaying ? 'playing' : ''} ${isNarration ? 'narration' : ''} ${isSubtitle || isSticker ? 'subtitle' : ''} ${isPopup ? 'popup' : ''} ${
+      className={`ark-dialogue !p-0 overflow-hidden flex ${isPlaying ? 'playing' : ''} ${isNarration ? 'narration' : ''} ${isSubtitle || isSticker ? 'subtitle' : ''} ${isPopup ? 'popup' : ''} ${
         isMatched ? 'ring-2 ring-ark-orange bg-ark-orange/10' : ''
       }`}
     >
-      <div className="flex items-start gap-3">
-        {/* 인덱스 + 렌더링 상태 */}
-        <div className="flex items-center gap-1 shrink-0 pt-0.5">
-          <span className="text-xs text-ark-gray font-mono w-8">
-            #{String(index + 1).padStart(3, '0')}
-          </span>
-          {/* 렌더링 상태 표시 */}
-          {isRendering ? (
-            <span className="w-2 h-2 rounded-full bg-ark-orange ark-pulse" title="렌더링 중" />
-          ) : isRendered ? (
-            <span className="w-2 h-2 rounded-full bg-green-500" title="렌더링 완료" />
-          ) : null}
-        </div>
+      {/* 좌측 스프라이트 (카드 가장자리, 패딩 밖) */}
+      <SpeakerCard
+        speakerId={dialogue.speaker_id || imageSpeakerId || null}
+        speakerName={dialogue.speaker_name}
+        speakerColor={speakerColor}
+        dialogueType={dialogue.dialogue_type}
+      />
 
-        {/* 화자 스프라이트 미니 카드 */}
-        <SpeakerCard
-          speakerId={dialogue.speaker_id}
-          speakerName={dialogue.speaker_name}
-          speakerColor={speakerColor}
-          dialogueType={dialogue.dialogue_type}
-        />
+      {/* 콘텐츠 영역 (패딩 적용) */}
+      <div className="flex-1 min-w-0 p-4">
+        <div className="flex items-start gap-3">
+          {/* 인덱스 + 렌더링 상태 */}
+          <div className="flex items-center gap-1 shrink-0 pt-0.5">
+            <span className="text-xs text-ark-gray font-mono w-8">
+              #{String(index + 1).padStart(3, '0')}
+            </span>
+            {/* 렌더링 상태 표시 */}
+            {isRendering ? (
+              <span className="w-2 h-2 rounded-full bg-ark-orange ark-pulse" title="렌더링 중" />
+            ) : isRendered ? (
+              <span className="w-2 h-2 rounded-full bg-green-500" title="렌더링 완료" />
+            ) : null}
+          </div>
 
-        {/* 내용 */}
-        <div className="flex-1 min-w-0">
+          {/* 내용 */}
+          <div className="flex-1 min-w-0">
           {/* 화자 + 캐릭터 ID + 매칭 표시 */}
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             {/* 특수 대사 타입 라벨 */}
@@ -457,6 +470,7 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
             </svg>
           </div>
         )}
+        </div>
       </div>
     </div>
   )
