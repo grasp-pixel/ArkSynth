@@ -972,19 +972,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     // 1. 수동 매핑 (사용자가 명시적으로 설정한 매핑이 최우선)
     let mapping = speakerVoiceMap[speakerId]
 
-    // 1.5. name: 키 추가 해석
-    if (!mapping && speakerId.startsWith('name:')) {
-      const charName = speakerId.slice(5)
-      if (isMysteryName(charName)) {
-        // 미스터리 이름(???) → 알 수 없는 화자 전용 음성 사용
-        if (unknownSpeakerCharId) return unknownSpeakerCharId
-      } else {
-        // 일반 이름 → 같은 이름의 char_id 매핑 상속
-        // (예: avg_npc_003="클로어" 매핑 → name:클로어도 동일 음성 사용)
-        const matchingChar = episodeCharacters.find(c => c.char_id && c.name === charName)
-        if (matchingChar?.char_id) {
-          mapping = speakerVoiceMap[matchingChar.char_id]
+    // 1.5. 알 수 없는 화자 및 name: 키 추가 해석
+    if (!mapping) {
+      if (speakerId.startsWith('name:')) {
+        const charName = speakerId.slice(5)
+        if (isMysteryName(charName)) {
+          // 미스터리 이름(???) → 알 수 없는 화자 전용 음성 사용
+          if (unknownSpeakerCharId) return unknownSpeakerCharId
+        } else {
+          // 일반 이름 → 같은 이름의 char_id 매핑 상속
+          // (예: avg_npc_003="클로어" 매핑 → name:클로어도 동일 음성 사용)
+          const matchingChar = episodeCharacters.find(c => c.char_id && c.name === charName)
+          if (matchingChar?.char_id) {
+            mapping = speakerVoiceMap[matchingChar.char_id]
+          }
         }
+      } else if (isMysteryName(speakerId)) {
+        // speaker_id 자체가 '?' 문자로만 구성 (예: "?") → 알 수 없는 화자
+        if (unknownSpeakerCharId) return unknownSpeakerCharId
       }
     }
 
@@ -2025,13 +2030,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
 
-    // 3. 알 수 없는 화자(name-only "???" 등) 매핑
+    // 3. 알 수 없는 화자("???" 등) 매핑
     if (unknownSpeakerCharId) {
       for (const char of episodeCharacters) {
-        if (!char.char_id && char.name && isMysteryName(char.name)) {
+        if (char.name && isMysteryName(char.name)) {
+          // name: 키 매핑 (speaker_id 없는 대사용)
           const nameKey = `name:${char.name}`
           if (!resolvedVoiceMap[nameKey]) {
             resolvedVoiceMap[nameKey] = unknownSpeakerCharId
+          }
+          // char_id가 미스터리 이름인 경우도 매핑 (예: char_id="?")
+          if (char.char_id && isMysteryName(char.char_id) && !resolvedVoiceMap[char.char_id]) {
+            resolvedVoiceMap[char.char_id] = unknownSpeakerCharId
           }
         }
       }
@@ -2189,9 +2199,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
 
-    // 알 수 없는 화자(name-only "???" 등) 매핑
+    // 알 수 없는 화자("???" 등) 매핑
     if (unknownSpeakerCharId) {
-      const mysteryKeys = ['name:???', 'name:????', 'name:?????']
+      const mysteryKeys = ['?', '??', '???', '????', '?????', 'name:???', 'name:????', 'name:?????']
       for (const key of mysteryKeys) {
         if (!resolvedVoiceMap[key]) {
           resolvedVoiceMap[key] = unknownSpeakerCharId

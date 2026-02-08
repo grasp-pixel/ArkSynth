@@ -1,6 +1,6 @@
 import { useEffect, useRef, useMemo, useState } from 'react'
 import { useAppStore } from '../stores/appStore'
-import type { DialogueInfo } from '../services/api'
+import { voiceApi, type DialogueInfo } from '../services/api'
 
 // 디버그 모드 (캐릭터 ID 표시)
 const DEBUG_SHOW_CHAR_ID = true
@@ -21,6 +21,83 @@ function getColorFromName(name: string): string {
   const lightness = 60 + (hash % 15)        // 60-75% 밝기 (어두운 배경에서 잘 보이게)
 
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`
+}
+
+// 화자 미니 카드 (캐릭터 스프라이트 이미지)
+function SpeakerCard({ speakerId, speakerName, speakerColor, dialogueType }: {
+  speakerId: string | null
+  speakerName: string | null
+  speakerColor?: string
+  dialogueType: string
+}) {
+  const [hasError, setHasError] = useState(false)
+  const [showFull, setShowFull] = useState(false)
+
+  // 나레이션/자막/스티커/팝업은 빈 공간으로 정렬 유지
+  const isNonDialogue = dialogueType !== 'dialogue'
+  if (isNonDialogue && !speakerId) {
+    return <div className="w-10 h-14 shrink-0" />
+  }
+
+  // 이미지 없거나 로드 실패 시 이니셜 폴백
+  if (!speakerId || hasError) {
+    const initial = speakerName ? speakerName.charAt(0) : '?'
+    return (
+      <div
+        className="w-10 h-14 shrink-0 rounded bg-ark-panel border border-ark-border flex items-center justify-center"
+        title={speakerName || '알 수 없음'}
+      >
+        <span
+          className="text-sm font-bold"
+          style={{ color: speakerColor || '#8a8a8a' }}
+        >
+          {initial}
+        </span>
+      </div>
+    )
+  }
+
+  const imageUrl = voiceApi.getImageUrl(speakerId)
+  const alt = speakerName || speakerId
+
+  return (
+    <>
+      <div
+        className="w-10 h-14 shrink-0 rounded bg-ark-black/30 border border-ark-border overflow-hidden cursor-pointer hover:border-ark-orange/50 transition-colors"
+        onClick={() => setShowFull(true)}
+        title="클릭하여 크게 보기"
+      >
+        <img
+          src={imageUrl}
+          alt={alt}
+          loading="lazy"
+          className="w-full h-full object-cover object-top"
+          onError={() => setHasError(true)}
+        />
+      </div>
+
+      {/* 확대 모달 */}
+      {showFull && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 cursor-pointer"
+          onClick={() => setShowFull(false)}
+        >
+          <div className="relative max-w-[90vw] max-h-[90vh]">
+            <img
+              src={imageUrl}
+              alt={alt}
+              className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+            />
+            <div className="absolute bottom-4 left-0 right-0 text-center">
+              <span className="bg-black/70 text-white px-3 py-1.5 rounded text-sm">
+                {alt}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
 }
 
 export default function DialogueViewer() {
@@ -255,6 +332,14 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
             <span className="w-2 h-2 rounded-full bg-green-500" title="렌더링 완료" />
           ) : null}
         </div>
+
+        {/* 화자 스프라이트 미니 카드 */}
+        <SpeakerCard
+          speakerId={dialogue.speaker_id}
+          speakerName={dialogue.speaker_name}
+          speakerColor={speakerColor}
+          dialogueType={dialogue.dialogue_type}
+        />
 
         {/* 내용 */}
         <div className="flex-1 min-w-0">
