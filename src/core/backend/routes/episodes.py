@@ -195,80 +195,13 @@ async def get_episode_characters(episode_id: str, lang: str | None = None):
     if episode is None:
         raise HTTPException(status_code=404, detail=f"Episode not found: {episode_id}")
 
-    # 캐릭터 집계 로직:
-    # 1. speaker_id (스프라이트 ID)를 기준으로 집계
-    # 2. speaker_id가 없으면 speaker_name으로 구분
-    # 파서가 focus 기반으로 정확한 speaker_id를 제공하므로 복잡한 로직 불필요
-    speaker_stats: dict[str, dict] = {}
-    narration_count = 0
-
-    characters_table = loader.load_characters(lang)
-
-    def get_char_name(char_id: str) -> str | None:
-        """char_id로 캐릭터 이름 조회 (정규화 포함)"""
-        if not char_id:
-            return None
-        # 정규화된 ID로 조회
-        normalized = loader._normalize_char_id(char_id)
-        char = characters_table.get(normalized)
-        return char.name_ko if char else None
-
-    for idx, dialogue in enumerate(episode.dialogues):
-        speaker_name = dialogue.speaker_name or ""
-        speaker_id = dialogue.speaker_id
-
-        # 나레이션 판별
-        if not speaker_id and not speaker_name:
-            narration_count += 1
-            continue
-
-        # 키 결정: speaker_id 기반 (파서가 focus 기반으로 정확한 화자 제공)
-        char_name_from_id = get_char_name(speaker_id) if speaker_id else None
-
-        if speaker_id and char_name_from_id:
-            # speaker_id가 있고 캐릭터 테이블에서 찾음 → speaker_id 기준
-            # (축약명, 별명, 코드네임, 이명 등 다양한 이름이 같은 인물을 가리킬 수 있음)
-            key = speaker_id
-        elif speaker_id:
-            # speaker_id는 있지만 캐릭터 테이블에 없음 (NPC 등)
-            key = speaker_id
-        else:
-            # speaker_id 없음 → speaker_name으로 캐릭터 검색 시도
-            found_char_id = find_operator_id_by_name(loader, speaker_name, lang)
-            if found_char_id:
-                # 캐릭터 테이블에서 이름으로 찾음 → 해당 char_id 기준
-                key = found_char_id
-            else:
-                # 찾지 못함 → speaker_name 기준
-                key = f"name:{speaker_name}"
-
-        if key not in speaker_stats:
-            # char_id 결정
-            if key.startswith("name:"):
-                char_id = None  # speaker_name만 있는 경우 char_id 없음
-            else:
-                char_id = loader._normalize_char_id(key)
-
-            speaker_stats[key] = {
-                "char_id": char_id,
-                "names": [],
-                "count": 0,
-                "last_index": -1,
-            }
-
-        stats = speaker_stats[key]
-        stats["count"] += 1
-        stats["last_index"] = idx
-
-        # 이름 수집 (순서 유지)
-        if speaker_name and speaker_name not in stats["names"]:
-            stats["names"].append(speaker_name)
+    # 화자 집계 (공통 로직 사용)
+    speaker_stats, narration_count = loader.collect_episode_speakers(episode, lang)
 
     # 같은 char_id끼리 병합 (정규화된 char_id 기준)
     merged_stats: dict[str, dict] = {}
     for key, stats in speaker_stats.items():
         char_id = stats["char_id"]
-        # char_id가 없으면 키를 그대로 사용
         merge_key = char_id or key
 
         if merge_key not in merged_stats:
@@ -280,6 +213,8 @@ async def get_episode_characters(episode_id: str, lang: str | None = None):
 
         merged = merged_stats[merge_key]
         merged["count"] += stats["count"]
+        if char_id and not merged["char_id"]:
+            merged["char_id"] = char_id
         for name in stats["names"]:
             if name and name not in merged["names"]:
                 merged["names"].append(name)

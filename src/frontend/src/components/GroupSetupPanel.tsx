@@ -224,9 +224,9 @@ export default function GroupSetupPanel() {
     return storyGroups.find(g => g.id === selectedGroupId)
   }, [storyGroups, selectedGroupId])
 
-  // 나레이션 분리 (char_id가 null인 캐릭터)
+  // 나레이션 분리 (char_id가 null이고 이름이 "나레이터"인 항목)
   const narrationInfo = useMemo(() => {
-    const narrator = groupCharacters.find(c => c.char_id === null)
+    const narrator = groupCharacters.find(c => c.char_id === null && c.name === '나레이터')
     return narrator ? narrator.dialogue_count : 0
   }, [groupCharacters])
 
@@ -237,9 +237,15 @@ export default function GroupSetupPanel() {
       .reduce((sum, c) => sum + c.dialogue_count, 0)
   }, [groupCharacters])
 
-  // 실제 캐릭터만 (나레이터 제외)
+  // 실제 캐릭터만 (나레이터, 미스터리 이름 전용 제외)
   const actualCharacters = useMemo(() => {
-    return groupCharacters.filter(c => c.char_id !== null)
+    return groupCharacters.filter(c => {
+      // 나레이터 제외
+      if (c.char_id === null && c.name === '나레이터') return false
+      // 미스터리 이름만 있는 NPC 제외
+      if (!c.char_id && c.name && isMysteryName(c.name)) return false
+      return true
+    })
   }, [groupCharacters])
 
   // 캐릭터 통계 (나레이터 제외)

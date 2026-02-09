@@ -30,6 +30,7 @@ class StoryParser:
         "HEADER": CommandType.HEADER,
         "Background": CommandType.BACKGROUND,
         "Character": CommandType.CHARACTER,
+        "character": CommandType.CHARACTER,  # 소문자 대응 (act9~act19 시기 스토리)
         "charslot": CommandType.CHARACTER,  # 캐릭터 슬롯 (스토리 파일에서 주로 사용)
         "name": CommandType.DIALOGUE,
         "Delay": CommandType.DELAY,
@@ -100,16 +101,12 @@ class StoryParser:
                 raw_speaker_id = self._get_speaking_character()
 
                 # 스프라이트 ID 정규화 (avg_npc_1897_1#1$1 -> avg_npc_1897)
-                if raw_speaker_id:
+                if raw_speaker_id and raw_speaker_id != "char_empty":
                     speaker_id = self._normalize_char_id(raw_speaker_id)
-                    characters.add(speaker_id)
+                    if speaker_id != "char_empty":
+                        characters.add(speaker_id)
                 else:
                     speaker_id = None
-
-                if not speaker_id and speaker_name:
-                    # 캐릭터 ID가 없어도 화자 이름이 있으면 캐릭터로 취급
-                    # NPC, 일반인 등도 캐릭터로 인식
-                    characters.add(speaker_name)
 
                 dialogue = Dialogue(
                     id=f"{episode_id}_{dialogue_index:04d}",
@@ -204,6 +201,12 @@ class StoryParser:
                 # 형식: [multiline(name="라바")] 텍스트
                 if cmd.type == CommandType.MULTILINE:
                     speaker_name = cmd.params.get("name", "")
+                    raw_ml_speaker = self._get_speaking_character()
+                    ml_speaker_id = (
+                        self._normalize_char_id(raw_ml_speaker)
+                        if raw_ml_speaker and raw_ml_speaker != "char_empty"
+                        else None
+                    )
                     # ] 뒤의 텍스트 추출
                     end_pos = line.find("]")
                     if end_pos != -1 and end_pos + 1 < len(line):
@@ -211,7 +214,7 @@ class StoryParser:
                         if multiline_text:
                             dialogue = Dialogue(
                                 id=f"{episode_id}_{dialogue_index:04d}",
-                                speaker_id=None,
+                                speaker_id=ml_speaker_id,
                                 speaker_name=speaker_name,
                                 text=multiline_text,
                                 line_number=line_num,

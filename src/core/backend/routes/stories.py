@@ -181,24 +181,35 @@ async def list_group_characters(group_id: str, lang: str | None = None):
     # 캐릭터 목록 수집
     characters = loader.get_group_characters(group_id, lang)
 
-    # 음성 보유 여부 확인 (이름 기반 fallback 포함)
+    # 음성 보유 여부 확인 (모든 이름 변형으로 검색)
     result = []
+    narration_count = 0
+
     for char_info in characters:
         char_id = char_info["char_id"]
         char_name = char_info["name"]
-        voice_char_id = None  # 실제 음성 파일이 있는 캐릭터 ID
+        names = char_info.get("names", [char_name])
+        voice_char_id = None
+
+        # 나레이터는 별도 처리
+        if char_id is None and char_name == "나레이터":
+            narration_count = char_info["dialogue_count"]
+            continue
 
         # 1. char_id로 음성 확인
         has_voice = voice_mapper.has_voice(char_id) if char_id else False
         if has_voice:
             voice_char_id = char_id
 
-        # 2. 없으면 이름으로 오퍼레이터 ID 찾아서 음성 확인
-        if not has_voice and char_name:
-            operator_id = find_operator_id_by_name(loader, char_name, lang)
-            if operator_id and voice_mapper.has_voice(operator_id):
-                has_voice = True
-                voice_char_id = operator_id  # 이름 매칭된 오퍼레이터 ID 저장
+        # 2. 없으면 모든 이름 변형으로 오퍼레이터 ID 찾아서 음성 확인
+        if not has_voice:
+            for name in names:
+                if name:
+                    operator_id = find_operator_id_by_name(loader, name, lang)
+                    if operator_id and voice_mapper.has_voice(operator_id):
+                        has_voice = True
+                        voice_char_id = operator_id
+                        break
 
         result.append(
             GroupCharacterInfo(
@@ -210,9 +221,12 @@ async def list_group_characters(group_id: str, lang: str | None = None):
             )
         )
 
+    result.sort(key=lambda c: c.dialogue_count, reverse=True)
+
     return {
         "group_id": group_id,
         "group_name": group.name,
         "total": len(result),
         "characters": result,
+        "narration_count": narration_count,
     }

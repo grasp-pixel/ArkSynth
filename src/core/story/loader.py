@@ -503,7 +503,66 @@ class StoryLoader:
 
         return stats
 
-    def get_group_characters(self, group_id: str, lang: str = "ko_KR") -> list[dict]:
+    def collect_episode_speakers(
+        self,
+        episode: Episode,
+        lang: str = "ko_KR",
+    ) -> tuple[dict[str, dict], int]:
+        """에피소드 내 화자별 통계 수집 (에피소드/그룹 공통)
+
+        Args:
+            episode: 에피소드 객체
+            lang: 언어 코드
+
+        Returns:
+            (speaker_stats, narration_count)
+            speaker_stats: {key: {"char_id": str|None, "names": list[str], "count": int}}
+        """
+        speaker_stats: dict[str, dict] = {}
+        narration_count = 0
+
+        for dialogue in episode.dialogues:
+            speaker_name = dialogue.speaker_name or ""
+            speaker_id = dialogue.speaker_id
+
+            # 나레이션: speaker_id도 speaker_name도 없음
+            if not speaker_id and not speaker_name:
+                narration_count += 1
+                continue
+
+            # 키 결정: speaker_id 우선, 없으면 name: 접두사
+            key = speaker_id if speaker_id else f"name:{speaker_name}"
+
+            if key not in speaker_stats:
+                char_id = (
+                    None if key.startswith("name:") else self._normalize_char_id(key)
+                )
+                speaker_stats[key] = {
+                    "char_id": char_id,
+                    "names": [],
+                    "count": 0,
+                }
+
+            stats = speaker_stats[key]
+            stats["count"] += 1
+            if speaker_name and speaker_name not in stats["names"]:
+                stats["names"].append(speaker_name)
+
+        return speaker_stats, narration_count
+
+    @staticmethod
+    def _is_mystery_name(name: str) -> bool:
+        """이름이 '???' 같은 미스터리 이름인지 확인"""
+        if not name:
+            return True
+        stripped = name.strip()
+        return stripped.endswith("?") or all(c == "?" for c in stripped)
+
+    def get_group_characters(
+        self,
+        group_id: str,
+        lang: str = "ko_KR",
+    ) -> list[dict]:
         """스토리 그룹의 모든 캐릭터 목록 (대사 수 포함)
 
         Args:
@@ -511,46 +570,103 @@ class StoryLoader:
             lang: 언어 코드
 
         Returns:
-            list[dict]: [{"char_id": str|None, "name": str, "dialogue_count": int}, ...]
+            list[dict]: [{"char_id": str|None, "name": str, "names": list, "dialogue_count": int}, ...]
         """
         episodes = self.list_episodes_by_group(group_id, lang)
-        characters = self.load_characters(lang)
+        characters_table = self.load_characters(lang)
 
-        # 캐릭터별 대사 수 집계
-        char_dialogue_count: dict[str | None, int] = {}
-        char_names: dict[str | None, str] = {None: "나레이터"}
+        # 그룹 전체 통합 speaker_stats (char_id 기준 병합)
+        merged_stats: dict[str, dict] = {}
+        total_narration = 0
 
         for ep_info in episodes:
             episode = self.load_episode(ep_info["id"], lang)
             if not episode:
                 continue
 
-            for dialogue in episode.dialogues:
-                # speaker_id 정규화
-                raw_id = dialogue.speaker_id
-                normalized_id = self._normalize_char_id(raw_id) if raw_id else None
+            ep_stats, narration = self.collect_episode_speakers(episode, lang)
+            total_narration += narration
 
-                # 대사 수 집계
-                char_dialogue_count[normalized_id] = (
-                    char_dialogue_count.get(normalized_id, 0) + 1
-                )
+            for key, stats in ep_stats.items():
+                char_id = stats["char_id"]
+                merge_key = char_id or key
 
-                # 이름 저장 (처음 발견한 이름 사용)
-                if normalized_id not in char_names:
-                    if normalized_id and normalized_id in characters:
-                        char_names[normalized_id] = characters[normalized_id].name_ko
-                    elif dialogue.speaker_name:
-                        char_names[normalized_id] = dialogue.speaker_name
-                    else:
-                        char_names[normalized_id] = normalized_id or "나레이터"
+                if merge_key not in merged_stats:
+                    merged_stats[merge_key] = {
+                        "char_id": char_id,
+                        "names": [],
+                        "count": 0,
+                    }
 
-        # 결과 정리 (대사 수 내림차순)
+                merged = merged_stats[merge_key]
+                merged["count"] += stats["count"]
+                if char_id and not merged["char_id"]:
+                    merged["char_id"] = char_id
+                for name in stats["names"]:
+                    if name and name not in merged["names"]:
+                        merged["names"].append(name)
+
+        # 크로스 에피소드 name→sprite 매핑
+        # 오프스크린/회상 장면의 name-only 화자가 다른 에피소드에서 스프라이트로 등장하면 병합
+        # "이름?" → "이름" 매칭도 시도 (정체 불확실 연출)
+        name_only_keys = [k for k in merged_stats if k.startswith("name:")]
+        for name_key in name_only_keys:
+            name = name_key[5:]  # "name:" 제거
+            # 매칭 후보: 원본 이름, trailing ? 제거한 이름
+            candidates = [name]
+            if name.endswith("?") and len(name) > 1 and not all(c == "?" for c in name):
+                candidates.append(name.rstrip("?"))
+
+            matched = False
+            for candidate in candidates:
+                for other_key, other_stats in merged_stats.items():
+                    if other_key == name_key:
+                        continue
+                    if other_stats["char_id"] and candidate in other_stats["names"]:
+                        other_stats["count"] += merged_stats[name_key]["count"]
+                        for n in merged_stats[name_key]["names"]:
+                            if n and n not in other_stats["names"]:
+                                other_stats["names"].append(n)
+                        del merged_stats[name_key]
+                        matched = True
+                        break
+                if matched:
+                    break
+
+        # 결과 정리
         result = []
-        for char_id, count in char_dialogue_count.items():
+        for key, stats in merged_stats.items():
+            char_id = stats["char_id"]
+            names = stats["names"]
+
+            # 표시 이름: 미스터리가 아닌 마지막 이름 선호
+            display_name = ""
+            for name in reversed(names):
+                if not self._is_mystery_name(name):
+                    display_name = name
+                    break
+            if not display_name and names:
+                display_name = names[-1]
+            if not display_name:
+                if char_id and char_id in characters_table:
+                    display_name = characters_table[char_id].name_ko
+                else:
+                    display_name = char_id or "나레이터"
+
             result.append({
                 "char_id": char_id,
-                "name": char_names.get(char_id, char_id or "나레이터"),
-                "dialogue_count": count,
+                "name": display_name,
+                "names": names,
+                "dialogue_count": stats["count"],
+            })
+
+        # 나레이션 별도 항목
+        if total_narration > 0:
+            result.append({
+                "char_id": None,
+                "name": "나레이터",
+                "names": [],
+                "dialogue_count": total_narration,
             })
 
         result.sort(key=lambda x: x["dialogue_count"], reverse=True)

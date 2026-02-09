@@ -87,7 +87,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [gamedataRepo, setGamedataRepo] = useState('');
   const [gamedataRepoInput, setGamedataRepoInput] = useState('');
   const [isRepoSaving, setIsRepoSaving] = useState(false);
-  const [gamedataSource, setGamedataSource] = useState<string>('github');
+  const [gamedataSource, setGamedataSource] = useState<string>('arkprts');
 
   // 별칭 추출 관련 상태
   const [aliasesInfo, setAliasesInfo] = useState<AliasListResponse | null>(null);
@@ -956,7 +956,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             className="w-full px-2 py-1 text-xs bg-ark-black border border-ark-border rounded text-ark-white focus:border-ark-orange focus:outline-none disabled:opacity-50"
                           >
                             <option value="github">GitHub (ArknightsGamedata)</option>
-                            <option value="arkprts">arkprts (게임 서버 직접)</option>
+                            <option value="arkprts">arkprts</option>
                           </select>
                           {gamedataSource === 'github' && (
                             <div className="flex gap-2 mt-2">

@@ -648,9 +648,6 @@ function CharacterMappingRow({
               )}
             </div>
             <div className="flex items-center gap-2 mt-1.5">
-              {!char.char_id && (
-                <span className="text-xs text-ark-gray/50">(이름만)</span>
-              )}
               <span className="text-xs text-ark-gray">{char.dialogue_count}대사</span>
               {char.char_id && (
                 <span className="text-xs text-ark-gray/50 truncate" title={char.char_id}>
