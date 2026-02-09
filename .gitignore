@@ -92,3 +92,4 @@ coverage.xml
 # Jupyter
 .ipynb_checkpoints/
 data/voice_mapping.json
+.claude/settings.json
