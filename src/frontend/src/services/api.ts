@@ -1790,6 +1790,94 @@ export function createImageExtractStream(
   }
 }
 
+// ===== 앱 업데이트 API =====
+
+export interface UpdateCheckResponse {
+  available: boolean
+  current_version: string
+  latest_version: string
+  changelog: string
+  download_size: number
+  minimum_version: string
+}
+
+export interface AppUpdateProgress {
+  stage: 'checking' | 'downloading' | 'verifying' | 'backing_up' | 'applying' | 'complete' | 'error'
+  progress: number
+  message: string
+  error?: string
+}
+
+export const updateApi = {
+  checkUpdate: async () => {
+    const res = await api.get<UpdateCheckResponse>('/api/update/check')
+    return res.data
+  },
+
+  startUpdate: async () => {
+    const res = await api.post<{ status: string; message: string; version: string }>(
+      '/api/update/start'
+    )
+    return res.data
+  },
+
+  cancelUpdate: async () => {
+    const res = await api.post<{ status: string; message: string }>(
+      '/api/update/cancel'
+    )
+    return res.data
+  },
+
+  getVersion: async () => {
+    const res = await api.get<{ version: string }>('/api/update/version')
+    return res.data
+  },
+}
+
+export function createUpdateStream(
+  options: {
+    onProgress?: (progress: AppUpdateProgress) => void
+    onComplete?: () => void
+    onError?: (error: string) => void
+  } = {}
+): { close: () => void } {
+  const { onProgress, onComplete, onError } = options
+
+  const eventSource = new EventSource(`${API_BASE}/api/update/stream`)
+
+  eventSource.addEventListener('progress', (event) => {
+    const progress = JSON.parse(event.data) as AppUpdateProgress
+    onProgress?.(progress)
+  })
+
+  eventSource.addEventListener('complete', () => {
+    onComplete?.()
+    eventSource.close()
+  })
+
+  eventSource.addEventListener('error', (event) => {
+    if (event instanceof MessageEvent) {
+      const data = JSON.parse(event.data)
+      onError?.(data.error || '업데이트 실패')
+    }
+    eventSource.close()
+  })
+
+  eventSource.addEventListener('ping', () => {
+    // keep-alive
+  })
+
+  eventSource.onerror = () => {
+    // 연결 오류
+  }
+
+  return {
+    close: () => {
+      eventSource.close()
+    }
+  }
+}
+
 // ===== 별칭(Aliases) API =====
 
 export interface AliasInfo {

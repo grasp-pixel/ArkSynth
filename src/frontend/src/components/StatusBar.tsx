@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/appStore'
+import { updateApi } from '../services/api'
 
 export default function StatusBar() {
   const { t } = useTranslation()
@@ -13,6 +15,14 @@ export default function StatusBar() {
     setVolume,
     toggleMute
   } = useAppStore()
+
+  const [appVersion, setAppVersion] = useState('0.0.0')
+
+  useEffect(() => {
+    if (backendStatus === 'connected') {
+      updateApi.getVersion().then(res => setAppVersion(res.version)).catch(() => {})
+    }
+  }, [backendStatus])
 
   return (
     <footer className="ark-statusbar px-4 py-2 flex items-center justify-between text-xs">
@@ -109,7 +119,7 @@ export default function StatusBar() {
 
         {/* 버전 */}
         <div className="text-ark-gray/50 tracking-wider">
-          ArkSynth v0.1.0
+          ArkSynth v{appVersion}
         </div>
       </div>
     </footer>

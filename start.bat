@@ -17,6 +17,15 @@ if exist "%START_DIR%app\pyproject.toml" (
 )
 cd /d "%APP_DIR%"
 
+REM === 0. 업데이트 잔여물 정리 ===
+if exist "%APP_DIR%ArkSynth.exe.old" (
+    del "%APP_DIR%ArkSynth.exe.old" >nul 2>&1
+    echo [ArkSynth] 이전 버전 exe 정리 완료.
+)
+for /d %%d in ("%APP_DIR%src\*.bak") do (
+    rmdir /s /q "%%d" >nul 2>&1
+)
+
 REM === 1. uv 설치 확인 ===
 where uv >nul 2>&1
 if %errorlevel% neq 0 (

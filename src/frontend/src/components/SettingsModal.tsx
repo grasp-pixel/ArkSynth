@@ -25,6 +25,10 @@ import {
   type GamedataStatus,
   type GamedataUpdateProgress,
   type AliasListResponse,
+  updateApi,
+  createUpdateStream,
+  type UpdateCheckResponse,
+  type AppUpdateProgress,
 } from "../services/api";
 import GPTSoVITSInstallDialog from "./GPTSoVITSInstallDialog";
 
@@ -96,6 +100,52 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [isRepoSaving, setIsRepoSaving] = useState(false);
   const [gamedataSource, setGamedataSource] = useState<string>('arkprts');
 
+  // 앱 업데이트 관련 상태
+  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResponse | null>(null);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateProgress, setUpdateProgress] = useState<AppUpdateProgress | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [updateComplete, setUpdateComplete] = useState(false);
+  const updateStreamRef = useRef<{ close: () => void } | null>(null);
+
+  const checkForUpdate = async () => {
+    setIsCheckingUpdate(true);
+    setUpdateError(null);
+    setUpdateInfo(null);
+    try {
+      const info = await updateApi.checkUpdate();
+      setUpdateInfo(info);
+    } catch (err) {
+      setUpdateError(err instanceof Error ? err.message : t('settings.update.checkFailed'));
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
+  const startAppUpdate = async () => {
+    setIsUpdating(true);
+    setUpdateError(null);
+    setUpdateProgress(null);
+    try {
+      await updateApi.startUpdate();
+      updateStreamRef.current = createUpdateStream({
+        onProgress: (p) => setUpdateProgress(p),
+        onComplete: () => {
+          setIsUpdating(false);
+          setUpdateComplete(true);
+        },
+        onError: (error) => {
+          setIsUpdating(false);
+          setUpdateError(error);
+        },
+      });
+    } catch (err) {
+      setIsUpdating(false);
+      setUpdateError(err instanceof Error ? err.message : t('settings.update.startFailed'));
+    }
+  };
+
   // 별칭 추출 관련 상태
   const [aliasesInfo, setAliasesInfo] = useState<AliasListResponse | null>(null);
   const [isExtractingAliases, setIsExtractingAliases] = useState(false);
@@ -120,6 +170,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       extractStreamRef.current?.close();
       imageExtractStreamRef.current?.close();
       gamedataStreamRef.current?.close();
+      updateStreamRef.current?.close();
     };
   }, [isOpen]);
 
@@ -1505,6 +1556,102 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <p className="text-xs text-ark-gray/70 mt-2">
                     {t('settings.whisper.note')}
                   </p>
+                </section>
+
+                {/* ===== 앱 업데이트 ===== */}
+                <div className="ark-divider mt-2">
+                  <span>{t('settings.section.update')}</span>
+                </div>
+
+                <section>
+                  <div className="p-4 bg-ark-black/50 rounded border border-ark-border space-y-3">
+                    {/* 업데이트 확인 버튼 */}
+                    {!isUpdating && !updateComplete && (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-ark-white">
+                            {(() => {
+                              if (!updateInfo) return t('settings.update.description');
+                              if (updateInfo.available) return t('settings.update.newVersion', { version: updateInfo.latest_version });
+                              return t('settings.update.upToDate');
+                            })()}
+                          </p>
+                          {updateInfo && (
+                            <p className="text-xs text-ark-gray mt-1">
+                              {t('settings.update.currentVersion', { version: updateInfo.current_version })}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          onClick={checkForUpdate}
+                          disabled={isCheckingUpdate}
+                          className="flex-shrink-0 ark-btn ark-btn-secondary text-xs"
+                        >
+                          {isCheckingUpdate ? t('settings.update.checking') : t('settings.update.checkButton')}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* 변경사항 + 업데이트 버튼 */}
+                    {updateInfo?.available && !isUpdating && !updateComplete && (
+                      <>
+                        {updateInfo.changelog && (
+                          <div className="p-3 bg-ark-panel rounded border border-ark-border max-h-32 overflow-y-auto">
+                            <p className="text-xs text-ark-gray whitespace-pre-wrap">{updateInfo.changelog}</p>
+                          </div>
+                        )}
+                        {updateInfo.download_size > 0 && (
+                          <p className="text-xs text-ark-gray">
+                            {t('settings.update.downloadSize', { size: (updateInfo.download_size / (1024 * 1024)).toFixed(1) })}
+                          </p>
+                        )}
+                        <button
+                          onClick={startAppUpdate}
+                          className="w-full ark-btn ark-btn-primary text-sm"
+                        >
+                          {t('settings.update.updateButton', { version: updateInfo.latest_version })}
+                        </button>
+                      </>
+                    )}
+
+                    {/* 진행률 */}
+                    {isUpdating && updateProgress && (
+                      <div className="space-y-2">
+                        <p className="text-sm text-ark-white">{updateProgress.message}</p>
+                        <div className="w-full bg-ark-border rounded-full h-2">
+                          <div
+                            className="bg-ark-orange h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${Math.round(updateProgress.progress * 100)}%` }}
+                          />
+                        </div>
+                        <p className="text-xs text-ark-gray text-right">
+                          {Math.round(updateProgress.progress * 100)}%
+                        </p>
+                      </div>
+                    )}
+
+                    {/* 완료 → 재시작 버튼 */}
+                    {updateComplete && (
+                      <div className="space-y-3">
+                        <p className="text-sm text-green-400">
+                          {t('settings.update.complete')}
+                        </p>
+                        <button
+                          onClick={() => {
+                            window.electronAPI?.restartApp();
+                          }}
+                          className="w-full ark-btn ark-btn-primary text-sm"
+                        >
+                          {t('settings.update.restartButton')}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* 에러 */}
+                    {updateError && (
+                      <p className="text-sm text-red-400">{updateError}</p>
+                    )}
+                  </div>
                 </section>
               </>
             )

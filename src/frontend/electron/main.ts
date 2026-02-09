@@ -109,3 +109,8 @@ ipcMain.handle('get-app-path', () => {
 ipcMain.handle('get-version', () => {
   return app.getVersion()
 })
+
+ipcMain.handle('restart-app', () => {
+  app.relaunch()
+  app.quit()
+})

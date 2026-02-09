@@ -6,7 +6,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .routes import episodes, stories, tts, voice, health, ocr, training, render, settings, data, aliases
+from .config import get_app_version
+from .routes import episodes, stories, tts, voice, health, ocr, training, render, settings, data, aliases, update
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="ArkSynth API",
         description="ArkSynth API - 명일방주 스토리 음성 더빙",
-        version="0.1.0",
+        version=get_app_version(),
     )
 
     @app.exception_handler(FileNotFoundError)
@@ -49,5 +50,6 @@ def create_app() -> FastAPI:
     app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
     app.include_router(data.router, prefix="/api/data", tags=["data"])
     app.include_router(aliases.router, prefix="/api/aliases", tags=["aliases"])
+    app.include_router(update.router, prefix="/api/update", tags=["update"])
 
     return app

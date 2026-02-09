@@ -57,6 +57,9 @@ class ServerConfig(BaseModel):
     default_tts_language: str = "ko-KR"  # Edge TTS 언어
     default_tts_engine: str = "gpt_sovits"  # 기본 TTS 엔진
 
+    # 업데이트 설정
+    update_repo: str = "grasp-pixel/ArkSynth"  # GitHub owner/repo
+
     def apply_display_language(self, locale: str) -> None:
         """표시 언어 변경 시 관련 필드 일괄 갱신"""
         self.display_language = locale
@@ -98,6 +101,20 @@ class ServerConfig(BaseModel):
             logger.info(f"설정 로드: display={self.display_language}, voice={self.voice_language_short}")
         except Exception as e:
             logger.warning(f"설정 로드 실패: {e}")
+
+
+_VERSION_CANDIDATES = (Path("version.json"), Path("app/version.json"))
+
+
+def get_app_version() -> str:
+    """version.json에서 앱 버전 읽기"""
+    for candidate in _VERSION_CANDIDATES:
+        if candidate.exists():
+            try:
+                return json.loads(candidate.read_text(encoding="utf-8"))["version"]
+            except Exception:
+                pass
+    return "0.0.0"
 
 
 # 전역 설정 인스턴스
