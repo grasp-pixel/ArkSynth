@@ -48,6 +48,7 @@ export default function CharacterManagerModal({
     isTrainingActive,
     currentTrainingJob,
     loadTrainedModels,
+    loadTrainingStatus,
     clearAllTrainedModels,
     deleteModel,
     getModelType,
@@ -181,6 +182,7 @@ export default function CharacterManagerModal({
     if (isOpen) {
       loadVoiceCharacters();
       loadTrainedModels();
+      loadTrainingStatus();
       loadImageStatus();
       loadCharacterAliases();
 
@@ -205,7 +207,7 @@ export default function CharacterManagerModal({
         testAudioRef.current = null;
       }
     };
-  }, [isOpen, loadVoiceCharacters, loadTrainedModels]);
+  }, [isOpen, loadVoiceCharacters, loadTrainedModels, loadTrainingStatus]);
 
   // 음성 언어 변경 시 테스트 텍스트 갱신
   useEffect(() => {

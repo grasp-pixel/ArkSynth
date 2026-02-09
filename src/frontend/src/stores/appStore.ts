@@ -1994,8 +1994,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   // 학습 진행 상황 구독
   subscribeToTrainingProgress: () => {
     if (trainingStream) {
-      console.log('[Training] 이미 SSE 연결됨, 건너뛰기')
-      return  // 이미 구독 중
+      if (trainingStream.isAlive()) {
+        console.log('[Training] 이미 SSE 연결됨, 건너뛰기')
+        return  // 이미 구독 중
+      }
+      // 죽은 스트림 정리 후 재연결
+      console.log('[Training] SSE 스트림 끊김 감지, 재연결')
+      trainingStream.close()
+      trainingStream = null
     }
 
     console.log('[Training] SSE 구독 시작')
@@ -2007,10 +2013,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           isTrainingActive: true,
         })
       },
-      onComplete: (job) => {
+      onComplete: async (job) => {
         console.log('[Training] 완료:', job.char_name, job.status, job.mode)
-        // 학습 완료 시 모델 목록 새로고침
-        get().loadTrainedModels()
 
         const { trainingQueue, continueWithFinetune } = get()
         const remainingJobs = trainingQueue.filter(j => j.job_id !== job.job_id)
@@ -2021,6 +2025,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           currentTrainingJob: null,
           isTrainingActive: remainingJobs.length > 0,
         })
+
+        // 학습 완료 시 모델 목록 새로고침 (await로 확실하게 반영)
+        await get().loadTrainedModels()
 
         // 준비가 모두 완료되고 연속 학습 플래그가 설정되어 있으면 학습 시작
         if (remainingJobs.length === 0 && continueWithFinetune && job.mode === 'prepare') {
@@ -2714,7 +2721,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 }))
 
 // 학습 스트림 참조
-let trainingStream: { close: () => void } | null = null
+let trainingStream: { close: () => void; isAlive: () => boolean } | null = null
 
 // 렌더링 스트림 참조
 let renderStream: { close: () => void } | null = null

@@ -967,7 +967,7 @@ export function createTrainingStream(
     onStatus?: (status: TrainingStatusResponse) => void
     onError?: (error: string) => void
   } = {}
-): { close: () => void } {
+): { close: () => void; isAlive: () => boolean } {
   const { onProgress, onComplete, onStatus, onError } = options
 
   console.log('[SSE] createTrainingStream: 연결 시작', `${API_BASE}/api/training/stream`)
@@ -1008,7 +1008,8 @@ export function createTrainingStream(
     close: () => {
       console.log('[SSE] 연결 종료')
       eventSource.close()
-    }
+    },
+    isAlive: () => eventSource.readyState !== EventSource.CLOSED,
   }
 }
 
