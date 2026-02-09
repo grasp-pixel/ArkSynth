@@ -28,11 +28,8 @@ echo.
 :: ──────────────────────────────────────────────
 echo [1/6] Electron 앱 빌드 중...
 
-:: package.json 버전 동기화
-powershell -NoProfile -Command ^
-    "$pkg = Get-Content '%FRONTEND_DIR%\package.json' -Raw | ConvertFrom-Json; " ^
-    "$pkg.version = '%VERSION%'; " ^
-    "$pkg | ConvertTo-Json -Depth 10 | Set-Content '%FRONTEND_DIR%\package.json' -Encoding UTF8"
+:: package.json 버전 동기화 (포맷 유지, BOM 방지)
+powershell -NoProfile -Command "$f='%FRONTEND_DIR%\package.json'; $c=[IO.File]::ReadAllText($f); $c=$c -replace '\"version\":\s*\".*?\"','\"version\": \"%VERSION%\"'; [IO.File]::WriteAllText($f,$c)"
 
 where npm >nul 2>&1
 if %errorlevel% neq 0 (
@@ -171,7 +168,8 @@ for %%f in ("%UPDATE_ZIP%") do set "FILESIZE=%%~zf"
 :: manifest 생성
 powershell -Command ^
     "$m = @{ version='%VERSION%'; minimum_version='0.1.0'; sha256='!SHA256!'; filename='ArkSynth-%VERSION%-update.zip'; size=[int]'!FILESIZE!'; changelog='ArkSynth v%VERSION% 업데이트' }; " ^
-    "$m | ConvertTo-Json | Set-Content -Path '%MANIFEST_PATH%' -Encoding UTF8"
+    "$json = $m | ConvertTo-Json; " ^
+    "[IO.File]::WriteAllText('%MANIFEST_PATH%', $json)"
 
 if exist "%MANIFEST_PATH%" (
     echo [완료] %MANIFEST_PATH%
