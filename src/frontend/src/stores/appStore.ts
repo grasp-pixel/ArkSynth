@@ -2692,6 +2692,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       changeLanguage(shortCode)
       // 스토리 데이터 재로드
       await get().loadCategories()
+      // 현재 열린 에피소드가 있으면 재로드 (text/voice_text 갱신)
+      const { selectedEpisodeId } = get()
+      if (selectedEpisodeId) {
+        await get().selectEpisode(selectedEpisodeId)
+      }
     } catch (error) {
       console.error('Failed to set display language:', error)
     }
@@ -2714,6 +2719,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         get().loadTrainedModels(),
         get().checkGptSovitsStatus(),
       ])
+      // 현재 열린 에피소드가 있으면 재로드 (voice_text 갱신)
+      const { selectedEpisodeId } = get()
+      if (selectedEpisodeId) {
+        await get().selectEpisode(selectedEpisodeId)
+      }
     } catch (error) {
       console.error('Failed to set voice language:', error)
     }
