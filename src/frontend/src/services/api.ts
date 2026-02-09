@@ -21,6 +21,7 @@ export interface DialogueInfo {
   speaker_id: string | null
   speaker_name: string
   text: string
+  voice_text?: string | null  // 음성 언어 대사 (표시 언어와 다를 때)
   line_number: number
   dialogue_type: DialogueType
 }

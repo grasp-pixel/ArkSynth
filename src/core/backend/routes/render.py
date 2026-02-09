@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from ..config import config
 from ...cache import RenderCache, RenderManager, RenderProgress, RenderStatus
 from ..shared_loaders import get_story_loader
+from ...common.language_codes import short_to_locale
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -136,10 +137,15 @@ async def start_render(
             "message": "이미 렌더링 완료됨",
         }
 
-    # 에피소드 대사 로드
-    logger.info(f"[Render] 렌더링 요청 - episode_id: {episode_id}")
+    # 에피소드 대사 로드 (TTS용이므로 음성 언어로 로드)
+    voice_locale = short_to_locale(config.voice_language_short)
+    logger.info(f"[Render] 렌더링 요청 - episode_id: {episode_id}, voice_lang: {voice_locale}")
     try:
-        episode = loader.load_episode(episode_id, lang=config.display_language)
+        episode = loader.load_episode(episode_id, lang=voice_locale)
+        if not episode:
+            # 음성 언어 데이터 없으면 표시 언어로 폴백
+            logger.warning(f"[Render] 음성 언어({voice_locale}) 데이터 없음, 표시 언어로 폴백")
+            episode = loader.load_episode(episode_id, lang=config.display_language)
         if not episode:
             raise HTTPException(
                 status_code=404,

@@ -28,6 +28,13 @@ import {
 } from "../services/api";
 import GPTSoVITSInstallDialog from "./GPTSoVITSInstallDialog";
 
+/** 게임 데이터 다운로드 대상 서버 목록 */
+const GAMEDATA_SERVERS = [
+  { server: 'kr', label: '한국어' },
+  { server: 'jp', label: '日本語' },
+  { server: 'en', label: 'English' },
+] as const;
+
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -35,7 +42,7 @@ interface SettingsModalProps {
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { t } = useTranslation();
-  const { voiceFolder, gameLanguage, loadLanguageSettings } = useAppStore();
+  const { voiceFolder, loadLanguageSettings } = useAppStore();
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [ffmpegGuide, setFFmpegGuide] = useState<FFmpegInstallGuide | null>(
     null,
@@ -76,16 +83,13 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   );
   const imageExtractStreamRef = useRef<{ close: () => void } | null>(null);
 
-  // 게임 데이터 업데이트 관련 상태
-  const [gamedataStatus, setGamedataStatus] = useState<GamedataStatus | null>(
-    null,
-  );
-  const [isUpdatingGamedata, setIsUpdatingGamedata] = useState(false);
+  // 게임 데이터 업데이트 관련 상태 (언어별 독립)
+  const [gamedataStatuses, setGamedataStatuses] = useState<Record<string, GamedataStatus | null>>({});
+  const [updatingServer, setUpdatingServer] = useState<string | null>(null);
   const [gamedataUpdateProgress, setGamedataUpdateProgress] =
     useState<GamedataUpdateProgress | null>(null);
-  const [gamedataUpdateError, setGamedataUpdateError] = useState<string | null>(
-    null,
-  );
+  const [gamedataUpdateError, setGamedataUpdateError] = useState<{ server: string; error: string } | null>(null);
+  const [lastCompletedServer, setLastCompletedServer] = useState<string | null>(null);
   const gamedataStreamRef = useRef<{ close: () => void } | null>(null);
   const [gamedataRepo, setGamedataRepo] = useState('');
   const [gamedataRepoInput, setGamedataRepoInput] = useState('');
@@ -107,7 +111,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       loadLanguageSettings();
       checkVoiceAssets();
       checkImageAssets();
-      checkGamedataStatus();
+      checkAllGamedataStatuses();
       loadGamedataSource();
       loadAliasesInfo();
     }
@@ -277,13 +281,18 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
-  const checkGamedataStatus = async () => {
-    try {
-      const status = await gamedataApi.getStatus(gameLanguage);
-      setGamedataStatus(status);
-    } catch (err) {
-      console.error(t('settings.gamedata.checkFailed'), err);
-    }
+  const checkAllGamedataStatuses = async () => {
+    const results: Record<string, GamedataStatus | null> = {};
+    await Promise.all(
+      GAMEDATA_SERVERS.map(async ({ server }) => {
+        try {
+          results[server] = await gamedataApi.getStatus(server);
+        } catch {
+          results[server] = null;
+        }
+      }),
+    );
+    setGamedataStatuses(results);
   };
 
   const loadGamedataSource = async () => {
@@ -347,13 +356,14 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
-  const startGamedataUpdate = async () => {
-    setIsUpdatingGamedata(true);
+  const startGamedataUpdate = async (server: string) => {
+    setUpdatingServer(server);
     setGamedataUpdateProgress(null);
     setGamedataUpdateError(null);
+    setLastCompletedServer(null);
 
     try {
-      await gamedataApi.startUpdate(gameLanguage);
+      await gamedataApi.startUpdate(server);
 
       // SSE 스트림 연결
       gamedataStreamRef.current = createGamedataUpdateStream({
@@ -361,26 +371,27 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           setGamedataUpdateProgress(progress);
         },
         onComplete: () => {
-          setIsUpdatingGamedata(false);
+          setUpdatingServer(null);
+          setLastCompletedServer(server);
           setGamedataUpdateProgress({
             stage: "complete",
             progress: 1,
             message: t('settings.gamedata.updateComplete'),
           });
-          // 상태 새로고침
-          checkGamedataStatus();
+          checkAllGamedataStatuses();
           loadSettings();
         },
         onError: (error) => {
-          setIsUpdatingGamedata(false);
-          setGamedataUpdateError(error);
+          setUpdatingServer(null);
+          setGamedataUpdateError({ server, error });
         },
       });
     } catch (err) {
-      setIsUpdatingGamedata(false);
-      setGamedataUpdateError(
-        err instanceof Error ? err.message : t('settings.gamedata.startFailed'),
-      );
+      setUpdatingServer(null);
+      setGamedataUpdateError({
+        server,
+        error: err instanceof Error ? err.message : t('settings.gamedata.startFailed'),
+      });
     }
   };
 
@@ -388,7 +399,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     try {
       await gamedataApi.cancelUpdate();
       gamedataStreamRef.current?.close();
-      setIsUpdatingGamedata(false);
+      setUpdatingServer(null);
       setGamedataUpdateProgress(null);
     } catch (err) {
       console.error(t('settings.gamedata.cancelFailed'), err);
@@ -856,154 +867,158 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <p className="text-[11px] text-ark-gray/70 mb-3">
                     {t('settings.gamedata.description')}
                   </p>
-                  <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
-                    {gamedataStatus === null ? (
-                      <p className="text-sm text-ark-gray">{t('common.checking')}</p>
-                    ) : (
-                      <div>
-                        <div className="flex items-center justify-between mb-3">
-                          <div>
-                            <p className="text-sm text-ark-white">
-                              {gamedataStatus.exists ? (
-                                <>
-                                  {t('settings.gamedata.ready', { count: gamedataStatus.story_count })}
-                                </>
+                  <div className="p-4 bg-ark-black/50 rounded border border-ark-border space-y-2">
+                    {/* 언어별 다운로드 섹션 */}
+                    {GAMEDATA_SERVERS.map(({ server, label }) => {
+                      const status = gamedataStatuses[server];
+                      const isThisUpdating = updatingServer === server;
+                      const thisCompleted = lastCompletedServer === server
+                        && gamedataUpdateProgress?.stage === 'complete'
+                        && updatingServer === null;
+                      const thisError = gamedataUpdateError?.server === server
+                        ? gamedataUpdateError.error
+                        : null;
+
+                      return (
+                        <div key={server} className="py-2 border-b border-ark-border/50 last:border-b-0">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-sm font-medium text-ark-white w-16 shrink-0">
+                                {label}
+                              </span>
+                              {status === undefined ? (
+                                <span className="text-xs text-ark-gray">{t('common.checking')}</span>
+                              ) : status?.exists ? (
+                                <span className="text-xs text-ark-gray">
+                                  {t('settings.gamedata.ready', { count: status.story_count })}
+                                  {status.last_updated && (
+                                    <span className="ml-2 text-ark-gray/50">
+                                      {new Date(status.last_updated).toLocaleDateString()}
+                                    </span>
+                                  )}
+                                </span>
                               ) : (
-                                <>{t('settings.gamedata.notReady')}</>
+                                <span className="text-xs text-ark-gray/50">{t('settings.gamedata.notReady')}</span>
                               )}
-                            </p>
-                            {gamedataStatus.last_updated && (
-                              <p className="text-xs text-ark-gray mt-1">
-                                {t('settings.gamedata.lastUpdated')}{" "}
-                                {new Date(
-                                  gamedataStatus.last_updated,
-                                ).toLocaleString()}
-                              </p>
-                            )}
-                          </div>
-                          {!isUpdatingGamedata &&
-                            gamedataUpdateProgress?.stage !== "complete" && (
+                            </div>
+                            {!isThisUpdating && !thisCompleted && (
                               <button
-                                onClick={startGamedataUpdate}
-                                className="ark-btn ark-btn-primary text-sm"
+                                onClick={() => startGamedataUpdate(server)}
+                                disabled={updatingServer !== null}
+                                className="ark-btn ark-btn-primary text-xs px-3 py-1 shrink-0 disabled:opacity-30"
                               >
-                                {gamedataStatus.exists
+                                {status?.exists
                                   ? t('settings.gamedata.update')
                                   : t('settings.gamedata.download')}
                               </button>
                             )}
-                        </div>
-
-                        {/* 업데이트 진행률 */}
-                        {isUpdatingGamedata && gamedataUpdateProgress && (
-                          <div className="mt-3">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs text-ark-gray">
-                                {gamedataUpdateProgress.message}
-                              </span>
-                              <button
-                                onClick={cancelGamedataUpdate}
-                                className="text-xs text-red-400 hover:text-red-300"
-                              >
-                                {t('common.cancel')}
-                              </button>
-                            </div>
-                            <div className="relative h-2 bg-ark-panel rounded overflow-hidden">
-                              <div
-                                className="absolute inset-y-0 left-0 bg-ark-orange transition-all duration-300"
-                                style={{
-                                  width: `${gamedataUpdateProgress.progress * 100}%`,
-                                }}
-                              />
-                            </div>
                           </div>
-                        )}
 
-                        {/* 완료 메시지 */}
-                        {gamedataUpdateProgress?.stage === "complete" &&
-                          !isUpdatingGamedata && (
-                            <div className="mt-3 p-2 bg-green-500/10 border border-green-500/30 rounded">
-                              <div className="flex items-center justify-between">
-                                <p className="text-xs text-green-400">
+                          {/* 진행률 */}
+                          {isThisUpdating && gamedataUpdateProgress && (
+                            <div className="mt-2">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs text-ark-gray">
                                   {gamedataUpdateProgress.message}
-                                </p>
+                                </span>
                                 <button
-                                  onClick={refreshCharacterData}
-                                  disabled={isRefreshingCharacters}
-                                  className="text-xs text-ark-orange hover:underline disabled:opacity-50"
+                                  onClick={cancelGamedataUpdate}
+                                  className="text-xs text-red-400 hover:text-red-300"
                                 >
-                                  {isRefreshingCharacters
-                                    ? t('common.refreshing')
-                                    : t('settings.characters.refresh')}
+                                  {t('common.cancel')}
                                 </button>
+                              </div>
+                              <div className="relative h-1.5 bg-ark-panel rounded overflow-hidden">
+                                <div
+                                  className="absolute inset-y-0 left-0 bg-ark-orange transition-all duration-300"
+                                  style={{ width: `${gamedataUpdateProgress.progress * 100}%` }}
+                                />
                               </div>
                             </div>
                           )}
 
-                        {/* 에러 메시지 */}
-                        {gamedataUpdateError && (
-                          <div className="mt-3 p-2 bg-red-500/10 border border-red-500/30 rounded">
-                            <p className="text-xs text-red-400">
-                              {gamedataUpdateError}
-                            </p>
-                          </div>
-                        )}
-
-                        <div className="mt-3 pt-3 border-t border-ark-border">
-                          <label className="text-xs text-ark-gray block mb-1">
-                            {t('settings.gamedata.source')}
-                          </label>
-                          <select
-                            value={gamedataSource}
-                            onChange={(e) => changeGamedataSource(e.target.value)}
-                            disabled={isUpdatingGamedata}
-                            className="w-full px-2 py-1 text-xs bg-ark-black border border-ark-border rounded text-ark-white focus:border-ark-orange focus:outline-none disabled:opacity-50"
-                          >
-                            <option value="github">GitHub (ArknightsGamedata)</option>
-                            <option value="arkprts">arkprts</option>
-                          </select>
-                          {gamedataSource === 'github' && (
-                            <div className="flex gap-2 mt-2">
-                              <input
-                                type="text"
-                                value={gamedataRepoInput}
-                                onChange={(e) => setGamedataRepoInput(e.target.value)}
-                                placeholder="owner/repo"
-                                className="flex-1 px-2 py-1 text-xs bg-ark-black border border-ark-border rounded text-ark-white placeholder:text-ark-gray/50 focus:border-ark-orange focus:outline-none"
-                              />
+                          {/* 완료 */}
+                          {thisCompleted && (
+                            <div className="mt-2 flex items-center justify-between">
+                              <p className="text-xs text-green-400">
+                                {gamedataUpdateProgress?.message}
+                              </p>
                               <button
-                                onClick={saveGamedataRepo}
-                                disabled={isRepoSaving || gamedataRepoInput === gamedataRepo}
-                                className="px-3 py-1 text-xs bg-ark-panel border border-ark-border rounded text-ark-gray hover:text-ark-white disabled:opacity-30 disabled:cursor-default"
+                                onClick={refreshCharacterData}
+                                disabled={isRefreshingCharacters}
+                                className="text-xs text-ark-orange hover:underline disabled:opacity-50"
                               >
-                                {isRepoSaving ? '...' : t('settings.save')}
+                                {isRefreshingCharacters
+                                  ? t('common.refreshing')
+                                  : t('settings.characters.refresh')}
                               </button>
                             </div>
                           )}
-                          {gamedataSource === 'arkprts' && (
-                            <p className="text-[10px] text-ark-gray/60 mt-1">
-                              {t('settings.gamedata.arkprtsDesc')}
-                            </p>
+
+                          {/* 에러 */}
+                          {thisError && (
+                            <div className="mt-2 p-1.5 bg-red-500/10 border border-red-500/30 rounded">
+                              <p className="text-xs text-red-400">{thisError}</p>
+                            </div>
                           )}
                         </div>
+                      );
+                    })}
 
-                        {/* 수동 캐릭터 새로고침 */}
-                        {gamedataStatus?.exists && (
-                          <div className="flex items-center justify-between mt-2 pt-2 border-t border-ark-border">
-                            <span className="text-xs text-ark-gray">
-                              {t('settings.characters.mappingCache')}
-                            </span>
-                            <button
-                              onClick={refreshCharacterData}
-                              disabled={isRefreshingCharacters}
-                              className="text-xs text-ark-orange hover:underline disabled:opacity-50"
-                            >
-                              {isRefreshingCharacters
-                                ? t('common.refreshing')
-                                : t('common.refresh')}
-                            </button>
-                          </div>
-                        )}
+                    {/* 소스 설정 (공유) */}
+                    <div className="pt-2 border-t border-ark-border">
+                      <label className="text-xs text-ark-gray block mb-1">
+                        {t('settings.gamedata.source')}
+                      </label>
+                      <select
+                        value={gamedataSource}
+                        onChange={(e) => changeGamedataSource(e.target.value)}
+                        disabled={updatingServer !== null}
+                        className="w-full px-2 py-1 text-xs bg-ark-black border border-ark-border rounded text-ark-white focus:border-ark-orange focus:outline-none disabled:opacity-50"
+                      >
+                        <option value="github">GitHub (ArknightsGamedata)</option>
+                        <option value="arkprts">arkprts</option>
+                      </select>
+                      {gamedataSource === 'github' && (
+                        <div className="flex gap-2 mt-2">
+                          <input
+                            type="text"
+                            value={gamedataRepoInput}
+                            onChange={(e) => setGamedataRepoInput(e.target.value)}
+                            placeholder="owner/repo"
+                            className="flex-1 px-2 py-1 text-xs bg-ark-black border border-ark-border rounded text-ark-white placeholder:text-ark-gray/50 focus:border-ark-orange focus:outline-none"
+                          />
+                          <button
+                            onClick={saveGamedataRepo}
+                            disabled={isRepoSaving || gamedataRepoInput === gamedataRepo}
+                            className="px-3 py-1 text-xs bg-ark-panel border border-ark-border rounded text-ark-gray hover:text-ark-white disabled:opacity-30 disabled:cursor-default"
+                          >
+                            {isRepoSaving ? '...' : t('settings.save')}
+                          </button>
+                        </div>
+                      )}
+                      {gamedataSource === 'arkprts' && (
+                        <p className="text-[10px] text-ark-gray/60 mt-1">
+                          {t('settings.gamedata.arkprtsDesc')}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* 수동 캐릭터 새로고침 */}
+                    {Object.values(gamedataStatuses).some(s => s?.exists) && (
+                      <div className="flex items-center justify-between pt-2 border-t border-ark-border">
+                        <span className="text-xs text-ark-gray">
+                          {t('settings.characters.mappingCache')}
+                        </span>
+                        <button
+                          onClick={refreshCharacterData}
+                          disabled={isRefreshingCharacters}
+                          className="text-xs text-ark-orange hover:underline disabled:opacity-50"
+                        >
+                          {isRefreshingCharacters
+                            ? t('common.refreshing')
+                            : t('common.refresh')}
+                        </button>
                       </div>
                     )}
                   </div>

@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from ..config import config
 from ..shared_loaders import get_story_loader, get_voice_mapper, find_operator_id_by_name
 from ...voice.alias_resolver import resolve_voice_char_id
+from ...common.language_codes import short_to_locale
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -33,6 +34,7 @@ class DialogueInfo(BaseModel):
     speaker_id: str | None
     speaker_name: str
     text: str
+    voice_text: str | None = None  # 음성 언어 대사 (표시 언어와 다를 때)
     line_number: int
     dialogue_type: str = "dialogue"  # "dialogue" | "narration" | "subtitle"
 
@@ -44,6 +46,20 @@ class EpisodeDetail(BaseModel):
     title: str
     dialogues: list[DialogueInfo]
     characters: list[str]
+
+
+def _load_voice_texts(loader, episode_id: str, display_lang: str) -> dict[int, str]:
+    """음성 언어가 표시 언어와 다르면 음성 언어 대사를 인덱스별로 반환"""
+    voice_locale = short_to_locale(config.voice_language_short)
+    if voice_locale == display_lang:
+        return {}
+    try:
+        voice_ep = loader.load_episode(episode_id, lang=voice_locale)
+        if voice_ep:
+            return {i: d.text for i, d in enumerate(voice_ep.dialogues)}
+    except Exception:
+        pass
+    return {}
 
 
 @router.get("/main")
@@ -104,6 +120,8 @@ async def get_episode(episode_id: str, lang: str | None = None):
     if episode is None:
         raise HTTPException(status_code=404, detail=f"Episode not found: {episode_id}")
 
+    voice_texts = _load_voice_texts(loader, episode_id, lang)
+
     return EpisodeDetail(
         id=episode.id,
         title=episode.title,
@@ -113,10 +131,11 @@ async def get_episode(episode_id: str, lang: str | None = None):
                 speaker_id=d.speaker_id,
                 speaker_name=d.speaker_name,
                 text=d.text,
+                voice_text=voice_texts.get(i),
                 line_number=d.line_number,
                 dialogue_type=d.dialogue_type.value,
             )
-            for d in episode.dialogues
+            for i, d in enumerate(episode.dialogues)
         ],
         characters=list(episode.characters),
     )
@@ -139,6 +158,7 @@ async def get_episode_dialogues(
         raise HTTPException(status_code=404, detail=f"Episode not found: {episode_id}")
 
     dialogues = episode.dialogues[offset : offset + limit]
+    voice_texts = _load_voice_texts(loader, episode_id, lang)
 
     return {
         "total": len(episode.dialogues),
@@ -150,10 +170,11 @@ async def get_episode_dialogues(
                 speaker_id=d.speaker_id,
                 speaker_name=d.speaker_name,
                 text=d.text,
+                voice_text=voice_texts.get(offset + i),
                 line_number=d.line_number,
                 dialogue_type=d.dialogue_type.value,
             )
-            for d in dialogues
+            for i, d in enumerate(dialogues)
         ],
     }
 

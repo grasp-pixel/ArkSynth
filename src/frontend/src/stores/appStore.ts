@@ -949,7 +949,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
         console.log('[playDialogue] 캐시 실패 → 실시간 합성 폴백')
         try {
-          await synthesizeAndPlayDialogue(dialogue.text, charIdToUse, set, get)
+          await synthesizeAndPlayDialogue(dialogue.voice_text || dialogue.text, charIdToUse, set, get)
         } finally {
           isPlayStarting = false
         }
@@ -980,7 +980,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // 실시간 GPT-SoVITS 합성 (테스트 용도 - 더빙 모드가 아닐 때만)
     console.log('[playDialogue] 캐시 없음 → 실시간 합성')
     try {
-      await synthesizeAndPlayDialogue(dialogue.text, charIdToUse, set, get)
+      await synthesizeAndPlayDialogue(dialogue.voice_text || dialogue.text, charIdToUse, set, get)
     } finally {
       isPlayStarting = false
     }
