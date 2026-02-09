@@ -5,6 +5,26 @@
 
 import re
 
+# ============ 전각→반각 특수문자 정규화 ============
+
+_PUNCT_NORMALIZE = str.maketrans({
+    "\u3002": ".",  # 。→.
+    "\u3001": ",",  # 、→,
+    "\uff0c": ",",  # ，→,
+    "\uff01": "!",  # ！→!
+    "\uff1f": "?",  # ？→?
+    "\uff1b": ";",  # ；→;
+    "\uff1a": ":",  # ：→:
+    "\uff08": "(",  # （→(
+    "\uff09": ")",  # ）→)
+    "\u300c": '"',  # 「→"
+    "\u300d": '"',  # 」→"
+    "\u300e": '"',  # 『→"
+    "\u300f": '"',  # 』→"
+    "\uff5e": "~",  # ～→~
+})
+
+
 # ============ 숫자→한국어 변환 상수 ============
 
 # 한자어 수사
@@ -268,6 +288,9 @@ def _preprocess_common(text: str) -> str | None:
     Returns:
         정리된 텍스트, 또는 None (합성 불가능한 텍스트)
     """
+    # 전각 특수문자 → 반각 정규화 (。→. 、→, ！→! ？→? 등)
+    text = text.translate(_PUNCT_NORMALIZE)
+
     meaningful_chars = re.sub(r"[.\s…,?!]+", "", text)
     if not meaningful_chars:
         return "음..."
