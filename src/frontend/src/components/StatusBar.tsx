@@ -1,6 +1,8 @@
+import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/appStore'
 
 export default function StatusBar() {
+  const { t } = useTranslation()
   const {
     backendStatus,
     selectedEpisode,
@@ -67,7 +69,7 @@ export default function StatusBar() {
           <button
             onClick={toggleMute}
             className="p-1 text-ark-cyan"
-            title={isMuted ? '음소거 해제' : '음소거'}
+            title={isMuted ? t('status.audio.unmute') : t('status.audio.mute')}
           >
             {isMuted || volume === 0 ? (
               <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">

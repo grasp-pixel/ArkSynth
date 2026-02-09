@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAppStore } from './stores/appStore'
 import EpisodeSelector from './components/EpisodeSelector'
 import DialogueViewer from './components/DialogueViewer'
@@ -9,6 +10,7 @@ import DubbingControlBar from './components/DubbingControlBar'
 import StatusBar from './components/StatusBar'
 import SettingsModal from './components/SettingsModal'
 import CharacterManagerModal from './components/CharacterManagerModal'
+import LanguageSettingsModal from './components/LanguageSettingsModal'
 
 function App() {
   const {
@@ -42,6 +44,9 @@ function App() {
     // 음성 캐릭터
     loadVoiceCharacters,
     loadVoiceMappings,
+    // 언어 설정
+    loadLanguageSettings,
+    voiceLanguage,
     // 패널 접기
     isLeftPanelCollapsed,
     isRightPanelCollapsed,
@@ -54,6 +59,8 @@ function App() {
     isRefreshingAll,
     refreshAll,
   } = useAppStore()
+
+  const { t } = useTranslation()
 
   useEffect(() => {
     checkBackendStatus()
@@ -69,8 +76,9 @@ function App() {
       loadVoiceCharacters()  // 음성 캐릭터 목록 로드 (getSpeakerVoice에서 사용)
       loadVoiceMappings()  // 백엔드 음성 매핑 로드 (에피소드 전환 시 유지)
       loadGpuSemaphoreStatus()  // GPU 세마포어 상태 로드
+      loadLanguageSettings()  // 언어 설정 로드
     }
-  }, [backendStatus, loadCategories, checkGptSovitsStatus, loadTtsEngineSetting, loadVoiceCharacters, loadVoiceMappings, loadGpuSemaphoreStatus])
+  }, [backendStatus, loadCategories, checkGptSovitsStatus, loadTtsEngineSetting, loadVoiceCharacters, loadVoiceMappings, loadGpuSemaphoreStatus, loadLanguageSettings])
 
   // GPT-SoVITS 상태 주기적 확인 (30초)
   useEffect(() => {
@@ -85,10 +93,13 @@ function App() {
   // 캐릭터 관리 모달 상태
   const [isCharacterManagerOpen, setIsCharacterManagerOpen] = useState(false)
 
+  // 언어 설정 모달 상태
+  const [isLanguageSettingsOpen, setIsLanguageSettingsOpen] = useState(false)
+
   // 준비 버튼 핸들러
   const handlePrepare = () => {
     if (!selectedGroupId) {
-      alert('스토리 그룹을 먼저 선택하세요')
+      alert(t('app.alert.selectGroup'))
       return
     }
     prepareForDubbing()
@@ -101,7 +112,7 @@ function App() {
         <button
           onClick={goHome}
           className="flex items-center gap-3 hover:opacity-80 transition-opacity"
-          title="홈으로 이동"
+          title={t('app.header.homeTitle')}
         >
           {/* 로고 아이콘 */}
           <div className="w-8 h-8 flex items-center justify-center">
@@ -123,7 +134,7 @@ function App() {
               <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
                 <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/>
               </svg>
-              <span>더빙 중</span>
+              <span>{t('app.header.dubbing')}</span>
               <span className="w-2 h-2 bg-ark-black ark-pulse" style={{clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)'}} />
             </div>
           )}
@@ -135,12 +146,12 @@ function App() {
                 gptSovitsStatus?.synthesizing ? (
                   <>
                     <span className="w-2 h-2 rounded-full bg-ark-cyan ark-pulse-cyan" />
-                    <span className="text-sm text-ark-cyan">합성 중...</span>
+                    <span className="text-sm text-ark-cyan">{t('app.gpt.synthesizing')}</span>
                   </>
                 ) : (
                   <>
                     <span className="w-2 h-2 rounded-full bg-ark-cyan" />
-                    <span className="text-sm text-ark-cyan">GPT-SoVITS</span>
+                    <span className="text-sm text-ark-cyan">{t('app.gpt.label')}</span>
                   </>
                 )
               ) : gptSovitsStatus?.installed ? (
@@ -150,25 +161,25 @@ function App() {
                   className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-orange-500/30 hover:from-amber-400 hover:to-orange-400 hover:shadow-orange-500/50 transition-all animate-pulse hover:animate-none disabled:opacity-50 disabled:animate-none"
                 >
                   {isStartingGptSovits ? (
-                    <span>시작 중...</span>
+                    <span>{t('app.gpt.starting')}</span>
                   ) : (
                     <>
                       <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
                         <path d="M8 5v14l11-7z"/>
                       </svg>
-                      <span>GPT-SoVITS 시작</span>
+                      <span>{t('app.gpt.startButton')}</span>
                     </>
                   )}
                 </button>
               ) : gptSovitsStatus !== null ? (
                 <div className="flex items-center gap-1.5 text-sm text-red-400">
                   <span className="w-2 h-2 rounded-full bg-red-500" />
-                  <span>GPT-SoVITS 미설치</span>
+                  <span>{t('app.gpt.notInstalled')}</span>
                 </div>
               ) : null}
               {gptSovitsError && (
                 <span className="text-xs text-red-400" title={gptSovitsError}>
-                  오류
+                  {t('common.error')}
                 </span>
               )}
             </div>
@@ -183,8 +194,8 @@ function App() {
                 : 'bg-ark-orange/20 text-ark-orange hover:bg-ark-orange/30'
             }`}
             title={gpuSemaphoreEnabled
-              ? 'GPU 잠금 활성화됨 (OCR/TTS 순차 실행)'
-              : 'GPU 잠금 비활성화됨 (OCR/TTS 동시 실행 가능)'
+              ? t('app.gpu.lockEnabled')
+              : t('app.gpu.lockDisabled')
             }
           >
             <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor">
@@ -194,7 +205,7 @@ function App() {
                 <path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z"/>
               )}
             </svg>
-            <span>GPU</span>
+            <span>{t('app.gpu.label')}</span>
           </button>
 
           {/* 백엔드 상태 */}
@@ -209,12 +220,24 @@ function App() {
             </span>
           </div>
 
+          {/* 언어 설정 버튼 */}
+          <button
+            onClick={() => setIsLanguageSettingsOpen(true)}
+            className="flex items-center gap-1.5 px-2 py-1.5 text-ark-gray hover:text-ark-white border border-ark-border hover:border-ark-cyan/50 rounded transition-colors"
+            title={t('languageSettings.title')}
+          >
+            <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+              <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm6.93 6h-2.95c-.32-1.25-.78-2.45-1.38-3.56 1.84.63 3.37 1.91 4.33 3.56zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2 0 .68.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56-1.84-.63-3.37-1.9-4.33-3.56zm2.95-8H5.08c.96-1.66 2.49-2.93 4.33-3.56C8.81 5.55 8.35 6.75 8.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66c-.09-.66-.16-1.32-.16-2 0-.68.07-1.35.16-2h4.68c.09.65.16 1.32.16 2 0 .68-.07 1.34-.16 2zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95c-.96 1.65-2.49 2.93-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2 0-.68-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z"/>
+            </svg>
+            <span className="text-xs uppercase">{voiceLanguage}</span>
+          </button>
+
           {/* 새로고침 버튼 */}
           <button
             onClick={refreshAll}
             disabled={isRefreshingAll}
             className="flex items-center gap-1.5 px-2 py-1.5 text-ark-gray hover:text-ark-white border border-ark-border hover:border-ark-cyan/50 rounded transition-colors disabled:opacity-50"
-            title="전체 새로고침"
+            title={t('app.refreshAll')}
           >
             <svg viewBox="0 0 24 24" className={`w-4 h-4 ${isRefreshingAll ? 'animate-spin' : ''}`} fill="currentColor">
               <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
@@ -225,12 +248,12 @@ function App() {
           <button
             onClick={() => setIsSettingsOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-ark-gray hover:text-ark-white border border-ark-border hover:border-ark-cyan/50 rounded transition-colors"
-            title="설정"
+            title={t('app.settings')}
           >
             <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
               <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
             </svg>
-            <span className="text-xs">설정</span>
+            <span className="text-xs">{t('app.settings')}</span>
           </button>
         </div>
       </header>
@@ -239,7 +262,7 @@ function App() {
       <div className="flex border-b border-ark-border bg-ark-dark">
         <div className="flex-1 flex overflow-x-auto">
           {isLoadingCategories ? (
-            <div className="p-3 text-ark-gray text-sm ark-pulse">로딩 중...</div>
+            <div className="p-3 text-ark-gray text-sm ark-pulse">{t('common.loading')}</div>
           ) : (
             categories.map((cat) => (
               <button
@@ -266,7 +289,7 @@ function App() {
           <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
             <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
           </svg>
-          <span className="text-sm font-medium">캐릭터 관리</span>
+          <span className="text-sm font-medium">{t('app.header.characterManagement')}</span>
         </button>
       </div>
 
@@ -279,16 +302,16 @@ function App() {
                 <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
               </svg>
             </div>
-            <h2 className="text-lg font-bold text-ark-white mb-2">백엔드 서버에 연결할 수 없습니다</h2>
+            <h2 className="text-lg font-bold text-ark-white mb-2">{t('app.error.backendNotConnected')}</h2>
             <p className="text-sm text-ark-gray mb-6">
-              <span className="text-ark-orange font-mono">start.bat</span>으로 앱을 실행해주세요.
+              <span className="text-ark-orange font-mono">{t('app.error.startBatFile')}</span>으로 앱을 실행해주세요.
               <br />
-              start.bat이 백엔드 서버와 앱을 함께 시작합니다.
+              {t('app.error.startBatDescription')}
             </p>
             <div className="p-3 bg-ark-panel/50 rounded border border-ark-border text-xs text-ark-gray/70 font-mono">
-              서버 주소: http://127.0.0.1:8000
+              {t('app.error.serverAddress')}
             </div>
-            <p className="mt-4 text-xs text-ark-gray/50">연결되면 자동으로 전환됩니다</p>
+            <p className="mt-4 text-xs text-ark-gray/50">{t('app.error.autoConnect')}</p>
           </div>
         </div>
       )}
@@ -311,7 +334,7 @@ function App() {
           <button
             onClick={toggleLeftPanel}
             className="flex-shrink-0 w-5 bg-ark-dark hover:bg-ark-panel border-r border-ark-border flex items-center justify-center text-ark-gray hover:text-ark-white transition-colors"
-            title={isLeftPanelCollapsed ? '에피소드 목록 펼치기' : '에피소드 목록 접기'}
+            title={isLeftPanelCollapsed ? t('app.panel.expandEpisodeList') : t('app.panel.collapseEpisodeList')}
           >
             <svg viewBox="0 0 24 24" className={`w-4 h-4 transition-transform duration-300 ${isLeftPanelCollapsed ? '' : 'rotate-180'}`} fill="currentColor">
               <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
@@ -327,10 +350,10 @@ function App() {
                 <svg viewBox="0 0 24 24" className="w-16 h-16 mb-4 opacity-30" fill="currentColor">
                   <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
                 </svg>
-                <p>에피소드를 선택하세요</p>
+                <p>{t('app.content.selectEpisode')}</p>
                 {!selectedGroupId && (
                   <p className="mt-2 text-sm text-ark-gray/70">
-                    왼쪽 목록에서 스토리 그룹을 펼쳐 에피소드를 선택하세요
+                    {t('app.content.selectEpisodeGuide')}
                   </p>
                 )}
               </div>
@@ -341,7 +364,7 @@ function App() {
           <button
             onClick={toggleRightPanel}
             className="flex-shrink-0 w-5 bg-ark-dark hover:bg-ark-panel border-l border-ark-border flex items-center justify-center text-ark-gray hover:text-ark-white transition-colors"
-            title={isRightPanelCollapsed ? '설정 패널 펼치기' : '설정 패널 접기'}
+            title={isRightPanelCollapsed ? t('app.panel.expandSettings') : t('app.panel.collapseSettings')}
           >
             <svg viewBox="0 0 24 24" className={`w-4 h-4 transition-transform duration-300 ${isRightPanelCollapsed ? 'rotate-180' : ''}`} fill="currentColor">
               <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
@@ -371,13 +394,13 @@ function App() {
                           }`}
                         >
                           {isLoadingCharacters ? (
-                            <span className="ark-pulse">로딩 중...</span>
+                            <span className="ark-pulse">{t('common.loading')}</span>
                           ) : (
                             <>
                               <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
                                 <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
                               </svg>
-                              <span>에피소드 더빙 설정</span>
+                              <span>{t('app.dubbing.episodeSetup')}</span>
                             </>
                           )}
                         </button>
@@ -385,13 +408,13 @@ function App() {
                       </div>
                       <div className="flex-1 p-4 space-y-4">
                         <p className="text-xs text-ark-gray text-center">
-                          에피소드별 상세 설정을 하려면 위 버튼을 누르세요
+                          {t('app.dubbing.setupGuide')}
                         </p>
                         <button
                           onClick={clearEpisode}
                           className="w-full ark-btn text-sm text-ark-cyan hover:text-ark-white border-ark-cyan/30"
                         >
-                          ← 그룹 설정으로
+                          {t('app.panel.backToGroupSetup')}
                         </button>
                       </div>
                     </div>
@@ -405,8 +428,8 @@ function App() {
 
                     {/* 앱 소개 */}
                     <div className="text-center py-2">
-                      <h3 className="text-base font-bold text-ark-orange tracking-wide">ArkSynth</h3>
-                      <p className="text-xs text-ark-gray mt-1">명일방주 스토리를 캐릭터 음성으로 더빙하는 앱</p>
+                      <h3 className="text-base font-bold text-ark-orange tracking-wide">{t('app.title')}</h3>
+                      <p className="text-xs text-ark-gray mt-1">{t('app.description')}</p>
                     </div>
 
                     {/* 카드 1: 처음 설치 가이드 */}
@@ -415,49 +438,49 @@ function App() {
                         <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
                           <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
                         </svg>
-                        처음 설치 가이드
+                        {t('app.home.installGuide')}
                       </h4>
-                      <p>우상단 <span className="text-ark-white">⚙ 설정</span>을 열어 아래 항목을 완료하세요.</p>
+                      <p>{t('app.home.openSettings')}</p>
 
                       <div className="space-y-2">
                         <div className="flex items-start gap-2">
                           <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-orange/20 text-ark-orange text-[10px] font-bold flex items-center justify-center mt-0.5">1</span>
                           <div>
-                            <p className="text-ark-white font-medium">의존성 설치</p>
-                            <p className="text-ark-gray/80">FFmpeg, 7-Zip, GPT-SoVITS 등 필수 도구</p>
+                            <p className="text-ark-white font-medium">{t('app.home.dependencies')}</p>
+                            <p className="text-ark-gray/80">{t('app.home.dependenciesDesc')}</p>
                           </div>
                         </div>
                         <div className="flex items-start gap-2">
                           <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-orange/20 text-ark-orange text-[10px] font-bold flex items-center justify-center mt-0.5">2</span>
                           <div>
-                            <p className="text-ark-white font-medium">게임 에셋 복사</p>
-                            <p className="text-ark-gray/80">아래 게임 폴더에서 Assets 폴더로 복사:</p>
+                            <p className="text-ark-white font-medium">{t('app.home.copyAssets')}</p>
+                            <p className="text-ark-gray/80">{t('app.home.copyAssetsDesc')}</p>
                             <div className="mt-1 space-y-0.5 text-[10px] text-ark-gray/60">
-                              <p><span className="text-ark-gray">음성:</span> .../Bundles/audio/sound_beta_2/voice_kr → Assets/Voice/voice_kr</p>
-                              <p><span className="text-ark-gray">이미지:</span> .../Bundles/avg/characters → Assets/Image/avg/characters</p>
-                              <p className="ml-[38px]">.../Bundles/chararts → Assets/Image/chararts</p>
+                              <p>{t('app.home.voicePath')}</p>
+                              <p>{t('app.home.imagePath')}</p>
+                              <p className="ml-[38px]">{t('app.home.charartPath')}</p>
                             </div>
                           </div>
                         </div>
                         <div className="flex items-start gap-2">
                           <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-orange/20 text-ark-orange text-[10px] font-bold flex items-center justify-center mt-0.5">3</span>
                           <div>
-                            <p className="text-ark-white font-medium">에셋 추출</p>
-                            <p className="text-ark-gray/80">설정에서 "음성 추출", "이미지 추출" 실행</p>
+                            <p className="text-ark-white font-medium">{t('app.home.extractAssets')}</p>
+                            <p className="text-ark-gray/80">{t('app.home.extractAssetsDesc')}</p>
                           </div>
                         </div>
                         <div className="flex items-start gap-2">
                           <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-orange/20 text-ark-orange text-[10px] font-bold flex items-center justify-center mt-0.5">4</span>
                           <div>
-                            <p className="text-ark-white font-medium">스토리 데이터</p>
-                            <p className="text-ark-gray/80">설정에서 "데이터 다운로드"로 스토리 텍스트 받기</p>
+                            <p className="text-ark-white font-medium">{t('app.home.storyData')}</p>
+                            <p className="text-ark-gray/80">{t('app.home.storyDataDesc')}</p>
                           </div>
                         </div>
                         <div className="flex items-start gap-2">
                           <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-orange/20 text-ark-orange text-[10px] font-bold flex items-center justify-center mt-0.5">5</span>
                           <div>
-                            <p className="text-ark-white font-medium">데이터 매핑</p>
-                            <p className="text-ark-gray/80">"캐릭터 매핑 캐시 새로고침" + "본명 자동 추출" 실행</p>
+                            <p className="text-ark-white font-medium">{t('app.home.dataMapping')}</p>
+                            <p className="text-ark-gray/80">{t('app.home.dataMappingDesc')}</p>
                           </div>
                         </div>
                       </div>
@@ -469,51 +492,51 @@ function App() {
                         <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
                           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
                         </svg>
-                        사용 방법
+                        {t('app.home.howToUse')}
                       </h4>
 
                       <div className="space-y-2">
                         <div className="flex items-start gap-2">
                           <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-cyan/20 text-ark-cyan text-[10px] font-bold flex items-center justify-center mt-0.5">1</span>
                           <div>
-                            <p className="text-ark-white font-medium">GPT-SoVITS 시작</p>
-                            <p className="text-ark-gray/80">상단 헤더의 시작 버튼으로 TTS 엔진 구동</p>
+                            <p className="text-ark-white font-medium">{t('app.home.startGptSovits')}</p>
+                            <p className="text-ark-gray/80">{t('app.home.startGptSovitsDesc')}</p>
                           </div>
                         </div>
                         <div className="flex items-start gap-2">
                           <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-cyan/20 text-ark-cyan text-[10px] font-bold flex items-center justify-center mt-0.5">2</span>
                           <div>
-                            <p className="text-ark-white font-medium">캐릭터 관리</p>
-                            <p className="text-ark-gray/80">상단 탭 우측 버튼에서 기본 음성 캐릭터 및 나레이터 지정</p>
-                            <p className="text-ark-gray/60 mt-0.5">음성이 없는 캐릭터와 NPC는 기본 음성으로, 화자가 없는 대사와 자막은 나레이터 음성으로 합성됩니다.</p>
+                            <p className="text-ark-white font-medium">{t('app.home.characterManagement')}</p>
+                            <p className="text-ark-gray/80">{t('app.home.characterManagementDesc')}</p>
+                            <p className="text-ark-gray/60 mt-0.5">{t('app.home.characterManagementGuide')}</p>
                           </div>
                         </div>
                         <div className="flex items-start gap-2">
                           <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-cyan/20 text-ark-cyan text-[10px] font-bold flex items-center justify-center mt-0.5">3</span>
                           <div>
-                            <p className="text-ark-white font-medium">스토리 선택</p>
-                            <p className="text-ark-gray/80">카테고리 탭에서 분류 선택 → 왼쪽 목록에서 그룹 또는 에피소드 선택</p>
+                            <p className="text-ark-white font-medium">{t('app.home.selectStory')}</p>
+                            <p className="text-ark-gray/80">{t('app.home.selectStoryDesc')}</p>
                           </div>
                         </div>
                         <div className="flex items-start gap-2">
                           <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-cyan/20 text-ark-cyan text-[10px] font-bold flex items-center justify-center mt-0.5">4</span>
                           <div>
-                            <p className="text-ark-white font-medium">음성 매핑 설정</p>
-                            <p className="text-ark-gray/80">음성이 없는 캐릭터를 기본 캐릭터로 매핑</p>
+                            <p className="text-ark-white font-medium">{t('app.home.voiceMappingSetup')}</p>
+                            <p className="text-ark-gray/80">{t('app.home.voiceMappingDesc')}</p>
                           </div>
                         </div>
                         <div className="flex items-start gap-2">
                           <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-cyan/20 text-ark-cyan text-[10px] font-bold flex items-center justify-center mt-0.5">5</span>
                           <div>
-                            <p className="text-ark-white font-medium">음성 준비</p>
-                            <p className="text-ark-gray/80">그룹 일괄 또는 에피소드별로 캐릭터 음성 준비/학습</p>
+                            <p className="text-ark-white font-medium">{t('app.home.voicePreparation')}</p>
+                            <p className="text-ark-gray/80">{t('app.home.voicePreparationDesc')}</p>
                           </div>
                         </div>
                         <div className="flex items-start gap-2">
                           <span className="flex-shrink-0 w-4 h-4 rounded-full bg-ark-cyan/20 text-ark-cyan text-[10px] font-bold flex items-center justify-center mt-0.5">6</span>
                           <div>
-                            <p className="text-ark-white font-medium">실시간 더빙</p>
-                            <p className="text-ark-gray/80">OCR 윈도우 설정 → 게임 텍스트 실시간 인식 → 매칭된 대사 자동 재생</p>
+                            <p className="text-ark-white font-medium">{t('app.home.realtimeDubbing')}</p>
+                            <p className="text-ark-gray/80">{t('app.home.realtimeDubbingDesc')}</p>
                           </div>
                         </div>
                       </div>
@@ -521,8 +544,8 @@ function App() {
 
                     {/* 참고 팁 */}
                     <div className="p-3 bg-ark-panel/50 rounded border border-ark-border text-[11px] text-ark-gray space-y-1.5">
-                      <p>학습되지 않은 캐릭터는 <span className="text-ark-white">제로샷 모드</span>로 합성됩니다.</p>
-                      <p>헤더의 <span className="text-ark-cyan">GPU</span> 버튼으로 OCR/TTS 동시 실행을 제어합니다.</p>
+                      <p>{t('app.home.zeroShotNote')}</p>
+                      <p>{t('app.home.gpuNote')}</p>
                     </div>
 
                   </div>
@@ -552,6 +575,12 @@ function App() {
       <CharacterManagerModal
         isOpen={isCharacterManagerOpen}
         onClose={() => setIsCharacterManagerOpen(false)}
+      />
+
+      {/* 언어 설정 모달 */}
+      <LanguageSettingsModal
+        isOpen={isLanguageSettingsOpen}
+        onClose={() => setIsLanguageSettingsOpen(false)}
       />
     </div>
   )

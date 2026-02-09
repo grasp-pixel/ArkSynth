@@ -25,8 +25,15 @@ _render_manager: RenderManager | None = None
 def get_render_cache() -> RenderCache:
     global _render_cache
     if _render_cache is None:
-        _render_cache = RenderCache(config.rendered_path)
+        _render_cache = RenderCache(config.rendered_path, voice_language=config.voice_language_short)
     return _render_cache
+
+
+def reset_render_cache():
+    """렌더 캐시 리셋 (언어 변경 시)"""
+    global _render_cache, _render_manager
+    _render_cache = None
+    _render_manager = None
 
 
 def get_render_manager() -> RenderManager:

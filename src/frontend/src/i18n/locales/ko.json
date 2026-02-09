@@ -1,0 +1,777 @@
+{
+  "common": {
+    "loading": "로딩 중...",
+    "cancel": "취소",
+    "close": "닫기",
+    "refresh": "새로고침",
+    "refreshing": "새로고침 중...",
+    "retry": "다시 시도",
+    "copy": "복사",
+    "open": "열기",
+    "search": "검색",
+    "searching": "검색 중...",
+    "reset": "초기화",
+    "add": "추가",
+    "delete": "삭제",
+    "accept": "수락",
+    "dismiss": "무시",
+    "ok": "확인",
+    "complete": "완료",
+    "preview": "미리보기",
+    "play": "재생",
+    "stop": "중지",
+    "enabled": "활성화",
+    "disabled": "비활성화",
+    "connected": "연결됨",
+    "waiting": "대기 중",
+    "pending": "대기",
+    "completed": "완료됨",
+    "partiallyCompleted": "부분 완료",
+    "cached": "(캐시됨)",
+    "checking": "확인 중...",
+    "selectAll": "전체 선택",
+    "deselect": "선택 해제",
+    "noSearchResults": "검색 결과가 없습니다",
+    "noCharacters": "캐릭터가 없습니다",
+    "none": "-",
+    "empty": "없음",
+    "searchCharacter": "캐릭터 검색...",
+    "sortBy": "정렬:",
+    "error": "오류"
+  },
+  "app": {
+    "title": "ArkSynth",
+    "description": "명일방주 스토리를 캐릭터 음성으로 더빙하는 앱",
+    "alert": {
+      "selectGroup": "스토리 그룹을 먼저 선택하세요"
+    },
+    "header": {
+      "homeTitle": "홈으로 이동",
+      "dubbing": "더빙 중",
+      "characterManagement": "캐릭터 관리"
+    },
+    "gpt": {
+      "synthesizing": "합성 중...",
+      "label": "GPT-SoVITS",
+      "starting": "시작 중...",
+      "startButton": "GPT-SoVITS 시작",
+      "notInstalled": "GPT-SoVITS 미설치"
+    },
+    "gpu": {
+      "lockEnabled": "GPU 잠금 활성화됨 (OCR/TTS 순차 실행)",
+      "lockDisabled": "GPU 잠금 비활성화됨 (OCR/TTS 동시 실행 가능)",
+      "label": "GPU"
+    },
+    "refreshAll": "전체 새로고침",
+    "settings": "설정",
+    "error": {
+      "backendNotConnected": "백엔드 서버에 연결할 수 없습니다",
+      "startBatFile": "start.bat",
+      "startBatDescription": "start.bat이 백엔드 서버와 앱을 함께 시작합니다.",
+      "serverAddress": "서버 주소: http://127.0.0.1:8000",
+      "autoConnect": "연결되면 자동으로 전환됩니다"
+    },
+    "panel": {
+      "expandEpisodeList": "에피소드 목록 펼치기",
+      "collapseEpisodeList": "에피소드 목록 접기",
+      "expandSettings": "설정 패널 펼치기",
+      "collapseSettings": "설정 패널 접기",
+      "backToGroupSetup": "← 그룹 설정으로"
+    },
+    "content": {
+      "selectEpisode": "에피소드를 선택하세요",
+      "selectEpisodeGuide": "왼쪽 목록에서 스토리 그룹을 펼쳐 에피소드를 선택하세요"
+    },
+    "dubbing": {
+      "episodeSetup": "에피소드 더빙 설정",
+      "setupGuide": "에피소드별 상세 설정을 하려면 위 버튼을 누르세요"
+    },
+    "home": {
+      "installGuide": "처음 설치 가이드",
+      "openSettings": "우상단 ⚙ 설정을 열어 아래 항목을 완료하세요.",
+      "dependencies": "의존성 설치",
+      "dependenciesDesc": "FFmpeg, 7-Zip, GPT-SoVITS 등 필수 도구",
+      "copyAssets": "게임 에셋 복사",
+      "copyAssetsDesc": "아래 게임 폴더에서 Assets 폴더로 복사:",
+      "voicePath": "음성: .../Bundles/audio/sound_beta_2/voice_kr → Assets/Voice/voice_kr",
+      "imagePath": "이미지: .../Bundles/avg/characters → Assets/Image/avg/characters",
+      "charartPath": ".../Bundles/chararts → Assets/Image/chararts",
+      "extractAssets": "에셋 추출",
+      "extractAssetsDesc": "설정에서 \"음성 추출\", \"이미지 추출\" 실행",
+      "storyData": "스토리 데이터",
+      "storyDataDesc": "설정에서 \"데이터 다운로드\"로 스토리 텍스트 받기",
+      "dataMapping": "데이터 매핑",
+      "dataMappingDesc": "\"캐릭터 매핑 캐시 새로고침\" + \"본명 자동 추출\" 실행",
+      "howToUse": "사용 방법",
+      "startGptSovits": "GPT-SoVITS 시작",
+      "startGptSovitsDesc": "상단 헤더의 시작 버튼으로 TTS 엔진 구동",
+      "characterManagement": "캐릭터 관리",
+      "characterManagementDesc": "상단 탭 우측 버튼에서 기본 음성 캐릭터 및 나레이터 지정",
+      "characterManagementGuide": "음성이 없는 캐릭터와 NPC는 기본 음성으로, 화자가 없는 대사와 자막은 나레이터 음성으로 합성됩니다.",
+      "selectStory": "스토리 선택",
+      "selectStoryDesc": "카테고리 탭에서 분류 선택 → 왼쪽 목록에서 그룹 또는 에피소드 선택",
+      "voiceMappingSetup": "음성 매핑 설정",
+      "voiceMappingDesc": "음성이 없는 캐릭터를 기본 캐릭터로 매핑",
+      "voicePreparation": "음성 준비",
+      "voicePreparationDesc": "그룹 일괄 또는 에피소드별로 캐릭터 음성 준비/학습",
+      "realtimeDubbing": "실시간 더빙",
+      "realtimeDubbingDesc": "OCR 윈도우 설정 → 게임 텍스트 실시간 인식 → 매칭된 대사 자동 재생",
+      "zeroShotNote": "학습되지 않은 캐릭터는 제로샷 모드로 합성됩니다.",
+      "gpuNote": "헤더의 GPU 버튼으로 OCR/TTS 동시 실행을 제어합니다."
+    }
+  },
+  "settings": {
+    "title": "설정",
+    "loadFailed": "설정을 불러오는데 실패했습니다",
+    "section": {
+      "initialSetup": "초기 설정",
+      "dependencies": "의존성",
+      "gamedata": "게임 데이터",
+      "voiceExtract": "음성 추출",
+      "imageExtract": "이미지 추출",
+      "voiceSettings": "음성 설정",
+      "aliases": "캐릭터 별칭 (본명)",
+      "advanced": "고급 설정",
+      "language": "언어",
+      "paths": "경로",
+      "whisperPreprocessing": "Whisper 전처리",
+      "ttsParams": "TTS 추론 파라미터"
+    },
+    "initialSetupDesc": "처음 사용 시 아래 항목을 순서대로 완료하세요",
+    "status": {
+      "notInstalled": "미설치"
+    },
+    "installing": "설치 중...",
+    "manual": "수동",
+    "installMethod": "설치 방법",
+    "autoInstall": "자동 설치",
+    "manualInstall": "수동 설치:",
+    "createFolder": "폴더 생성",
+    "extract": "추출",
+    "extracted": "개 추출됨",
+    "processed": "처리됨",
+    "bundlesReady": "개 번들 준비됨",
+    "extractResult": "추출 결과:",
+    "gamePath": "게임 원본:",
+    "copyLocation": "복사 위치:",
+    "ffmpeg": {
+      "installing": "설치 시작 중...",
+      "installed": "FFmpeg 설치 완료! 새로고침하세요.",
+      "startFailed": "FFmpeg 설치 시작 실패",
+      "included": "FFmpeg에 포함",
+      "installMethod": "FFmpeg 설치 방법"
+    },
+    "os": {
+      "windows": "Windows (winget 사용):"
+    },
+    "sevenzip": {
+      "installMethod": "7-Zip 설치 방법"
+    },
+    "flatc": {
+      "installMethodPrefix": "",
+      "installMethodSuffix": " 설치 방법"
+    },
+    "characters": {
+      "refreshFailed": "캐릭터 데이터 새로고침 실패:",
+      "refresh": "캐릭터 데이터 새로고침",
+      "mappingCache": "캐릭터 매핑 캐시"
+    },
+    "folder": {
+      "openFailed": "폴더 열기 실패:",
+      "operationFailed": "폴더 작업 실패:"
+    },
+    "save": "저장",
+    "voice": {
+      "checkFailed": "VoiceAssets 확인 실패:",
+      "extractDescription": "게임 음성 번들에서 캐릭터별 MP3를 추출합니다. 음성 학습과 제로샷 TTS에 사용됩니다.",
+      "extractWarning": "추출 전에 게임 내에서 원하는 언어의 음성을 모두 다운로드한 뒤 에셋을 복사해주세요.",
+      "extract": "음성 추출",
+      "extractComplete": "추출 완료: {{count}}개 파일",
+      "startFailed": "추출 시작 실패",
+      "cancelFailed": "추출 취소 실패:",
+      "assetsReady": "Assets/Voice 준비됨",
+      "bundleCount": "{{lang}}: {{count}}개 번들",
+      "extractProgress": "{{processed}} / {{total}} 파일 처리됨 • {{extracted}}개 추출됨",
+      "gameOriginal": "Android/Data/com.YoStarKR.Arknights/files/Bundles/audio/sound_beta_2/voice_kr",
+      "extractResultDetail": "extracted/ 폴더에 캐릭터별 MP3 생성",
+      "copyLocation": "Assets/Voice/voice_kr"
+    },
+    "image": {
+      "checkFailed": "ImageAssets 확인 실패:",
+      "extractDescription": "캐릭터 일러스트 번들에서 이미지를 추출합니다. 두 종류의 이미지를 각각 추출할 수 있습니다.",
+      "extractComplete": "추출 완료: {{count}}개 이미지",
+      "startFailed": "이미지 추출 시작 실패",
+      "cancelFailed": "이미지 추출 취소 실패:",
+      "characterIllustration": "캐릭터 일러스트",
+      "characterIllustrationDesc": "대화 화면에 표시되는 캐릭터 전신 일러스트",
+      "folderMissingCharacters": "폴더 없음 — 게임 번들의 avg/characters를 복사해주세요",
+      "characterPortrait": "캐릭터 초상화",
+      "characterPortraitDesc": "캐릭터 얼굴 아이콘 (프로필, 매핑 표시용)",
+      "folderMissingChararts": "폴더 없음 — 게임 번들의 chararts를 복사해주세요",
+      "gameCharactersPath": "Android/Data/com.YoStarKR.Arknights/files/Bundles/Assets/Image/avg/characters",
+      "gameCharartsPath": "Android/Data/com.YoStarKR.Arknights/files/Bundles/Assets/Image/chararts",
+      "extractResultDetail": "extracted/images/ 폴더에 PNG 생성",
+      "extractProgress": "{{processed}} / {{total}} 처리됨 • {{extracted}}개 추출",
+      "gameCharactersOriginal": "Android/Data/com.YoStarKR.Arknights/files/Bundles/avg/characters",
+      "gameCharartsOriginal": "Android/Data/com.YoStarKR.Arknights/files/Bundles/chararts",
+      "copyCharactersLocation": "Assets/Image/avg/characters",
+      "copyCharartsLocation": "Assets/Image/chararts"
+    },
+    "gamedata": {
+      "checkFailed": "게임 데이터 상태 확인 실패:",
+      "loadSourceFailed": "데이터 소스 설정 로드 실패:",
+      "changeSourceFailed": "데이터 소스 변경 실패:",
+      "saveRepoFailed": "레포지토리 설정 저장 실패:",
+      "description": "스토리 텍스트를 다운로드합니다. 스토리 표시에 필수입니다.",
+      "ready": "스토리 데이터 준비됨 ({{count}}개 파일)",
+      "notReady": "스토리 데이터 없음",
+      "lastUpdated": "마지막 업데이트:",
+      "update": "데이터 업데이트",
+      "download": "데이터 다운로드",
+      "updateComplete": "업데이트 완료!",
+      "startFailed": "업데이트 시작 실패",
+      "cancelFailed": "업데이트 취소 실패:",
+      "source": "데이터 소스",
+      "arkprtsDesc": "게임 서버에서 직접 최신 데이터를 다운로드합니다."
+    },
+    "aliases": {
+      "loadFailed": "별칭 정보 로드 실패:",
+      "extractFailed": "본명 추출 실패:",
+      "description": "스토리에서 본명으로 등장하는 캐릭터를 오퍼레이터와 연결합니다.",
+      "descriptionExample": "예: \"조르디\" → 루멘, \"안젤리나\" → 안젤리나",
+      "count": "등록된 별칭:",
+      "extracting": "추출 중...",
+      "autoExtract": "본명 자동 추출",
+      "extractedComplete": "✓ {{charCount}}명의 캐릭터에서 {{aliasCount}}개 별칭 추가됨",
+      "note": "* handbook 데이터에서 \"본명은 XXX\" 패턴을 추출합니다"
+    },
+    "language": {
+      "description": "게임 클라이언트 언어와 TTS 합성 언어를 표시합니다.",
+      "game": "게임 언어",
+      "gptSovits": "GPT-SoVITS 언어"
+    },
+    "paths": {
+      "description": "주요 리소스 폴더 경로입니다. 폴더 열기 버튼으로 탐색기에서 확인할 수 있습니다.",
+      "gptSovits": "GPT-SoVITS",
+      "models": "모델",
+      "extracted": "추출된 음성",
+      "gamedata": "게임 데이터"
+    },
+    "whisper": {
+      "description": "음성 학습 전처리에 사용되는 Whisper 설정입니다. 기본값으로도 충분합니다.",
+      "model": "모델",
+      "computeType": "연산 타입",
+      "usage": "사용",
+      "note": "* 음성 준비 시 Faster-Whisper로 긴 오디오를 분할합니다"
+    },
+    "tts": {
+      "description": "기본값 권장. 음성 합성 품질에 영향을 주는 파라미터입니다.",
+      "temperatureDesc": "음성 랜덤성 (낮을수록 안정, 높을수록 다양)",
+      "topKDesc": "샘플링 다양성 (5~15 권장)",
+      "topPDesc": "Nucleus sampling (1.0이면 비활성)",
+      "speedFactorLabel": "음성 속도",
+      "speedFactorDesc": "1.0 = 기본 속도",
+      "appliedImmediately": "변경 즉시 적용됩니다."
+    }
+  },
+  "character": {
+    "management": {
+      "title": "캐릭터 음성 관리"
+    },
+    "testText": "변경을 넘어 최전방으로, 명일방주.",
+    "training": {
+      "progress": "{{mode}}: {{name}}",
+      "modePrepare": "준비",
+      "modeFinetune": "학습",
+      "backgroundInfo": "창을 닫아도 학습은 계속됩니다",
+      "statusPreparing": "준비 중",
+      "statusTraining": "학습 중"
+    },
+    "queue": {
+      "waitingPrefix": "+",
+      "waitingSuffix": "대기"
+    },
+    "sort": {
+      "dialogues": "대사 수",
+      "files": "파일 수",
+      "releaseDate": "출시순",
+      "name": "이름순"
+    },
+    "filter": {
+      "defaultFirst": "기본 우선",
+      "trainedFirst": "학습됨 우선",
+      "readyFirst": "준비됨 우선"
+    },
+    "status": {
+      "ready": "준비됨",
+      "readyCount": "{{ready}}/{{total}} 준비됨",
+      "trained": "학습됨",
+      "prepared": "준비됨",
+      "needsPreparation": "준비 필요",
+      "notSet": "설정 안 됨",
+      "preparing": "준비 중",
+      "training": "학습 중"
+    },
+    "selected": {
+      "count": "{{count}}개 선택됨"
+    },
+    "batch": {
+      "prepare": "일괄 준비",
+      "prepareCount": "일괄 준비 ({{count}})",
+      "prepareTooltip": "선택된 캐릭터 일괄 준비 (Zero-shot)",
+      "prepareAndTrain": "준비+학습",
+      "prepareAndTrainCount": "준비+학습 ({{count}})",
+      "prepareAndTrainTooltip": "캐릭터당 수십 분 소요. 선택된 캐릭터 준비 후 자동으로 학습 시작",
+      "train": "일괄 학습",
+      "trainCount": "일괄 학습 ({{count}})",
+      "trainTooltip": "캐릭터당 수십 분 소요. 선택된 캐릭터 일괄 학습 (Fine-tuning)"
+    },
+    "reset": {
+      "warning": "모든 준비/학습 데이터({{count}}개)가 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
+      "tooltip": "모든 준비 데이터 초기화"
+    },
+    "section": {
+      "defaultVoices": "기본 음성 설정"
+    },
+    "badge": {
+      "female": "여 {{count}}",
+      "male": "남 {{count}}",
+      "narrator": "나레이터",
+      "defaultFemale": "기본(여)",
+      "defaultMale": "기본(남)",
+      "unknownSpeaker": "???"
+    },
+    "default": {
+      "female": "기본(여성):",
+      "male": "기본(남성):"
+    },
+    "narration": {
+      "label": "나레이션:",
+      "labelShort": "나레이션"
+    },
+    "unknownSpeaker": {
+      "label": "???:",
+      "labelFull": "??? (알 수 없는 화자)"
+    },
+    "note": {
+      "genders": "* 기본(여성): 일반 캐릭터 / 기본(남성): \"남자\", \"남성\", \"소년\", \"청년\" 포함 캐릭터",
+      "unknownSpeaker": "* ???: 스프라이트 없는 \"???\" 화자에 사용할 음성"
+    },
+    "images": {
+      "count": "이미지: {{total}}개 ({{folders}}폴더)"
+    },
+    "info": {
+      "dialogues": "대사",
+      "extracted": "추출",
+      "preprocessing": "전처리"
+    },
+    "button": {
+      "unsetDefault": "기본 해제",
+      "setDefault": "기본",
+      "unsetNarrator": "나레이션 해제",
+      "setNarrator": "나레이션",
+      "unsetUnknownSpeaker": "??? 해제",
+      "setUnknownSpeaker": "???",
+      "test": "테스트",
+      "train": "학습",
+      "prepare": "준비"
+    },
+    "gptSovitsModelTrain": "GPT-SoVITS 모델 학습",
+    "resetModelTooltip": "준비/학습 데이터 삭제",
+    "firstPrepareNote": "먼저 '준비'를 완료해야 학습할 수 있습니다",
+    "voiceTest": {
+      "label": "음성 테스트:",
+      "selectCharacter": "캐릭터 선택...",
+      "inputText": "테스트 텍스트 입력...",
+      "playbackFailed": "오디오 재생 실패",
+      "synthesisFailed": "음성 합성 실패"
+    },
+    "zeroShotMode": {
+      "label": "제로샷 강제 모드",
+      "description": "(학습 모델 무시, 품질 비교용)",
+      "toggleFailed": "제로샷 모드 토글 실패:",
+      "needsConnection": "GPT-SoVITS 연결 필요",
+      "switchToTrained": "클릭하면 학습 모델 사용으로 전환",
+      "switchToZeroShot": "클릭하면 제로샷 모드로 전환"
+    },
+    "aliases": {
+      "manageTitle": "별칭 관리: {{name}}",
+      "registered": "등록된 별칭",
+      "suggestions": "제안 (프로필에서 감지)",
+      "newAliasInput": "새 별칭 입력...",
+      "note": "* 본명이나 닉네임을 등록하면 스토리에서 해당 이름으로 등장할 때 이 캐릭터로 인식됩니다",
+      "count": "별칭 {{count}}",
+      "tooltipPrefix": "별칭: ",
+      "addTooltip": "별칭 추가",
+      "addFailed": "별칭 추가 실패",
+      "deleteFailed": "별칭 삭제 실패"
+    },
+    "dialogueCount": "{{count}}대사",
+    "fileCount": "{{count}}개"
+  },
+  "dubbing": {
+    "setup": {
+      "title": "더빙 설정"
+    },
+    "button": {
+      "backToGroup": "← 그룹",
+      "cancelPrepare": "준비 취소",
+      "batchPrepare": "음성 일괄 준비",
+      "batchTrain": "음성 일괄 학습 (Fine-tune)",
+      "voiceMappingSetup": "음성 매핑 설정",
+      "startPreRendering": "사전 더빙 시작",
+      "cancelRendering": "렌더링 취소",
+      "reRender": "다시 렌더링",
+      "continueRendering": "이어서 렌더링",
+      "proceed": "계속 진행",
+      "stopDubbing": "더빙 중지",
+      "startDubbing": "더빙 시작",
+      "pauseMonitoring": "모니터링 일시정지",
+      "resumeMonitoring": "모니터링 재개",
+      "stopPlayback": "재생 중지",
+      "stop": "종료",
+      "capturePreview": "캡처 미리보기",
+      "capture": "캡처",
+      "refreshWindowList": "윈도우 목록 새로고침",
+      "deleteCache": "캐시 삭제"
+    },
+    "section": {
+      "characters": "등장 캐릭터",
+      "gptSovits": "GPT-SoVITS",
+      "voicePreparation": "음성 준비",
+      "voiceMapping": "음성 매핑",
+      "playbackSettings": "재생 설정",
+      "preRendering": "사전 더빙"
+    },
+    "characters": {
+      "hasVoice": "음성 {{withVoice}}/{{total}}",
+      "prepared": "준비 {{trained}}/{{withVoice}}"
+    },
+    "status": {
+      "preprocessing": "오디오 분석 중",
+      "preparing": "준비 중",
+      "prepared": "준비 완료 {{trained}}/{{withVoice}}",
+      "allPrepared": "모든 캐릭터 준비 완료",
+      "noCharactersWithVoice": "음성 데이터가 있는 캐릭터가 없습니다",
+      "trainableCount": "{{count}}개 캐릭터 준비 가능",
+      "finetuneableCount": "{{count}}개 캐릭터 학습 가능",
+      "allHaveVoice": "모두 보유",
+      "allHaveVoiceFull": "모든 캐릭터가 음성을 보유하고 있습니다",
+      "preRenderingComplete": "사전 더빙 완료",
+      "rendering": "렌더링 중",
+      "renderingComplete": "렌더링 완료",
+      "monitoring": "모니터링 중",
+      "waitingForPlayback": "재생 대기",
+      "configuringVoice": "음성 설정 중..."
+    },
+    "mapping": {
+      "count": "{{mapped}}/{{total}}명 매핑",
+      "description": "음성이 없는 캐릭터에 대체 음성을 지정합니다"
+    },
+    "narrator": {
+      "voice": "음성: {{name}}",
+      "setupGuide": "캐릭터 관리에서 나레이션 음성을 설정하세요"
+    },
+    "unknownSpeaker": {
+      "voice": "음성: {{name}}",
+      "setupGuide": "캐릭터 관리에서 ??? 음성을 설정하세요"
+    },
+    "note": {
+      "greenMeansVoice": "* 녹색 = 음성 데이터 보유",
+      "startGptSovits": "* 상단 헤더에서 GPT-SoVITS를 시작하세요",
+      "prepareVsTrain": "* 준비: Zero-shot / 학습: 모델 Fine-tuning",
+      "prepareSufficient": "* 음성 학습 없이 준비만으로도 더빙 실행 가능",
+      "resetInCharacterManagement": "* 초기화는 캐릭터 관리에서 가능합니다",
+      "startGptSovitsFirst": "* GPT-SoVITS를 먼저 시작하세요",
+      "realtimeDuringPreRendering": "* 사전 더빙 중에도 더빙 시작으로 실시간 재생 가능"
+    },
+    "warning": {
+      "noDefaultVoices": "* 기본 음성이 설정되지 않았습니다. 캐릭터 관리에서 설정하세요.",
+      "narratorNotSet": "나레이터가 설정되지 않았습니다 ({{count}}개 나레이션 대사)",
+      "unknownSpeakerNotSet": "??? 화자가 설정되지 않았습니다 ({{count}}개 대사)",
+      "selectWindowFirst": "더빙을 시작하려면 캡처할 윈도우를 먼저 선택하세요",
+      "vramShortage": "VRAM 부족 시 OCR 품질 저하 또는 크래시가 발생할 수 있습니다."
+    },
+    "info": {
+      "skipDialoguesInfo": "해당 대사는 건너뜁니다. 캐릭터 관리에서 설정할 수 있습니다.",
+      "usesCachedVoice": "더빙 모드에서 캐시된 음성을 사용합니다",
+      "partialCache": "일부 대사만 캐시됨. 나머지는 실시간 합성됩니다.",
+      "gpuUsage": "사전 더빙 중에 더빙 모드를 시작하면 OCR과 사전 더빙이 동시에 GPU를 사용합니다.",
+      "gpuLockEnabled": "GPU 잠금이 활성화되어 OCR과 사전 더빙이 순차적으로 진행됩니다.",
+      "disableGpuLock": "동시에 실행하려면 우상단에서 GPU 잠금을 해제하세요.",
+      "gpuLockDisabled": "GPU 잠금이 비활성화 상태입니다.",
+      "noPreRendering": "사전 더빙이 되어있지 않아 음성 재생이 불가합니다.",
+      "canStartDuringPreRendering": "사전 더빙 중에도 동시에 더빙 모드를 시작할 수 있습니다.",
+      "simultaneousRendering": "사전 더빙과 실시간 더빙 동시 실행 중",
+      "gpuAndVram": "동시에 실행하려면 우상단에서 GPU 잠금을 해제하세요. VRAM 부족 시 성능 저하나 크래시가 발생할 수 있습니다."
+    },
+    "autoplay": {
+      "onMatch": "매칭 시 자동 재생"
+    },
+    "message": {
+      "selectEpisodeFirst": "에피소드를 먼저 선택하세요"
+    },
+    "preRendering": {
+      "description": "에피소드 전체 음성을 미리 생성합니다"
+    },
+    "dialog": {
+      "confirmSpeaker": "화자 설정 확인",
+      "preRenderingRunning": "사전 더빙 실행 중",
+      "preRenderingRequired": "사전 더빙 필요"
+    },
+    "confirm": {
+      "deleteRenderCache": "렌더 캐시를 삭제하시겠습니까?"
+    },
+    "queue": {
+      "label": "대기열: ",
+      "count": "{{count}}개",
+      "more": "외 {{count}}개"
+    },
+    "label": {
+      "captureWindow": "캡처 윈도우",
+      "ocr": "OCR:",
+      "matching": "매칭:"
+    },
+    "placeholder": {
+      "selectWindow": "윈도우를 선택하세요"
+    },
+    "region": {
+      "dialogue": "대사",
+      "dialoguePercent": "(하단 20%)",
+      "subtitle": "자막",
+      "subtitlePercent": "(중앙 40~70%)"
+    },
+    "preview": {
+      "dialogueArea": "대사 영역 미리보기",
+      "subtitleArea": "자막 영역 미리보기"
+    },
+    "rendering": {
+      "count": "{{completed}}/{{total}}",
+      "percent": "{{percent}}%"
+    },
+    "selectWindowForCapture": "캡처할 윈도우를 선택해주세요"
+  },
+  "group": {
+    "section": {
+      "setup": "그룹 설정",
+      "characters": "그룹 캐릭터",
+      "voiceMapping": "음성 매핑",
+      "batchTasks": "일괄 작업",
+      "required": "필수",
+      "quality": "고퀄리티 (선택)",
+      "preRendering": "그룹 사전 더빙",
+      "gptSovits": "GPT-SoVITS"
+    },
+    "info": {
+      "name": "{{name}}",
+      "episodeCount": "{{count}}개 에피소드"
+    },
+    "characters": {
+      "hasVoice": "음성 {{withVoice}}/{{total}}"
+    },
+    "rendering": {
+      "progress": "{{completed}}/{{total}} ({{percent}}%)"
+    },
+    "status": {
+      "allHaveVoice": "모든 캐릭터가 음성을 보유",
+      "preparedCount": "{{prepared}}/{{total}} 완료",
+      "finetunedCount": "{{finetuned}}/{{total}} 완료",
+      "executing": "실행 중...",
+      "synthesizing": "합성 중..."
+    },
+    "mapping": {
+      "count": "{{mapped}}/{{total}}명 매핑"
+    },
+    "task": {
+      "prepare": "음성 준비 (prepare)",
+      "render": "사전 더빙 (render)",
+      "finetune": "모델 학습 (fine-tune)"
+    },
+    "label": {
+      "trainTargets": "학습 대상:"
+    },
+    "target": {
+      "appearanceCharacters": "등장 캐릭터 (음성 보유)",
+      "mappedCharacters": "매핑된 캐릭터"
+    },
+    "warning": {
+      "timeConsuming": "캐릭터당 수십 분이 소요될 수 있습니다"
+    },
+    "note": {
+      "startGptSovitsFirst": "* GPT-SoVITS를 먼저 시작하세요"
+    },
+    "button": {
+      "voiceMappingSetup": "음성 매핑 설정",
+      "batchExecute": "일괄 실행"
+    },
+    "queue": {
+      "label": "대기열: {{count}}개"
+    },
+    "episodes": {
+      "count": "{{completed}}/{{total}} 에피소드"
+    }
+  },
+  "dialogue": {
+    "image": {
+      "enlargeTitle": "클릭하여 크게 보기"
+    },
+    "message": {
+      "selectEpisode": "에피소드를 선택하세요"
+    },
+    "button": {
+      "showCharId": "캐릭터 ID 표시",
+      "deleteAudio": "렌더 음성 삭제"
+    },
+    "tag": {
+      "dubbingMode": "더빙 모드",
+      "narration": "나레이션",
+      "subtitle": "자막",
+      "sticker": "스티커",
+      "popup": "팝업"
+    },
+    "info": {
+      "dialogueCount": "{{count}}개 대사",
+      "characterCount": "{{count}}명 캐릭터",
+      "voiceModel": "음성: {{charId}}{{charName}} [{{modelType}}]"
+    },
+    "note": {
+      "previewInfo": "음성이 준비된 대사는 재생 버튼으로 미리 들어볼 수 있습니다. 사전 합성된 음성이 있으면 우선 재생됩니다."
+    },
+    "confirm": {
+      "deleteAudio": "이 대사의 렌더 음성을 삭제하시겠습니까?"
+    },
+    "status": {
+      "rendering": "렌더링 중",
+      "renderingComplete": "렌더링 완료",
+      "hasVoice": "음성 있음",
+      "noVoice": "음성 없음",
+      "playing": "재생 중...",
+      "characterNotPrepared": "음성이 준비되지 않은 캐릭터",
+      "availableAfterPrepare": "더빙 준비 후 사용 가능"
+    },
+    "match": {
+      "similarity": "매칭 {{percent}}%"
+    },
+    "label": {
+      "rendered": "렌더",
+      "realtime": "실시간"
+    }
+  },
+  "episode": {
+    "error": {
+      "serverNotConnected": "서버 연결 안 됨",
+      "runBackendServer": "백엔드 서버를 실행해주세요"
+    },
+    "placeholder": {
+      "search": "스토리 검색..."
+    },
+    "message": {
+      "noStories": "스토리 없음",
+      "noSearchResults": "검색 결과 없음"
+    },
+    "info": {
+      "storyCount": "{{count}}개 스토리"
+    }
+  },
+  "status": {
+    "audio": {
+      "unmute": "음소거 해제",
+      "mute": "음소거"
+    }
+  },
+  "install": {
+    "title": "GPT-SoVITS 설치",
+    "stage": {
+      "downloading": "다운로드",
+      "extracting": "압축 해제",
+      "verifying": "검증",
+      "complete": "완료"
+    },
+    "error": {
+      "loadFailed": "설치 정보 로드 실패:",
+      "startFailed": "설치 시작 실패",
+      "cancelFailed": "설치 취소 실패:",
+      "cleanupFailed": "정리 실패:"
+    },
+    "status": {
+      "starting": "시작 중...",
+      "complete": "설치 완료!",
+      "installed": "설치됨",
+      "notInstalled": "미설치",
+      "alreadyInstalled": "이미 설치됨"
+    },
+    "confirm": {
+      "deleteFolder": "설치 폴더를 삭제하시겠습니까?"
+    },
+    "info": {
+      "pytorch": "PyTorch: {{version}}",
+      "cudaAvailable": "CUDA: 사용 가능",
+      "cudaNotAvailable": "CUDA: 사용 불가",
+      "diskSpace": "다운로드 ~8.2GB, 압축 해제 후 ~20GB",
+      "gpuSupport": "✓ GPU 가속 지원 (CUDA 포함)",
+      "includedPackages": "통합 패키지에 PyTorch + CUDA가 포함되어 있습니다"
+    },
+    "section": {
+      "items": "설치 항목"
+    },
+    "item": {
+      "gptSovits": "• GPT-SoVITS v2pro (2025.06 최신)",
+      "python": "• Python 런타임 포함",
+      "pytorch": "• PyTorch + CUDA 포함",
+      "dependencies": "• 모든 종속성 포함"
+    },
+    "button": {
+      "start": "설치 시작",
+      "reinstall": "설치 폴더 삭제 후 재설치",
+      "cancel": "설치 취소",
+      "cleanup": "정리"
+    }
+  },
+  "mapping": {
+    "title": "음성 매핑 설정",
+    "description": "음성이 없는 캐릭터에 대체 음성을 지정합니다",
+    "info": {
+      "voicelessCount": "음성 없는 캐릭터: {{count}}명",
+      "mappedCount": "매핑 설정: {{mapped}}/{{total}}명"
+    },
+    "message": {
+      "allHaveVoice": "모든 캐릭터가 음성을 보유하고 있습니다"
+    },
+    "note": {
+      "autoAssignment": "* 자동: 이름 기반 분배 / 여성·남성: 성별 고정",
+      "autoSave": "* 변경 시 자동 저장 (다른 에피소드에서도 적용)"
+    },
+    "button": {
+      "auto": "자동",
+      "resetTooltip": "매핑 초기화 (자동 선택으로 되돌리기)"
+    },
+    "tooltip": {
+      "auto": "자동: {{name}}",
+      "female": "여성: {{name}}",
+      "randomFemale": "여성 기본 음성 중 랜덤 선택",
+      "male": "남성: {{name}}",
+      "randomMale": "남성 기본 음성 중 랜덤 선택",
+      "search": "캐릭터 검색"
+    },
+    "placeholder": {
+      "search": "캐릭터 검색..."
+    },
+    "tag": {
+      "table": "테이블",
+      "default": "기본"
+    },
+    "status": {
+      "mappingRequired": "매핑 필요",
+      "saved": "저장됨"
+    }
+  },
+  "languageSettings": {
+    "title": "언어 설정",
+    "displayLanguage": "표시 언어",
+    "displayDescription": "스토리 텍스트와 UI에 표시되는 언어",
+    "voiceLanguage": "음성 언어",
+    "voiceDescription": "TTS 음성 합성에 사용되는 언어",
+    "notAvailable": "데이터 없음",
+    "currentCombo": "스토리: {{display}} / 음성: {{voice}}"
+  }
+}

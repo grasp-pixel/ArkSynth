@@ -40,25 +40,25 @@ class GPTSoVITSModelManager:
         self.config = config or GPTSoVITSConfig()
         self.config.ensure_directories()
 
-    def is_trained(self, char_id: str) -> bool:
+    def _lang(self, lang: str | None = None) -> str:
+        """lang이 None이면 config.default_language 사용"""
+        return lang or self.config.default_language
+
+    def is_trained(self, char_id: str, lang: str | None = None) -> bool:
         """모델 준비 완료 여부 (학습 또는 zero-shot)"""
-        # Zero-shot 모드: 참조 오디오 + 텍스트만 있으면 됨
-        if self.is_zero_shot_ready(char_id):
+        lang = self._lang(lang)
+        if self.is_zero_shot_ready(char_id, lang):
             return True
-        # 학습 모드: sovits.pth + gpt.ckpt 필요
-        sovits_path = self.config.get_sovits_model_path(char_id)
-        gpt_path = self.config.get_gpt_model_path(char_id)
+        sovits_path = self.config.get_sovits_model_path(char_id, lang)
+        gpt_path = self.config.get_gpt_model_path(char_id, lang)
         return sovits_path.exists() and gpt_path.exists()
 
-    def is_zero_shot_ready(self, char_id: str) -> bool:
-        """Zero-shot 합성 준비 여부 (참조 오디오만 필요)
-
-        새 구조: preprocessed/ 폴더에 WAV + TXT 파일 + info.json이 있으면 준비 완료
-        레거시 구조: ref.wav + ref.txt 파일이 있으면 준비 완료
-        """
-        # 새 구조: preprocessed 폴더 + info.json 확인 (원자적 완료 보장)
-        preprocessed_dir = self.config.get_preprocessed_audio_path(char_id)
-        info_path = self.config.get_model_path(char_id) / "info.json"
+    def is_zero_shot_ready(self, char_id: str, lang: str | None = None) -> bool:
+        """Zero-shot 합성 준비 여부 (참조 오디오만 필요)"""
+        lang = self._lang(lang)
+        # 새 구조: preprocessed 폴더 + info.json 확인
+        preprocessed_dir = self.config.get_preprocessed_audio_path(char_id, lang)
+        info_path = self.config.get_model_path(char_id, lang) / "info.json"
         if preprocessed_dir.exists() and info_path.exists():
             wav_files = list(preprocessed_dir.glob("*.wav"))
             txt_files = list(preprocessed_dir.glob("*.txt"))
@@ -66,46 +66,45 @@ class GPTSoVITSModelManager:
                 return True
 
         # 레거시 구조: ref.wav + ref.txt 확인
-        ref_audio = self.config.get_ref_audio_path(char_id)
-        ref_text = self.config.get_ref_text_path(char_id)
+        ref_audio = self.config.get_ref_audio_path(char_id, lang)
+        ref_text = self.config.get_ref_text_path(char_id, lang)
         return ref_audio.exists() and ref_text.exists()
 
-    def has_trained_model(self, char_id: str) -> bool:
+    def has_trained_model(self, char_id: str, lang: str | None = None) -> bool:
         """전체 학습된 모델이 있는지 (zero-shot이 아닌)"""
-        sovits_path = self.config.get_sovits_model_path(char_id)
-        gpt_path = self.config.get_gpt_model_path(char_id)
+        lang = self._lang(lang)
+        sovits_path = self.config.get_sovits_model_path(char_id, lang)
+        gpt_path = self.config.get_gpt_model_path(char_id, lang)
         return sovits_path.exists() and gpt_path.exists()
 
-    def get_model_type(self, char_id: str) -> str:
-        """모델 타입 조회
-
-        Returns:
-            "none": 준비되지 않음
-            "prepared": Zero-shot 준비됨 (참조 오디오만)
-            "finetuned": Fine-tuning 완료 (sovits.pth + gpt.ckpt)
-        """
-        if self.has_trained_model(char_id):
+    def get_model_type(self, char_id: str, lang: str | None = None) -> str:
+        """모델 타입 조회: "none" / "prepared" / "finetuned" """
+        lang = self._lang(lang)
+        if self.has_trained_model(char_id, lang):
             return "finetuned"
-        elif self.is_zero_shot_ready(char_id):
+        elif self.is_zero_shot_ready(char_id, lang):
             return "prepared"
         return "none"
 
-    def get_trained_characters(self) -> list[str]:
+    def get_trained_characters(self, lang: str | None = None) -> list[str]:
         """준비 완료된 캐릭터 ID 목록 (학습 또는 zero-shot)"""
-        if not self.config.models_path.exists():
+        lang = self._lang(lang)
+        lang_path = self.config.get_lang_models_path(lang)
+        if not lang_path.exists():
             return []
 
         ready = []
-        for model_dir in self.config.models_path.iterdir():
+        for model_dir in lang_path.iterdir():
             if model_dir.is_dir() and model_dir.name != "pretrained":
-                if self.is_trained(model_dir.name):
+                if self.is_trained(model_dir.name, lang):
                     ready.append(model_dir.name)
 
         return sorted(ready)
 
-    def get_model_info(self, char_id: str) -> ModelInfo | None:
+    def get_model_info(self, char_id: str, lang: str | None = None) -> ModelInfo | None:
         """모델 정보 조회"""
-        config_path = self.config.get_config_path(char_id)
+        lang = self._lang(lang)
+        config_path = self.config.get_config_path(char_id, lang)
         if not config_path.exists():
             return None
 
@@ -113,37 +112,35 @@ class GPTSoVITSModelManager:
             with open(config_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             info = ModelInfo.from_dict(data)
-            # 파일 존재 여부 업데이트
-            info.has_sovits = self.config.get_sovits_model_path(char_id).exists()
-            info.has_gpt = self.config.get_gpt_model_path(char_id).exists()
+            info.has_sovits = self.config.get_sovits_model_path(char_id, lang).exists()
+            info.has_gpt = self.config.get_gpt_model_path(char_id, lang).exists()
             return info
         except Exception as e:
             logger.error(f"모델 정보 로드 실패 ({char_id}): {e}")
             return None
 
-    def save_model_info(self, info: ModelInfo):
+    def save_model_info(self, info: ModelInfo, lang: str | None = None):
         """모델 정보 저장"""
-        model_dir = self.config.get_model_path(info.char_id)
+        lang = self._lang(lang)
+        model_dir = self.config.get_model_path(info.char_id, lang)
         model_dir.mkdir(parents=True, exist_ok=True)
 
-        config_path = self.config.get_config_path(info.char_id)
+        config_path = self.config.get_config_path(info.char_id, lang)
         with open(config_path, "w", encoding="utf-8") as f:
             json.dump(info.to_dict(), f, ensure_ascii=False, indent=2)
 
-    def list_all_models(self) -> list[ModelInfo]:
-        """모든 모델 정보 목록 (config.json 없어도 준비된 캐릭터 포함)"""
+    def list_all_models(self, lang: str | None = None) -> list[ModelInfo]:
+        """모든 모델 정보 목록"""
+        lang = self._lang(lang)
         models = []
-        for char_id in self.get_trained_characters():
-            info = self.get_model_info(char_id)
+        for char_id in self.get_trained_characters(lang):
+            info = self.get_model_info(char_id, lang)
             if info:
                 models.append(info)
             else:
-                # config.json이 없어도 is_trained()가 True면 기본 정보 생성
-                model_dir = self.config.get_model_path(char_id)
-
-                # 참조 오디오 개수 계산 (새 구조 우선, 레거시 폴백)
+                model_dir = self.config.get_model_path(char_id, lang)
                 ref_count = 0
-                preprocessed_dir = self.config.get_preprocessed_audio_path(char_id)
+                preprocessed_dir = self.config.get_preprocessed_audio_path(char_id, lang)
                 if preprocessed_dir.exists():
                     ref_count = len(list(preprocessed_dir.glob("*.wav")))
                 if ref_count == 0 and model_dir.exists():
@@ -151,41 +148,41 @@ class GPTSoVITSModelManager:
 
                 models.append(ModelInfo(
                     char_id=char_id,
-                    char_name=char_id,  # 기본값으로 char_id 사용
+                    char_name=char_id,
                     trained_at=datetime.now().isoformat(),
                     epochs_sovits=0,
                     epochs_gpt=0,
                     ref_audio_count=ref_count,
-                    language="ko",
-                    has_sovits=self.config.get_sovits_model_path(char_id).exists(),
-                    has_gpt=self.config.get_gpt_model_path(char_id).exists(),
+                    language=lang,
+                    has_sovits=self.config.get_sovits_model_path(char_id, lang).exists(),
+                    has_gpt=self.config.get_gpt_model_path(char_id, lang).exists(),
                 ))
         return models
 
-    def delete_model(self, char_id: str) -> bool:
+    def delete_model(self, char_id: str, lang: str | None = None) -> bool:
         """모델 삭제"""
-        model_dir = self.config.get_model_path(char_id)
+        lang = self._lang(lang)
+        model_dir = self.config.get_model_path(char_id, lang)
         if not model_dir.exists():
             return False
 
         try:
             import shutil
-
             shutil.rmtree(model_dir)
-            logger.info(f"모델 삭제됨: {char_id}")
+            logger.info(f"모델 삭제됨: {char_id} (lang={lang})")
             return True
         except Exception as e:
             logger.error(f"모델 삭제 실패 ({char_id}): {e}")
             return False
 
-    def get_sovits_path(self, char_id: str) -> Path | None:
+    def get_sovits_path(self, char_id: str, lang: str | None = None) -> Path | None:
         """SoVITS 모델 경로 (존재하는 경우)"""
-        path = self.config.get_sovits_model_path(char_id)
+        path = self.config.get_sovits_model_path(char_id, self._lang(lang))
         return path if path.exists() else None
 
-    def get_gpt_path(self, char_id: str) -> Path | None:
+    def get_gpt_path(self, char_id: str, lang: str | None = None) -> Path | None:
         """GPT 모델 경로 (존재하는 경우)"""
-        path = self.config.get_gpt_model_path(char_id)
+        path = self.config.get_gpt_model_path(char_id, self._lang(lang))
         return path if path.exists() else None
 
     def create_model_info(
@@ -206,8 +203,8 @@ class GPTSoVITSModelManager:
             epochs_gpt=epochs_gpt,
             ref_audio_count=ref_audio_count,
             language=language,
-            has_sovits=self.config.get_sovits_model_path(char_id).exists(),
-            has_gpt=self.config.get_gpt_model_path(char_id).exists(),
+            has_sovits=self.config.get_sovits_model_path(char_id, language).exists(),
+            has_gpt=self.config.get_gpt_model_path(char_id, language).exists(),
         )
-        self.save_model_info(info)
+        self.save_model_info(info, language)
         return info

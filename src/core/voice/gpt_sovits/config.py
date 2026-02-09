@@ -189,64 +189,54 @@ class GPTSoVITSConfig:
         self.models_path.mkdir(parents=True, exist_ok=True)
         self.pretrained_path.mkdir(parents=True, exist_ok=True)
 
-    def get_model_path(self, char_id: str) -> Path:
-        """캐릭터 모델 디렉토리 경로"""
-        return self.models_path / char_id
+    def _resolve_lang(self, lang: str | None) -> str:
+        """lang이 None이면 default_language 사용"""
+        return lang or self.default_language
 
-    def get_sovits_model_path(self, char_id: str) -> Path:
+    def get_lang_models_path(self, lang: str | None = None) -> Path:
+        """언어별 모델 루트 경로 (models/gpt_sovits/{lang}/)"""
+        return self.models_path / self._resolve_lang(lang)
+
+    def get_model_path(self, char_id: str, lang: str | None = None) -> Path:
+        """캐릭터 모델 디렉토리 경로 (models/gpt_sovits/{lang}/{char_id}/)"""
+        return self.get_lang_models_path(lang) / char_id
+
+    def get_sovits_model_path(self, char_id: str, lang: str | None = None) -> Path:
         """SoVITS 모델 파일 경로"""
-        return self.get_model_path(char_id) / "sovits.pth"
+        return self.get_model_path(char_id, lang) / "sovits.pth"
 
-    def get_gpt_model_path(self, char_id: str) -> Path:
+    def get_gpt_model_path(self, char_id: str, lang: str | None = None) -> Path:
         """GPT 모델 파일 경로"""
-        return self.get_model_path(char_id) / "gpt.ckpt"
+        return self.get_model_path(char_id, lang) / "gpt.ckpt"
 
-    def get_config_path(self, char_id: str) -> Path:
+    def get_config_path(self, char_id: str, lang: str | None = None) -> Path:
         """설정 파일 경로"""
-        return self.get_model_path(char_id) / "config.json"
+        return self.get_model_path(char_id, lang) / "config.json"
 
-    def get_ref_audio_path(self, char_id: str) -> Path:
-        """참조 오디오 경로 (DEPRECATED - 레거시 호환용)
+    def get_ref_audio_path(self, char_id: str, lang: str | None = None) -> Path:
+        """참조 오디오 경로 (DEPRECATED - 레거시 호환용)"""
+        return self.get_model_path(char_id, lang) / "ref.wav"
 
-        Note: 새 구조에서는 preprocessed/ 폴더에 참조 오디오가 저장됩니다.
-        info.json의 ref_audios를 확인하여 "preprocessed/..." 경로를 사용하세요.
-        """
-        return self.get_model_path(char_id) / "ref.wav"
+    def get_ref_text_path(self, char_id: str, lang: str | None = None) -> Path:
+        """참조 오디오 텍스트 경로 (DEPRECATED - 레거시 호환용)"""
+        return self.get_model_path(char_id, lang) / "ref.txt"
 
-    def get_ref_text_path(self, char_id: str) -> Path:
-        """참조 오디오 텍스트 경로 (DEPRECATED - 레거시 호환용)
-
-        Note: 새 구조에서는 각 WAV 파일 옆에 동일한 이름의 .txt 파일이 저장됩니다.
-        """
-        return self.get_model_path(char_id) / "ref.txt"
-
-    def get_training_data_path(self, char_id: str) -> Path:
+    def get_training_data_path(self, char_id: str, lang: str | None = None) -> Path:
         """Fine-tuning 학습 데이터 경로"""
-        return self.get_model_path(char_id) / "training_data"
+        return self.get_model_path(char_id, lang) / "training_data"
 
-    def get_sliced_audio_path(self, char_id: str) -> Path:
-        """슬라이싱된 오디오 경로 (레거시, get_preprocessed_audio_path 사용 권장)"""
-        return self.get_training_data_path(char_id) / "sliced"
+    def get_sliced_audio_path(self, char_id: str, lang: str | None = None) -> Path:
+        """슬라이싱된 오디오 경로 (레거시)"""
+        return self.get_training_data_path(char_id, lang) / "sliced"
 
-    def get_preprocessed_audio_path(self, char_id: str) -> Path:
-        """Whisper 전처리된 오디오 경로
+    def get_preprocessed_audio_path(self, char_id: str, lang: str | None = None) -> Path:
+        """Whisper 전처리된 오디오 경로"""
+        return self.get_model_path(char_id, lang) / "preprocessed"
 
-        음성 준비 단계에서 분할된 WAV 파일들이 저장됩니다.
-        학습 시에도 이 경로의 파일들을 재사용합니다.
-        """
-        return self.get_model_path(char_id) / "preprocessed"
+    def get_preprocessed_segments_path(self, char_id: str, lang: str | None = None) -> Path:
+        """전처리된 세그먼트 정보 파일 경로 (DEPRECATED)"""
+        return self.get_preprocessed_audio_path(char_id, lang) / "segments.json"
 
-    def get_preprocessed_segments_path(self, char_id: str) -> Path:
-        """전처리된 세그먼트 정보 파일 경로 (DEPRECATED)
-
-        Note: segments.json은 더 이상 사용되지 않습니다.
-        각 WAV 파일 옆에 동일한 이름의 .txt 파일이 텍스트를 저장합니다.
-        예: CN_001_00.wav → CN_001_00.txt
-
-        이 메서드는 레거시 호환성을 위해 유지됩니다.
-        """
-        return self.get_preprocessed_audio_path(char_id) / "segments.json"
-
-    def get_training_list_path(self, char_id: str) -> Path:
+    def get_training_list_path(self, char_id: str, lang: str | None = None) -> Path:
         """학습용 .list 파일 경로"""
-        return self.get_training_data_path(char_id) / "train.list"
+        return self.get_training_data_path(char_id, lang) / "train.list"

@@ -1091,6 +1091,9 @@ export interface SettingsResponse {
   models_path: string
   extracted_path: string
   gamedata_path: string
+  // 언어 설정
+  display_language: string
+  voice_language_short: string
   game_language: string
   voice_language: string
   gpt_sovits_language: string
@@ -1101,6 +1104,23 @@ export interface SettingsResponse {
   whisper_compute_type: string
   use_whisper_preprocessing: boolean
   dependencies: DependencyStatus[]
+}
+
+// 언어 설정 API 타입
+export interface LanguageOption {
+  short: string
+  locale?: string
+  label: string
+  available: boolean
+}
+
+export interface LanguageSettingsResponse {
+  display_language: string
+  voice_language: string
+  voice_folder: string
+  gpt_sovits_language: string
+  available_display_languages: LanguageOption[]
+  available_voice_languages: LanguageOption[]
 }
 
 // TTS 엔진 설정 타입
@@ -1301,6 +1321,18 @@ export const settingsApi = {
       '/api/settings/tts-engine',
       { engine }
     )
+    return res.data
+  },
+
+  // 언어 설정 조회
+  getLanguageSettings: async () => {
+    const res = await api.get<LanguageSettingsResponse>('/api/settings/language')
+    return res.data
+  },
+
+  // 언어 설정 변경
+  updateLanguage: async (params: { display_language?: string; voice_language?: string }) => {
+    const res = await api.put<LanguageSettingsResponse>('/api/settings/language', params)
     return res.data
   },
 }
@@ -1668,14 +1700,12 @@ export interface ImageExtractProgress {
 
 export interface ImageAssetsStatus {
   exists: boolean
-  path?: string
-  characters_exists?: boolean
-  chararts_exists?: boolean
-  characters_bundles?: number
-  chararts_bundles?: number
-  total_bundles?: number
-  message?: string
-  hint?: string
+  path: string
+  characters_exists: boolean
+  chararts_exists: boolean
+  characters_bundles: number
+  chararts_bundles: number
+  total_bundles: number
 }
 
 export const imageExtractApi = {

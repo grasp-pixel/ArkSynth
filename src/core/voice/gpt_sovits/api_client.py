@@ -377,9 +377,9 @@ class GPTSoVITSAPIClient:
         Returns:
             WAV 오디오 데이터 또는 None
         """
-        # 텍스트 전처리 (GPT-SoVITS 호환성)
+        # 텍스트 전처리 (GPT-SoVITS 호환성, 언어별 처리)
         original_text = text
-        text = preprocess_text_for_tts(text)
+        text = preprocess_text_for_tts(text, language=language)
 
         # 전처리 후 합성 불가능한 텍스트 (말줄임표만 있는 경우 등)
         if text is None:

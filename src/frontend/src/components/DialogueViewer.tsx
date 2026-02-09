@@ -1,4 +1,5 @@
 import { useEffect, useRef, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAppStore, isMysteryName } from '../stores/appStore'
 import { voiceApi, type DialogueInfo } from '../services/api'
 
@@ -30,6 +31,7 @@ function SpeakerCard({ speakerId, speakerName, speakerColor, dialogueType }: {
   speakerColor?: string
   dialogueType: string
 }) {
+  const { t } = useTranslation()
   const [hasError, setHasError] = useState(false)
   const [showFull, setShowFull] = useState(false)
 
@@ -63,7 +65,7 @@ function SpeakerCard({ speakerId, speakerName, speakerColor, dialogueType }: {
       <div
         className="w-10 shrink-0 ml-1 relative overflow-hidden cursor-pointer hover:brightness-110 transition-all"
         onClick={() => setShowFull(true)}
-        title="클릭하여 크게 보기"
+        title={t('dialogue.image.enlargeTitle')}
       >
         <img
           src={imageUrl}
@@ -99,6 +101,7 @@ function SpeakerCard({ speakerId, speakerName, speakerColor, dialogueType }: {
 }
 
 export default function DialogueViewer() {
+  const { t } = useTranslation()
   const {
     selectedEpisode,
     selectedEpisodeId,
@@ -150,7 +153,7 @@ export default function DialogueViewer() {
   if (isLoadingEpisode) {
     return (
       <div className="flex items-center justify-center h-full text-ark-gray">
-        <div className="ark-pulse">로딩 중...</div>
+        <div className="ark-pulse">{t('common.loading')}</div>
       </div>
     )
   }
@@ -158,7 +161,7 @@ export default function DialogueViewer() {
   if (!selectedEpisode) {
     return (
       <div className="flex items-center justify-center h-full text-ark-gray">
-        에피소드를 선택하세요
+        {t('dialogue.message.selectEpisode')}
       </div>
     )
   }
@@ -186,13 +189,13 @@ export default function DialogueViewer() {
                   ? 'bg-ark-cyan/20 text-ark-cyan border border-ark-cyan/50'
                   : 'bg-ark-panel text-ark-gray border border-ark-border hover:border-ark-gray'
               }`}
-              title="캐릭터 ID 표시"
+              title={t('dialogue.button.showCharId')}
             >
               ID
             </button>
             {isDubbingMode && (
               <span className="ark-tag text-ark-orange">
-                더빙 모드
+                {t('dialogue.tag.dubbingMode')}
               </span>
             )}
           </div>
@@ -202,17 +205,17 @@ export default function DialogueViewer() {
             <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
               <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
             </svg>
-            {selectedEpisode.dialogues.length}개 대사
+            {t('dialogue.info.dialogueCount', { count: selectedEpisode.dialogues.length })}
           </span>
           <span className="flex items-center gap-1">
             <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
               <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
             </svg>
-            {selectedEpisode.characters.length}명 캐릭터
+            {t('dialogue.info.characterCount', { count: selectedEpisode.characters.length })}
           </span>
         </div>
         <p className="text-[10px] text-ark-gray/50 mt-1.5">
-          음성이 준비된 대사는 재생 버튼으로 미리 들어볼 수 있습니다. 사전 합성된 음성이 있으면 우선 재생됩니다.
+          {t('dialogue.note.previewInfo')}
         </p>
       </div>
 
@@ -259,7 +262,7 @@ export default function DialogueViewer() {
                 imageSpeakerId={!dialogue.speaker_id && dialogue.speaker_name ? nameToCharId[dialogue.speaker_name] : null}
                 onPlay={() => handlePlayClick(dialogue)}
                 onDelete={isRendered && selectedEpisodeId ? () => {
-                  if (window.confirm('이 대사의 렌더 음성을 삭제하시겠습니까?')) {
+                  if (window.confirm(t('dialogue.confirm.deleteAudio'))) {
                     deleteDialogueAudio(selectedEpisodeId, index)
                   }
                 } : undefined}
@@ -295,6 +298,7 @@ interface DialogueItemProps {
 }
 
 function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, speakerColor, hasVoice, isPrepared, isRendered, isRendering, imageSpeakerId, onPlay, onDelete, showCharId, resolvedCharId, resolvedCharName }: DialogueItemProps) {
+  const { t } = useTranslation()
   const { getModelType } = useAppStore()
   const isSubtitle = dialogue.dialogue_type === 'subtitle'
   const isSticker = dialogue.dialogue_type === 'sticker'
@@ -325,9 +329,9 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
             </span>
             {/* 렌더링 상태 표시 */}
             {isRendering ? (
-              <span className="w-2 h-2 rounded-full bg-ark-orange ark-pulse" title="렌더링 중" />
+              <span className="w-2 h-2 rounded-full bg-ark-orange ark-pulse" title={t('dialogue.status.rendering')} />
             ) : isRendered ? (
-              <span className="w-2 h-2 rounded-full bg-green-500" title="렌더링 완료" />
+              <span className="w-2 h-2 rounded-full bg-green-500" title={t('dialogue.status.renderingComplete')} />
             ) : null}
           </div>
 
@@ -338,22 +342,22 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
             {/* 특수 대사 타입 라벨 */}
             {isNarration && (
               <span className="text-xs px-1.5 py-0.5 bg-ark-cyan/20 text-ark-cyan rounded font-medium">
-                나레이션
+                {t('dialogue.tag.narration')}
               </span>
             )}
             {isSubtitle && (
               <span className="text-xs px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded font-medium">
-                자막
+                {t('dialogue.tag.subtitle')}
               </span>
             )}
             {isSticker && (
               <span className="text-xs px-1.5 py-0.5 bg-pink-500/20 text-pink-400 rounded font-medium">
-                스티커
+                {t('dialogue.tag.sticker')}
               </span>
             )}
             {isPopup && (
               <span className="text-xs px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 rounded font-medium">
-                팝업
+                {t('dialogue.tag.popup')}
               </span>
             )}
             {dialogue.speaker_name && (
@@ -368,7 +372,7 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
                   <span
                     className="w-2 h-2 rounded-full"
                     style={{ backgroundColor: speakerColor }}
-                    title="음성 있음"
+                    title={t('dialogue.status.hasVoice')}
                   />
                 )}
               </>
@@ -384,7 +388,7 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
               return (
                 <span
                   className={`text-xs px-1.5 py-0.5 ${colorClass} rounded font-mono`}
-                  title={`음성: ${resolvedCharId}${resolvedCharName ? ` (${resolvedCharName})` : ''} [${modelType}]`}
+                  title={t('dialogue.info.voiceModel', { charId: resolvedCharId, charName: resolvedCharName ? ` (${resolvedCharName})` : '', modelType })}
                 >
                   → {resolvedCharName || resolvedCharId}
                 </span>
@@ -392,12 +396,12 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
             })()}
             {showCharId && !resolvedCharId && (
               <span className="text-xs px-1.5 py-0.5 bg-red-500/20 text-red-400 rounded">
-                음성 없음
+                {t('dialogue.status.noVoice')}
               </span>
             )}
             {isMatched && matchSimilarity !== undefined && (
               <span className="ml-auto text-xs px-2 py-0.5 bg-ark-orange text-ark-black rounded font-medium">
-                매칭 {(matchSimilarity * 100).toFixed(0)}%
+                {t('dialogue.match.similarity', { percent: (matchSimilarity * 100).toFixed(0) })}
               </span>
             )}
           </div>
@@ -427,7 +431,7 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
                       ? 'bg-ark-orange/30 text-ark-orange hover:bg-ark-orange hover:text-ark-black'
                       : 'bg-ark-panel text-ark-white hover:bg-ark-orange hover:text-ark-black border border-ark-border hover:border-ark-orange'
                 }`}
-                title={isPlaying ? '재생 중...' : '재생'}
+                title={isPlaying ? t('dialogue.status.playing') : t('common.play')}
               >
                 <svg viewBox="0 0 24 24" className={`w-4 h-4 ${isPlaying ? 'ark-pulse' : ''}`} fill="currentColor">
                   <path d="M8 5v14l11-7z"/>
@@ -437,7 +441,7 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
                 <button
                   onClick={onDelete}
                   className="w-5 h-5 flex items-center justify-center rounded text-ark-gray/40 hover:text-red-400 hover:bg-red-400/10 transition-colors"
-                  title="렌더 음성 삭제"
+                  title={t('dialogue.button.deleteAudio')}
                 >
                   <svg viewBox="0 0 24 24" className="w-3 h-3" fill="currentColor">
                     <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
@@ -446,13 +450,13 @@ function DialogueItem({ dialogue, index, isPlaying, isMatched, matchSimilarity, 
               )}
             </div>
             <span className={`text-[10px] leading-none ${isRendered ? 'text-green-400' : 'text-ark-gray'}`}>
-              {isRendered ? '렌더' : '실시간'}
+              {isRendered ? t('dialogue.label.rendered') : t('dialogue.label.realtime')}
             </span>
           </div>
         ) : (
           <div
             className="shrink-0 w-9 h-9 flex items-center justify-center rounded bg-ark-black/30 text-ark-gray/30"
-            title={!hasVoice ? '음성이 준비되지 않은 캐릭터' : '더빙 준비 후 사용 가능'}
+            title={!hasVoice ? t('dialogue.status.characterNotPrepared') : t('dialogue.status.availableAfterPrepare')}
           >
             <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
               <path d="M8 5v14l11-7z"/>

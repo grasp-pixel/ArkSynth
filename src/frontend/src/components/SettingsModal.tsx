@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore } from "../stores/appStore";
 import {
   settingsApi,
@@ -33,6 +34,7 @@ interface SettingsModalProps {
 }
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [ffmpegGuide, setFFmpegGuide] = useState<FFmpegInstallGuide | null>(
     null,
@@ -122,7 +124,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       const data = await settingsApi.getSettings();
       setSettings(data);
     } catch (err) {
-      setError("설정을 불러오는데 실패했습니다");
+      setError(t('settings.loadFailed'));
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -141,7 +143,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const startFFmpegInstall = async () => {
     setIsInstallingFFmpeg(true);
-    setFFmpegInstallMsg("설치 시작 중...");
+    setFFmpegInstallMsg(t('settings.ffmpeg.installing'));
     setFFmpegInstallError(null);
     try {
       await settingsApi.startFFmpegInstall();
@@ -149,7 +151,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         onProgress: (p) => setFFmpegInstallMsg(p.message),
         onComplete: () => {
           setIsInstallingFFmpeg(false);
-          setFFmpegInstallMsg("FFmpeg 설치 완료! 새로고침하세요.");
+          setFFmpegInstallMsg(t('settings.ffmpeg.installed'));
           loadSettings();
         },
         onError: (error) => {
@@ -160,7 +162,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       });
     } catch (err) {
       setIsInstallingFFmpeg(false);
-      setFFmpegInstallError(err instanceof Error ? err.message : "FFmpeg 설치 시작 실패");
+      setFFmpegInstallError(err instanceof Error ? err.message : t('settings.ffmpeg.startFailed'));
     }
   };
 
@@ -189,7 +191,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     try {
       await voiceApi.refresh();
     } catch (err) {
-      console.error("캐릭터 데이터 새로고침 실패:", err);
+      console.error(t('settings.characters.refreshFailed'), err);
     } finally {
       setIsRefreshingCharacters(false);
     }
@@ -199,7 +201,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     try {
       await settingsApi.openFolder(path);
     } catch (err) {
-      console.error("폴더 열기 실패:", err);
+      console.error(t('settings.folder.openFailed'), err);
     }
   };
 
@@ -208,7 +210,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       const status = await extractApi.checkVoiceAssets();
       setVoiceAssetsStatus(status);
     } catch (err) {
-      console.error("VoiceAssets 확인 실패:", err);
+      console.error(t('settings.voice.checkFailed'), err);
     }
   };
 
@@ -217,7 +219,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       const status = await imageExtractApi.checkImageAssets();
       setImageAssetsStatus(status);
     } catch (err) {
-      console.error("ImageAssets 확인 실패:", err);
+      console.error(t('settings.image.checkFailed'), err);
     }
   };
 
@@ -246,7 +248,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             processed: 0,
             total: 0,
             extracted,
-            message: `추출 완료: ${extracted}개 이미지`,
+            message: t('settings.image.extractComplete', { count: extracted }),
           });
         },
         onError: (error) => {
@@ -257,7 +259,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     } catch (err) {
       setIsExtractingImages(false);
       setImageExtractError(
-        err instanceof Error ? err.message : "이미지 추출 시작 실패",
+        err instanceof Error ? err.message : t('settings.image.startFailed'),
       );
     }
   };
@@ -269,7 +271,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setIsExtractingImages(false);
       setImageExtractProgress(null);
     } catch (err) {
-      console.error("이미지 추출 취소 실패:", err);
+      console.error(t('settings.image.cancelFailed'), err);
     }
   };
 
@@ -278,7 +280,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       const status = await gamedataApi.getStatus("kr");
       setGamedataStatus(status);
     } catch (err) {
-      console.error("게임 데이터 상태 확인 실패:", err);
+      console.error(t('settings.gamedata.checkFailed'), err);
     }
   };
 
@@ -289,7 +291,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setGamedataRepo(repo);
       setGamedataRepoInput(repo);
     } catch (err) {
-      console.error("데이터 소스 설정 로드 실패:", err);
+      console.error(t('settings.gamedata.loadSourceFailed'), err);
     }
   };
 
@@ -298,7 +300,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       await gamedataApi.setSource(newSource);
       setGamedataSource(newSource);
     } catch (err) {
-      console.error("데이터 소스 변경 실패:", err);
+      console.error(t('settings.gamedata.changeSourceFailed'), err);
     }
   };
 
@@ -309,7 +311,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       await gamedataApi.setRepo(gamedataRepoInput.trim());
       setGamedataRepo(gamedataRepoInput.trim());
     } catch (err) {
-      console.error("레포지토리 설정 저장 실패:", err);
+      console.error(t('settings.gamedata.saveRepoFailed'), err);
     } finally {
       setIsRepoSaving(false);
     }
@@ -320,7 +322,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       const info = await aliasesApi.listAliases();
       setAliasesInfo(info);
     } catch (err) {
-      console.error("별칭 정보 로드 실패:", err);
+      console.error(t('settings.aliases.loadFailed'), err);
     }
   };
 
@@ -337,7 +339,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       // 별칭 목록 새로고침
       await loadAliasesInfo();
     } catch (err) {
-      console.error("본명 추출 실패:", err);
+      console.error(t('settings.aliases.extractFailed'), err);
     } finally {
       setIsExtractingAliases(false);
     }
@@ -361,7 +363,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           setGamedataUpdateProgress({
             stage: "complete",
             progress: 1,
-            message: "업데이트 완료!",
+            message: t('settings.gamedata.updateComplete'),
           });
           // 상태 새로고침
           checkGamedataStatus();
@@ -375,7 +377,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     } catch (err) {
       setIsUpdatingGamedata(false);
       setGamedataUpdateError(
-        err instanceof Error ? err.message : "업데이트 시작 실패",
+        err instanceof Error ? err.message : t('settings.gamedata.startFailed'),
       );
     }
   };
@@ -387,7 +389,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setIsUpdatingGamedata(false);
       setGamedataUpdateProgress(null);
     } catch (err) {
-      console.error("업데이트 취소 실패:", err);
+      console.error(t('settings.gamedata.cancelFailed'), err);
     }
   };
 
@@ -417,7 +419,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             processed: 0,
             total: 0,
             extracted,
-            message: `추출 완료: ${extracted}개 파일`,
+            message: t('settings.voice.extractComplete', { count: extracted }),
           });
           // 설정 새로고침
           loadSettings();
@@ -429,7 +431,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       });
     } catch (err) {
       setIsExtracting(false);
-      setExtractError(err instanceof Error ? err.message : "추출 시작 실패");
+      setExtractError(err instanceof Error ? err.message : t('settings.voice.startFailed'));
     }
   };
 
@@ -440,7 +442,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setIsExtracting(false);
       setExtractProgress(null);
     } catch (err) {
-      console.error("추출 취소 실패:", err);
+      console.error(t('settings.voice.cancelFailed'), err);
     }
   };
 
@@ -496,7 +498,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             >
               <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
             </svg>
-            설정
+            {t('settings.title')}
           </h2>
           <button
             onClick={onClose}
@@ -512,7 +514,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
-              <span className="text-ark-gray ark-pulse">로딩 중...</span>
+              <span className="text-ark-gray ark-pulse">{t('common.loading')}</span>
             </div>
           ) : error ? (
             <div className="text-center py-8">
@@ -521,7 +523,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 onClick={loadSettings}
                 className="ark-btn ark-btn-secondary text-sm"
               >
-                다시 시도
+                {t('common.retry')}
               </button>
             </div>
           ) : (
@@ -529,23 +531,23 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <>
                 {/* ===== 초기 설정 ===== */}
                 <div className="ark-divider">
-                  <span>초기 설정</span>
+                  <span>{t('settings.section.initialSetup')}</span>
                 </div>
                 <p className="text-[11px] text-ark-gray/70 -mt-3 text-center mb-2">
-                  처음 사용 시 아래 항목을 순서대로 완료하세요
+                  {t('settings.initialSetupDesc')}
                 </p>
 
                 {/* 의존성 상태 */}
                 <section>
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-sm font-medium text-ark-white">
-                      의존성
+                      {t('settings.section.dependencies')}
                     </h3>
                     <button
                       onClick={refreshDependencies}
                       className="text-xs text-ark-gray hover:text-ark-white"
                     >
-                      새로고침
+                      {t('common.refresh')}
                     </button>
                   </div>
                   <div className="space-y-2">
@@ -566,7 +568,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 {dep.path && ` • ${dep.path}`}
                               </p>
                             ) : (
-                              <p className="text-xs text-red-400">미설치</p>
+                              <p className="text-xs text-red-400">{t('settings.status.notInstalled')}</p>
                             )}
                           </div>
                         </div>
@@ -577,19 +579,19 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                               disabled={isInstallingFFmpeg}
                               className="text-xs text-ark-orange hover:underline disabled:opacity-50"
                             >
-                              {isInstallingFFmpeg ? '설치 중...' : '자동 설치'}
+                              {isInstallingFFmpeg ? t('settings.installing') : t('settings.autoInstall')}
                             </button>
                             <button
                               onClick={loadFFmpegGuide}
                               className="text-xs text-ark-gray hover:underline"
                             >
-                              수동
+                              {t('settings.manual')}
                             </button>
                           </div>
                         )}
                         {!dep.installed && dep.name === "FFprobe" && (
                           <span className="text-xs text-ark-gray">
-                            FFmpeg에 포함
+                            {t('settings.ffmpeg.included')}
                           </span>
                         )}
                         {!dep.installed && dep.name === "7-Zip" && (
@@ -597,7 +599,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             onClick={load7ZipGuide}
                             className="text-xs text-ark-orange hover:underline"
                           >
-                            설치 방법
+                            {t('settings.installMethod')}
                           </button>
                         )}
                         {!dep.installed && dep.name === "flatc" && (
@@ -605,7 +607,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             onClick={loadFlatcGuide}
                             className="text-xs text-ark-orange hover:underline"
                           >
-                            설치 방법
+                            {t('settings.installMethod')}
                           </button>
                         )}
                         {!dep.installed && dep.name === "GPT-SoVITS" && (
@@ -613,7 +615,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             onClick={() => setShowGptSovitsInstall(true)}
                             className="text-xs text-ark-orange hover:underline"
                           >
-                            자동 설치
+                            {t('settings.autoInstall')}
                           </button>
                         )}
                       </div>
@@ -625,7 +627,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <div className="mt-3 p-4 bg-ark-panel rounded border border-ark-border">
                       <div className="flex items-center justify-between mb-3">
                         <h4 className="text-sm font-medium text-ark-white">
-                          FFmpeg 설치 방법
+                          {t('settings.ffmpeg.installMethod')}
                         </h4>
                         <button
                           onClick={() => setShowFFmpegGuide(false)}
@@ -644,7 +646,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       {/* winget 방법 */}
                       <div className="mb-4">
                         <p className="text-xs text-ark-gray mb-2">
-                          Windows (winget 사용):
+                          {t('settings.os.windows')}
                         </p>
                         <div className="flex items-center gap-2">
                           <code className="flex-1 px-3 py-2 bg-ark-black rounded text-sm text-ark-white font-mono">
@@ -657,7 +659,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                               )
                             }
                             className="px-3 py-2 bg-ark-black rounded text-ark-gray hover:text-ark-white"
-                            title="복사"
+                            title={t('common.copy')}
                           >
                             <svg
                               viewBox="0 0 24 24"
@@ -672,7 +674,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                       {/* 수동 설치 */}
                       <div>
-                        <p className="text-xs text-ark-gray mb-2">수동 설치:</p>
+                        <p className="text-xs text-ark-gray mb-2">{t('settings.manualInstall')}</p>
                         <ol className="text-xs text-ark-white space-y-1">
                           {ffmpegGuide.manual_steps.map((step, i) => (
                             <li key={i}>{step}</li>
@@ -708,7 +710,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <div className="mt-3 p-4 bg-ark-panel rounded border border-ark-border">
                       <div className="flex items-center justify-between mb-3">
                         <h4 className="text-sm font-medium text-ark-white">
-                          7-Zip 설치 방법
+                          {t('settings.sevenzip.installMethod')}
                         </h4>
                         <button
                           onClick={() => setShow7ZipGuide(false)}
@@ -734,7 +736,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       {/* winget 방법 */}
                       <div className="mb-4">
                         <p className="text-xs text-ark-gray mb-2">
-                          Windows (winget 사용):
+                          {t('settings.os.windows')}
                         </p>
                         <div className="flex items-center gap-2">
                           <code className="flex-1 px-3 py-2 bg-ark-black rounded text-sm text-ark-white font-mono">
@@ -747,7 +749,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                               )
                             }
                             className="px-3 py-2 bg-ark-black rounded text-ark-gray hover:text-ark-white"
-                            title="복사"
+                            title={t('common.copy')}
                           >
                             <svg
                               viewBox="0 0 24 24"
@@ -762,7 +764,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                       {/* 수동 설치 */}
                       <div>
-                        <p className="text-xs text-ark-gray mb-2">수동 설치:</p>
+                        <p className="text-xs text-ark-gray mb-2">{t('settings.manualInstall')}</p>
                         <ol className="text-xs text-ark-white space-y-1">
                           {sevenZipGuide.manual_steps.map((step, i) => (
                             <li key={i}>{step}</li>
@@ -777,7 +779,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <div className="mt-3 p-4 bg-ark-panel rounded border border-ark-border">
                       <div className="flex items-center justify-between mb-3">
                         <h4 className="text-sm font-medium text-ark-white">
-                          {flatcGuide.name} 설치 방법
+                          {t('settings.flatc.installMethodPrefix')}{flatcGuide.name}{t('settings.flatc.installMethodSuffix')}
                         </h4>
                         <button
                           onClick={() => setShowFlatcGuide(false)}
@@ -803,7 +805,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       {/* winget 방법 */}
                       <div className="mb-4">
                         <p className="text-xs text-ark-gray mb-2">
-                          Windows (winget 사용):
+                          {t('settings.os.windows')}
                         </p>
                         <div className="flex items-center gap-2">
                           <code className="flex-1 px-3 py-2 bg-ark-black rounded text-sm text-ark-white font-mono">
@@ -816,7 +818,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                               )
                             }
                             className="px-3 py-2 bg-ark-black rounded text-ark-gray hover:text-ark-white"
-                            title="복사"
+                            title={t('common.copy')}
                           >
                             <svg
                               viewBox="0 0 24 24"
@@ -831,7 +833,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                       {/* 수동 설치 */}
                       <div>
-                        <p className="text-xs text-ark-gray mb-2">수동 설치:</p>
+                        <p className="text-xs text-ark-gray mb-2">{t('settings.manualInstall')}</p>
                         <ol className="text-xs text-ark-white space-y-1">
                           {flatcGuide.manual_steps.map((step, i) => (
                             <li key={i}>{step}</li>
@@ -846,14 +848,14 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 {/* 게임 데이터 업데이트 */}
                 <section>
                   <h3 className="text-sm font-medium text-ark-white mb-2">
-                    게임 데이터
+                    {t('settings.section.gamedata')}
                   </h3>
                   <p className="text-[11px] text-ark-gray/70 mb-3">
-                    스토리 텍스트를 다운로드합니다. 스토리 표시에 필수입니다.
+                    {t('settings.gamedata.description')}
                   </p>
                   <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
                     {gamedataStatus === null ? (
-                      <p className="text-sm text-ark-gray">확인 중...</p>
+                      <p className="text-sm text-ark-gray">{t('common.checking')}</p>
                     ) : (
                       <div>
                         <div className="flex items-center justify-between mb-3">
@@ -861,16 +863,15 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             <p className="text-sm text-ark-white">
                               {gamedataStatus.exists ? (
                                 <>
-                                  스토리 데이터 준비됨 (
-                                  {gamedataStatus.story_count}개 파일)
+                                  {t('settings.gamedata.ready', { count: gamedataStatus.story_count })}
                                 </>
                               ) : (
-                                <>스토리 데이터 없음</>
+                                <>{t('settings.gamedata.notReady')}</>
                               )}
                             </p>
                             {gamedataStatus.last_updated && (
                               <p className="text-xs text-ark-gray mt-1">
-                                마지막 업데이트:{" "}
+                                {t('settings.gamedata.lastUpdated')}{" "}
                                 {new Date(
                                   gamedataStatus.last_updated,
                                 ).toLocaleString("ko-KR")}
@@ -884,8 +885,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 className="ark-btn ark-btn-primary text-sm"
                               >
                                 {gamedataStatus.exists
-                                  ? "데이터 업데이트"
-                                  : "데이터 다운로드"}
+                                  ? t('settings.gamedata.update')
+                                  : t('settings.gamedata.download')}
                               </button>
                             )}
                         </div>
@@ -901,7 +902,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 onClick={cancelGamedataUpdate}
                                 className="text-xs text-red-400 hover:text-red-300"
                               >
-                                취소
+                                {t('common.cancel')}
                               </button>
                             </div>
                             <div className="relative h-2 bg-ark-panel rounded overflow-hidden">
@@ -929,8 +930,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                   className="text-xs text-ark-orange hover:underline disabled:opacity-50"
                                 >
                                   {isRefreshingCharacters
-                                    ? "새로고침 중..."
-                                    : "캐릭터 데이터 새로고침"}
+                                    ? t('common.refreshing')
+                                    : t('settings.characters.refresh')}
                                 </button>
                               </div>
                             </div>
@@ -947,7 +948,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                         <div className="mt-3 pt-3 border-t border-ark-border">
                           <label className="text-xs text-ark-gray block mb-1">
-                            데이터 소스
+                            {t('settings.gamedata.source')}
                           </label>
                           <select
                             value={gamedataSource}
@@ -972,13 +973,13 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 disabled={isRepoSaving || gamedataRepoInput === gamedataRepo}
                                 className="px-3 py-1 text-xs bg-ark-panel border border-ark-border rounded text-ark-gray hover:text-ark-white disabled:opacity-30 disabled:cursor-default"
                               >
-                                {isRepoSaving ? '...' : '저장'}
+                                {isRepoSaving ? '...' : t('settings.save')}
                               </button>
                             </div>
                           )}
                           {gamedataSource === 'arkprts' && (
                             <p className="text-[10px] text-ark-gray/60 mt-1">
-                              게임 서버에서 직접 최신 데이터를 다운로드합니다.
+                              {t('settings.gamedata.arkprtsDesc')}
                             </p>
                           )}
                         </div>
@@ -987,7 +988,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         {gamedataStatus?.exists && (
                           <div className="flex items-center justify-between mt-2 pt-2 border-t border-ark-border">
                             <span className="text-xs text-ark-gray">
-                              캐릭터 매핑 캐시
+                              {t('settings.characters.mappingCache')}
                             </span>
                             <button
                               onClick={refreshCharacterData}
@@ -995,8 +996,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                               className="text-xs text-ark-orange hover:underline disabled:opacity-50"
                             >
                               {isRefreshingCharacters
-                                ? "새로고침 중..."
-                                : "새로고침"}
+                                ? t('common.refreshing')
+                                : t('common.refresh')}
                             </button>
                           </div>
                         )}
@@ -1008,14 +1009,15 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 {/* 음성 추출 */}
                 <section>
                   <h3 className="text-sm font-medium text-ark-white mb-2">
-                    음성 추출
+                    {t('settings.section.voiceExtract')}
                   </h3>
                   <p className="text-[11px] text-ark-gray/70 mb-3">
-                    게임 음성 번들에서 캐릭터별 MP3를 추출합니다. 음성 학습과 제로샷 TTS에 사용됩니다.
+                    {t('settings.voice.extractDescription')}
+                    <br /><span className="text-ark-yellow/70">{t('settings.voice.extractWarning')}</span>
                   </p>
                   <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
                     {voiceAssetsStatus === null ? (
-                      <p className="text-sm text-ark-gray">확인 중...</p>
+                      <p className="text-sm text-ark-gray">{t('common.checking')}</p>
                     ) : !voiceAssetsStatus.exists ? (
                       <div>
                         <p className="text-sm text-red-400 mb-2">
@@ -1030,14 +1032,14 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         <div className="flex items-center justify-between mb-3">
                           <div>
                             <p className="text-sm text-ark-white">
-                              Assets/Voice 준비됨
+                              {t('settings.voice.assetsReady')}
                             </p>
                             <p className="text-xs text-ark-gray mt-1">
                               {Object.entries(
                                 voiceAssetsStatus.languages || {},
                               ).map(([lang, count]) => (
                                 <span key={lang} className="mr-3">
-                                  {lang}: {count}개 번들
+                                  {t('settings.voice.bundleCount', { lang, count })}
                                 </span>
                               ))}
                             </p>
@@ -1048,7 +1050,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 onClick={startExtraction}
                                 className="ark-btn ark-btn-primary text-sm"
                               >
-                                음성 추출
+                                {t('settings.voice.extract')}
                               </button>
                             )}
                         </div>
@@ -1064,7 +1066,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 onClick={cancelExtraction}
                                 className="text-xs text-red-400 hover:text-red-300"
                               >
-                                취소
+                                {t('common.cancel')}
                               </button>
                             </div>
                             {extractProgress.total > 0 && (
@@ -1078,9 +1080,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                               </div>
                             )}
                             <p className="text-xs text-ark-gray mt-1">
-                              {extractProgress.processed} /{" "}
-                              {extractProgress.total} 파일 처리됨 •{" "}
-                              {extractProgress.extracted}개 추출됨
+                              {t('settings.voice.extractProgress', { processed: extractProgress.processed, total: extractProgress.total, extracted: extractProgress.extracted })}
                             </p>
                           </div>
                         )}
@@ -1108,11 +1108,11 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     {/* 경로 안내 (항상 표시) */}
                     <div className="mt-3 pt-3 border-t border-ark-border space-y-1">
                       <p className="text-[10px] text-ark-gray/60">
-                        <span className="text-ark-gray">게임 원본:</span> Android/Data/com.YoStarKR.Arknights/files/Bundles/audio/sound_beta_2/voice_kr
+                        <span className="text-ark-gray">{t('settings.gamePath')}</span> {t('settings.voice.gameOriginal')}
                       </p>
                       <div className="flex items-center justify-between">
                         <p className="text-[10px] text-ark-gray/60">
-                          <span className="text-ark-gray">복사 위치:</span> Assets/Voice/voice_kr
+                          <span className="text-ark-gray">{t('settings.copyLocation')}</span> {t('settings.voice.copyLocation')}
                         </p>
                         <button
                           onClick={async () => {
@@ -1124,16 +1124,16 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 checkVoiceAssets();
                               }
                             } catch (err) {
-                              console.error('폴더 작업 실패:', err);
+                              console.error(t('settings.folder.operationFailed'), err);
                             }
                           }}
                           className="text-[10px] text-ark-cyan hover:text-ark-white transition-colors"
                         >
-                          {voiceAssetsStatus?.exists ? '열기' : '폴더 생성'}
+                          {voiceAssetsStatus?.exists ? t('common.open') : t('settings.createFolder')}
                         </button>
                       </div>
                       <p className="text-[10px] text-ark-gray/60">
-                        <span className="text-ark-gray">추출 결과:</span> extracted/ 폴더에 캐릭터별 MP3 생성
+                        <span className="text-ark-gray">{t('settings.extractResult')}</span> {t('settings.voice.extractResultDetail')}
                       </p>
                     </div>
                   </div>
@@ -1142,24 +1142,15 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 {/* 이미지 추출 */}
                 <section>
                   <h3 className="text-sm font-medium text-ark-white mb-2">
-                    이미지 추출
+                    {t('settings.section.imageExtract')}
                   </h3>
                   <p className="text-[11px] text-ark-gray/70 mb-3">
-                    캐릭터 일러스트 번들에서 이미지를 추출합니다. 두 종류의 이미지를 각각 추출할 수 있습니다.
+                    {t('settings.image.extractDescription')}
                   </p>
 
                   {imageAssetsStatus === null ? (
                     <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
-                      <p className="text-sm text-ark-gray">확인 중...</p>
-                    </div>
-                  ) : !imageAssetsStatus.exists ? (
-                    <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
-                      <p className="text-sm text-red-400 mb-2">
-                        {imageAssetsStatus.message}
-                      </p>
-                      <p className="text-xs text-ark-gray">
-                        {imageAssetsStatus.hint}
-                      </p>
+                      <p className="text-sm text-ark-gray">{t('common.checking')}</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -1167,25 +1158,25 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
                         <div className="flex items-center justify-between mb-2">
                           <div>
-                            <p className="text-sm text-ark-white font-medium">캐릭터 일러스트</p>
-                            <p className="text-[10px] text-ark-gray mt-0.5">대화 화면에 표시되는 캐릭터 전신 일러스트</p>
+                            <p className="text-sm text-ark-white font-medium">{t('settings.image.characterIllustration')}</p>
+                            <p className="text-[10px] text-ark-gray mt-0.5">{t('settings.image.characterIllustrationDesc')}</p>
                           </div>
                           {imageAssetsStatus.characters_exists && !isExtractingImages && (
                             <button
                               onClick={() => startImageExtraction('characters')}
                               className="ark-btn ark-btn-primary text-xs"
                             >
-                              추출
+                              {t('settings.extract')}
                             </button>
                           )}
                         </div>
 
                         {!imageAssetsStatus.characters_exists ? (
                           <div className="p-2 bg-yellow-500/10 border border-yellow-500/30 rounded">
-                            <p className="text-xs text-yellow-400">폴더 없음 — 게임 번들의 avg/characters를 복사해주세요</p>
+                            <p className="text-xs text-yellow-400">{t('settings.image.folderMissingCharacters')}</p>
                           </div>
                         ) : (
-                          <p className="text-xs text-green-400/80">{imageAssetsStatus.characters_bundles ?? 0}개 번들 준비됨</p>
+                          <p className="text-xs text-green-400/80">{imageAssetsStatus.characters_bundles ?? 0}{t('settings.bundlesReady')}</p>
                         )}
 
                         {/* 진행률/완료 (이 카드 대상일 때만) */}
@@ -1195,14 +1186,14 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                               <div className="mt-3">
                                 <div className="flex items-center justify-between mb-2">
                                   <span className="text-xs text-ark-gray">{imageExtractProgress.message}</span>
-                                  <button onClick={cancelImageExtraction} className="text-xs text-red-400 hover:text-red-300">취소</button>
+                                  <button onClick={cancelImageExtraction} className="text-xs text-red-400 hover:text-red-300">{t('common.cancel')}</button>
                                 </div>
                                 {imageExtractProgress.total > 0 && (
                                   <div className="relative h-2 bg-ark-panel rounded overflow-hidden">
                                     <div className="absolute inset-y-0 left-0 bg-ark-orange transition-all duration-300" style={{ width: `${(imageExtractProgress.processed / imageExtractProgress.total) * 100}%` }} />
                                   </div>
                                 )}
-                                <p className="text-xs text-ark-gray mt-1">{imageExtractProgress.processed} / {imageExtractProgress.total} 처리됨 • {imageExtractProgress.extracted}개 추출</p>
+                                <p className="text-xs text-ark-gray mt-1">{t('settings.image.extractProgress', { processed: imageExtractProgress.processed, total: imageExtractProgress.total, extracted: imageExtractProgress.extracted })}</p>
                               </div>
                             )}
                             {imageExtractProgress?.stage === "complete" && !isExtractingImages && (
@@ -1215,11 +1206,11 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                         <div className="mt-2 pt-2 border-t border-ark-border space-y-1">
                           <p className="text-[10px] text-ark-gray/60">
-                            <span className="text-ark-gray">게임 원본:</span> Android/Data/com.YoStarKR.Arknights/files/Bundles/Assets/Image/avg/characters
+                            <span className="text-ark-gray">{t('settings.gamePath')}</span> {t('settings.image.gameCharactersOriginal')}
                           </p>
                           <div className="flex items-center justify-between">
                             <p className="text-[10px] text-ark-gray/60">
-                              <span className="text-ark-gray">복사 위치:</span> Assets/Image/avg/characters
+                              <span className="text-ark-gray">{t('settings.copyLocation')}</span> {t('settings.image.copyCharactersLocation')}
                             </p>
                             <button
                               onClick={async () => {
@@ -1231,16 +1222,16 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                     checkImageAssets();
                                   }
                                 } catch (err) {
-                                  console.error('폴더 작업 실패:', err);
+                                  console.error(t('settings.folder.operationFailed'), err);
                                 }
                               }}
                               className="text-[10px] text-ark-cyan hover:text-ark-white transition-colors"
                             >
-                              {imageAssetsStatus?.characters_exists ? '열기' : '폴더 생성'}
+                              {imageAssetsStatus?.characters_exists ? t('common.open') : t('settings.createFolder')}
                             </button>
                           </div>
                           <p className="text-[10px] text-ark-gray/60">
-                            <span className="text-ark-gray">추출 결과:</span> extracted/images/ 폴더에 PNG 생성
+                            <span className="text-ark-gray">{t('settings.extractResult')}</span> {t('settings.image.extractResultDetail')}
                           </p>
                         </div>
                       </div>
@@ -1249,25 +1240,25 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
                         <div className="flex items-center justify-between mb-2">
                           <div>
-                            <p className="text-sm text-ark-white font-medium">캐릭터 초상화</p>
-                            <p className="text-[10px] text-ark-gray mt-0.5">캐릭터 얼굴 아이콘 (프로필, 매핑 표시용)</p>
+                            <p className="text-sm text-ark-white font-medium">{t('settings.image.characterPortrait')}</p>
+                            <p className="text-[10px] text-ark-gray mt-0.5">{t('settings.image.characterPortraitDesc')}</p>
                           </div>
                           {imageAssetsStatus.chararts_exists && !isExtractingImages && (
                             <button
                               onClick={() => startImageExtraction('chararts')}
                               className="ark-btn ark-btn-primary text-xs"
                             >
-                              추출
+                              {t('settings.extract')}
                             </button>
                           )}
                         </div>
 
                         {!imageAssetsStatus.chararts_exists ? (
                           <div className="p-2 bg-yellow-500/10 border border-yellow-500/30 rounded">
-                            <p className="text-xs text-yellow-400">폴더 없음 — 게임 번들의 chararts를 복사해주세요</p>
+                            <p className="text-xs text-yellow-400">{t('settings.image.folderMissingChararts')}</p>
                           </div>
                         ) : (
-                          <p className="text-xs text-green-400/80">{imageAssetsStatus.chararts_bundles ?? 0}개 번들 준비됨</p>
+                          <p className="text-xs text-green-400/80">{imageAssetsStatus.chararts_bundles ?? 0}{t('settings.bundlesReady')}</p>
                         )}
 
                         {/* 진행률/완료 (이 카드 대상일 때만) */}
@@ -1277,14 +1268,14 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                               <div className="mt-3">
                                 <div className="flex items-center justify-between mb-2">
                                   <span className="text-xs text-ark-gray">{imageExtractProgress.message}</span>
-                                  <button onClick={cancelImageExtraction} className="text-xs text-red-400 hover:text-red-300">취소</button>
+                                  <button onClick={cancelImageExtraction} className="text-xs text-red-400 hover:text-red-300">{t('common.cancel')}</button>
                                 </div>
                                 {imageExtractProgress.total > 0 && (
                                   <div className="relative h-2 bg-ark-panel rounded overflow-hidden">
                                     <div className="absolute inset-y-0 left-0 bg-ark-orange transition-all duration-300" style={{ width: `${(imageExtractProgress.processed / imageExtractProgress.total) * 100}%` }} />
                                   </div>
                                 )}
-                                <p className="text-xs text-ark-gray mt-1">{imageExtractProgress.processed} / {imageExtractProgress.total} 처리됨 • {imageExtractProgress.extracted}개 추출</p>
+                                <p className="text-xs text-ark-gray mt-1">{t('settings.image.extractProgress', { processed: imageExtractProgress.processed, total: imageExtractProgress.total, extracted: imageExtractProgress.extracted })}</p>
                               </div>
                             )}
                             {imageExtractProgress?.stage === "complete" && !isExtractingImages && (
@@ -1297,11 +1288,11 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                         <div className="mt-2 pt-2 border-t border-ark-border space-y-1">
                           <p className="text-[10px] text-ark-gray/60">
-                            <span className="text-ark-gray">게임 원본:</span> Android/Data/com.YoStarKR.Arknights/files/Bundles/Assets/Image/chararts
+                            <span className="text-ark-gray">{t('settings.gamePath')}</span> {t('settings.image.gameCharartsOriginal')}
                           </p>
                           <div className="flex items-center justify-between">
                             <p className="text-[10px] text-ark-gray/60">
-                              <span className="text-ark-gray">복사 위치:</span> Assets/Image/chararts
+                              <span className="text-ark-gray">{t('settings.copyLocation')}</span> {t('settings.image.copyCharartsLocation')}
                             </p>
                             <button
                               onClick={async () => {
@@ -1313,16 +1304,16 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                     checkImageAssets();
                                   }
                                 } catch (err) {
-                                  console.error('폴더 작업 실패:', err);
+                                  console.error(t('settings.folder.operationFailed'), err);
                                 }
                               }}
                               className="text-[10px] text-ark-cyan hover:text-ark-white transition-colors"
                             >
-                              {imageAssetsStatus?.chararts_exists ? '열기' : '폴더 생성'}
+                              {imageAssetsStatus?.chararts_exists ? t('common.open') : t('settings.createFolder')}
                             </button>
                           </div>
                           <p className="text-[10px] text-ark-gray/60">
-                            <span className="text-ark-gray">추출 결과:</span> extracted/images/ 폴더에 PNG 생성
+                            <span className="text-ark-gray">{t('settings.extractResult')}</span> {t('settings.image.extractResultDetail')}
                           </p>
                         </div>
                       </div>
@@ -1339,25 +1330,25 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                 {/* ===== 음성 설정 ===== */}
                 <div className="ark-divider mt-2">
-                  <span>음성 설정</span>
+                  <span>{t('settings.section.voiceSettings')}</span>
                 </div>
 
                 {/* 캐릭터 별칭 */}
                 <section>
                   <h3 className="text-sm font-medium text-ark-white mb-3">
-                    캐릭터 별칭 (본명)
+                    {t('settings.section.aliases')}
                   </h3>
                   <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
                     <p className="text-xs text-ark-gray mb-3">
-                      스토리에서 본명으로 등장하는 캐릭터를 오퍼레이터와 연결합니다.
+                      {t('settings.aliases.description')}
                       <br />
-                      예: "조르디" → 루멘, "안젤리나" → 안젤리나
+                      {t('settings.aliases.descriptionExample')}
                     </p>
 
                     <div className="flex items-center gap-3 mb-3">
                       <div className="flex-1">
                         <span className="text-sm text-ark-white">
-                          등록된 별칭: {aliasesInfo?.total ?? 0}개
+                          {t('settings.aliases.count')} {aliasesInfo?.total ?? 0}
                         </span>
                       </div>
                       <button
@@ -1369,25 +1360,25 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             : "bg-ark-panel border-ark-border text-ark-gray hover:text-ark-white hover:border-ark-orange"
                         }`}
                       >
-                        {isExtractingAliases ? "추출 중..." : "본명 자동 추출"}
+                        {isExtractingAliases ? t('settings.aliases.extracting') : t('settings.aliases.autoExtract')}
                       </button>
                     </div>
 
                     {aliasExtractResult && (
                       <div className="p-2 bg-green-500/10 border border-green-500/30 rounded text-xs text-green-400">
-                        ✓ {aliasExtractResult.extracted_count}명의 캐릭터에서 {aliasExtractResult.alias_count}개 별칭 추가됨
+                        {t('settings.aliases.extractedComplete', { charCount: aliasExtractResult.extracted_count, aliasCount: aliasExtractResult.alias_count })}
                       </div>
                     )}
 
                     <p className="text-[10px] text-ark-gray/60 mt-2">
-                      * handbook 데이터에서 "본명은 XXX" 패턴을 추출합니다
+                      {t('settings.aliases.note')}
                     </p>
                   </div>
                 </section>
 
                 {/* ===== 고급 설정 ===== */}
                 <div className="ark-divider mt-2">
-                  <span>고급 설정</span>
+                  <span>{t('settings.section.advanced')}</span>
                 </div>
 
                 {/* TTS 추론 파라미터 */}
@@ -1396,21 +1387,21 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 {/* 언어 설정 */}
                 <section>
                   <h3 className="text-sm font-medium text-ark-white mb-2">
-                    언어
+                    {t('settings.section.language')}
                   </h3>
                   <p className="text-[11px] text-ark-gray/70 mb-3">
-                    게임 클라이언트 언어와 TTS 합성 언어를 표시합니다.
+                    {t('settings.language.description')}
                   </p>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="p-3 bg-ark-black/50 rounded border border-ark-border">
-                      <p className="text-xs text-ark-gray mb-1">게임 언어</p>
+                      <p className="text-xs text-ark-gray mb-1">{t('settings.language.game')}</p>
                       <p className="text-sm text-ark-white">
                         {settings.game_language}
                       </p>
                     </div>
                     <div className="p-3 bg-ark-black/50 rounded border border-ark-border">
                       <p className="text-xs text-ark-gray mb-1">
-                        GPT-SoVITS 언어
+                        {t('settings.language.gptSovits')}
                       </p>
                       <p className="text-sm text-ark-white">
                         {settings.gpt_sovits_language}
@@ -1422,29 +1413,29 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 {/* 경로 설정 */}
                 <section>
                   <h3 className="text-sm font-medium text-ark-white mb-2">
-                    경로
+                    {t('settings.section.paths')}
                   </h3>
                   <p className="text-[11px] text-ark-gray/70 mb-3">
-                    주요 리소스 폴더 경로입니다. 폴더 열기 버튼으로 탐색기에서 확인할 수 있습니다.
+                    {t('settings.paths.description')}
                   </p>
                   <div className="space-y-2">
                     <PathItem
-                      label="GPT-SoVITS"
+                      label={t('settings.paths.gptSovits')}
                       path={settings.gpt_sovits_path}
                       onOpen={() => handleOpenFolder(settings.gpt_sovits_path)}
                     />
                     <PathItem
-                      label="모델"
+                      label={t('settings.paths.models')}
                       path={settings.models_path}
                       onOpen={() => handleOpenFolder(settings.models_path)}
                     />
                     <PathItem
-                      label="추출된 음성"
+                      label={t('settings.paths.extracted')}
                       path={settings.extracted_path}
                       onOpen={() => handleOpenFolder(settings.extracted_path)}
                     />
                     <PathItem
-                      label="게임 데이터"
+                      label={t('settings.paths.gamedata')}
                       path={settings.gamedata_path}
                       onOpen={() => handleOpenFolder(settings.gamedata_path)}
                     />
@@ -1454,37 +1445,37 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 {/* Whisper 전처리 설정 */}
                 <section>
                   <h3 className="text-sm font-medium text-ark-white mb-2">
-                    Whisper 전처리
+                    {t('settings.section.whisperPreprocessing')}
                   </h3>
                   <p className="text-[11px] text-ark-gray/70 mb-3">
-                    음성 학습 전처리에 사용되는 Whisper 설정입니다. 기본값으로도 충분합니다.
+                    {t('settings.whisper.description')}
                   </p>
                   <div className="grid grid-cols-3 gap-3">
                     <div className="p-3 bg-ark-black/50 rounded border border-ark-border">
-                      <p className="text-xs text-ark-gray mb-1">모델</p>
+                      <p className="text-xs text-ark-gray mb-1">{t('settings.whisper.model')}</p>
                       <p className="text-sm text-ark-white">
                         {settings.whisper_model_size}
                       </p>
                     </div>
                     <div className="p-3 bg-ark-black/50 rounded border border-ark-border">
-                      <p className="text-xs text-ark-gray mb-1">연산 타입</p>
+                      <p className="text-xs text-ark-gray mb-1">{t('settings.whisper.computeType')}</p>
                       <p className="text-sm text-ark-white">
                         {settings.whisper_compute_type}
                       </p>
                     </div>
                     <div className="p-3 bg-ark-black/50 rounded border border-ark-border">
-                      <p className="text-xs text-ark-gray mb-1">사용</p>
+                      <p className="text-xs text-ark-gray mb-1">{t('settings.whisper.usage')}</p>
                       <p
                         className={`text-sm ${settings.use_whisper_preprocessing ? "text-green-400" : "text-red-400"}`}
                       >
                         {settings.use_whisper_preprocessing
-                          ? "활성화"
-                          : "비활성화"}
+                          ? t('common.enabled')
+                          : t('common.disabled')}
                       </p>
                     </div>
                   </div>
                   <p className="text-xs text-ark-gray/70 mt-2">
-                    * 음성 준비 시 Faster-Whisper로 긴 오디오를 분할합니다
+                    {t('settings.whisper.note')}
                   </p>
                 </section>
               </>
@@ -1498,7 +1489,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             onClick={onClose}
             className="w-full ark-btn ark-btn-secondary"
           >
-            닫기
+            {t('common.close')}
           </button>
         </div>
       </div>
@@ -1519,6 +1510,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
 // TTS 추론 파라미터 섹션 (접기/펼치기)
 function TTSParamsSection() {
+  const { t } = useTranslation()
   const { ttsParams, loadTtsParams, updateTtsParams } = useAppStore()
   const [isLoaded, setIsLoaded] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
@@ -1531,25 +1523,25 @@ function TTSParamsSection() {
     {
       key: 'temperature' as const,
       label: 'Temperature',
-      desc: '음성 랜덤성 (낮을수록 안정, 높을수록 다양)',
+      desc: t('settings.tts.temperatureDesc'),
       min: 0.1, max: 2.0, step: 0.05,
     },
     {
       key: 'top_k' as const,
       label: 'Top K',
-      desc: '샘플링 다양성 (5~15 권장)',
+      desc: t('settings.tts.topKDesc'),
       min: 1, max: 30, step: 1,
     },
     {
       key: 'top_p' as const,
       label: 'Top P',
-      desc: 'Nucleus sampling (1.0이면 비활성)',
+      desc: t('settings.tts.topPDesc'),
       min: 0.1, max: 1.0, step: 0.05,
     },
     {
       key: 'speed_factor' as const,
-      label: '음성 속도',
-      desc: '1.0 = 기본 속도',
+      label: t('settings.tts.speedFactorLabel'),
+      desc: t('settings.tts.speedFactorDesc'),
       min: 0.5, max: 2.0, step: 0.05,
     },
   ]
@@ -1561,9 +1553,9 @@ function TTSParamsSection() {
         className="w-full flex items-center justify-between mb-2 group"
       >
         <div>
-          <h3 className="text-sm font-medium text-ark-white">TTS 추론 파라미터</h3>
+          <h3 className="text-sm font-medium text-ark-white">{t('settings.section.ttsParams')}</h3>
           <p className="text-[11px] text-ark-gray/70 text-left">
-            기본값 권장. 음성 합성 품질에 영향을 주는 파라미터입니다.
+            {t('settings.tts.description')}
           </p>
         </div>
         <svg
@@ -1577,11 +1569,11 @@ function TTSParamsSection() {
       {isExpanded && (
         <div className="p-4 bg-ark-black/50 rounded border border-ark-border space-y-4">
           {!isLoaded ? (
-            <p className="text-sm text-ark-gray">로딩 중...</p>
+            <p className="text-sm text-ark-gray">{t('common.loading')}</p>
           ) : (
             <>
               <p className="text-xs text-ark-gray">
-                변경 즉시 적용됩니다.
+                {t('settings.tts.appliedImmediately')}
               </p>
               {params.map(({ key, label, desc, min, max, step }) => (
                 <div key={key}>
@@ -1628,6 +1620,7 @@ function PathItem({
   path: string;
   onOpen: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center justify-between p-3 bg-ark-black/50 rounded border border-ark-border">
       <div className="flex-1 min-w-0 mr-3">
@@ -1640,7 +1633,7 @@ function PathItem({
         onClick={onOpen}
         className="flex-shrink-0 px-3 py-1.5 text-xs text-ark-gray hover:text-ark-white bg-ark-panel rounded border border-ark-border hover:border-ark-orange transition-colors"
       >
-        열기
+        {t('common.open')}
       </button>
     </div>
   );

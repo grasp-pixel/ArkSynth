@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAppStore, isMysteryName, type GroupRenderState, type EpisodeRenderResult } from '../stores/appStore'
 import VoiceMappingModal from './VoiceMappingModal'
 
@@ -36,6 +37,7 @@ function EpisodeStatusIcon({ status }: { status: EpisodeRenderResult['status'] }
 
 // 그룹 렌더링 대시보드
 function GroupRenderDashboard({ state, onCancel }: { state: GroupRenderState; onCancel: () => void }) {
+  const { t } = useTranslation()
   const currentRef = useRef<HTMLDivElement>(null)
 
   // 현재 진행 중인 에피소드로 자동 스크롤
@@ -52,7 +54,7 @@ function GroupRenderDashboard({ state, onCancel }: { state: GroupRenderState; on
     <div className="space-y-3 p-3 bg-ark-black/50 rounded border border-ark-border">
       {/* 헤더 + 전체 진행률 */}
       <div className="flex items-center justify-between text-xs">
-        <span className="text-ark-white font-medium">그룹 사전 더빙</span>
+        <span className="text-ark-white font-medium">{t('group.section.preRendering')}</span>
         <span className="text-ark-orange">
           {completedCount}/{totalCount} ({overallPercent.toFixed(0)}%)
         </span>
@@ -88,7 +90,7 @@ function GroupRenderDashboard({ state, onCancel }: { state: GroupRenderState; on
                 {ep.title}
               </span>
               {ep.status === 'skipped' && (
-                <span className="text-[10px] text-ark-gray">(캐시됨)</span>
+                <span className="text-[10px] text-ark-gray">{t('common.cached')}</span>
               )}
               {ep.status === 'rendering' && ep.totalDialogues > 0 && (
                 <span className="text-[10px] text-ark-orange">
@@ -96,7 +98,7 @@ function GroupRenderDashboard({ state, onCancel }: { state: GroupRenderState; on
                 </span>
               )}
               {ep.status === 'loading' && (
-                <span className="text-[10px] text-ark-orange">음성 설정 중...</span>
+                <span className="text-[10px] text-ark-orange">{t('dubbing.status.configuringVoice')}</span>
               )}
             </div>
             {/* 현재 렌더링 중인 에피소드: 대사 진행률 바 + 텍스트 */}
@@ -130,13 +132,14 @@ function GroupRenderDashboard({ state, onCancel }: { state: GroupRenderState; on
         onClick={onCancel}
         className="w-full ark-btn text-sm text-red-400 hover:text-red-300 border-red-400/30"
       >
-        취소
+        {t('common.cancel')}
       </button>
     </div>
   )
 }
 
 export default function GroupSetupPanel() {
+  const { t } = useTranslation()
   const [isVoiceMappingModalOpen, setIsVoiceMappingModalOpen] = useState(false)
   const [batchTasks, setBatchTasks] = useState<BatchTasks>({
     prepare: true,
@@ -459,13 +462,13 @@ export default function GroupSetupPanel() {
           <svg viewBox="0 0 24 24" className="w-5 h-5 text-ark-cyan" fill="currentColor">
             <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9h-4v4h-2v-4H9V9h4V5h2v4h4v2z"/>
           </svg>
-          그룹 설정
+          {t('group.section.setup')}
         </h3>
         <button
           onClick={cancelPrepare}
           className="text-ark-gray hover:text-ark-white text-sm"
         >
-          닫기
+          {t('common.close')}
         </button>
       </div>
 
@@ -474,22 +477,22 @@ export default function GroupSetupPanel() {
         <div className="p-4 border-b border-ark-border bg-ark-panel/30">
           <div className="flex items-center justify-between">
             <span className="text-ark-white font-medium">{groupInfo?.name || '그룹'}</span>
-            <span className="text-xs text-ark-gray">{groupEpisodes.length}개 에피소드</span>
+            <span className="text-xs text-ark-gray">{t('group.info.episodeCount', { count: groupEpisodes.length })}</span>
           </div>
         </div>
 
         {/* 그룹 캐릭터 목록 */}
         <div className="p-4 border-b border-ark-border">
           <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-medium text-ark-gray">그룹 캐릭터</h4>
+            <h4 className="text-sm font-medium text-ark-gray">{t('group.section.characters')}</h4>
             <span className="text-xs text-ark-gray">
-              음성 {characterStats.withVoice}/{characterStats.total}
+              {t('group.characters.hasVoice', { withVoice: characterStats.withVoice, total: characterStats.total })}
             </span>
           </div>
           {isLoadingCharacters ? (
-            <div className="text-center text-ark-gray py-4 ark-pulse">로딩 중...</div>
+            <div className="text-center text-ark-gray py-4 ark-pulse">{t('common.loading')}</div>
           ) : actualCharacters.length === 0 ? (
-            <div className="text-center text-ark-gray py-4">캐릭터 없음</div>
+            <div className="text-center text-ark-gray py-4">{t('common.noCharacters')}</div>
           ) : (
             <div className="space-y-1 max-h-48 overflow-y-auto">
               {actualCharacters.map((char, idx) => (
@@ -505,16 +508,16 @@ export default function GroupSetupPanel() {
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <span className="text-xs text-ark-gray">
-                      {char.dialogue_count}대사
+                      {t('character.dialogueCount', { count: char.dialogue_count })}
                     </span>
                     {(() => {
                       const voiceId = char.voice_char_id || char.char_id
                       if (voiceId && trainedCharIds.has(voiceId)) {
                         const modelType = getModelType(voiceId)
                         if (modelType === 'finetuned') {
-                          return <span className="text-xs text-purple-400 font-medium">학습됨</span>
+                          return <span className="text-xs text-purple-400 font-medium">{t('character.status.trained')}</span>
                         }
-                        return <span className="text-xs text-green-400 font-medium">준비됨</span>
+                        return <span className="text-xs text-green-400 font-medium">{t('character.status.prepared')}</span>
                       }
                       return null
                     })()}
@@ -528,13 +531,13 @@ export default function GroupSetupPanel() {
           {narrationInfo > 0 && (
             <div className="mt-3 p-2 bg-purple-500/10 rounded border border-purple-500/20">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-purple-400">나레이션</span>
-                <span className="text-xs text-purple-300">{narrationInfo}대사</span>
+                <span className="text-xs text-purple-400">{t('character.narration.labelShort')}</span>
+                <span className="text-xs text-purple-300">{t('character.dialogueCount', { count: narrationInfo })}</span>
               </div>
               <p className="text-[10px] text-purple-400/70 mt-1">
                 {narratorCharId
-                  ? `음성: ${voiceCharacters.find(c => c.char_id === narratorCharId)?.name ?? narratorCharId}`
-                  : '캐릭터 관리에서 나레이션 음성을 설정하세요'}
+                  ? t('dubbing.narrator.voice', { name: voiceCharacters.find(c => c.char_id === narratorCharId)?.name ?? narratorCharId })
+                  : t('dubbing.narrator.setupGuide')}
               </p>
             </div>
           )}
@@ -543,13 +546,13 @@ export default function GroupSetupPanel() {
           {unknownSpeakerCount > 0 && (
             <div className="mt-3 p-2 bg-amber-500/10 rounded border border-amber-500/20">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-amber-400">??? (알 수 없는 화자)</span>
-                <span className="text-xs text-amber-300">{unknownSpeakerCount}대사</span>
+                <span className="text-xs text-amber-400">{t('character.unknownSpeaker.labelFull')}</span>
+                <span className="text-xs text-amber-300">{t('character.dialogueCount', { count: unknownSpeakerCount })}</span>
               </div>
               <p className="text-[10px] text-amber-400/70 mt-1">
                 {unknownSpeakerCharId
-                  ? `음성: ${voiceCharacters.find(c => c.char_id === unknownSpeakerCharId)?.name ?? unknownSpeakerCharId}`
-                  : '캐릭터 관리에서 ??? 음성을 설정하세요'}
+                  ? t('dubbing.unknownSpeaker.voice', { name: voiceCharacters.find(c => c.char_id === unknownSpeakerCharId)?.name ?? unknownSpeakerCharId })
+                  : t('dubbing.unknownSpeaker.setupGuide')}
               </p>
             </div>
           )}
@@ -558,11 +561,11 @@ export default function GroupSetupPanel() {
         {/* 음성 매핑 */}
         <div className="p-4 border-b border-ark-border">
           <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-medium text-ark-gray">음성 매핑</h4>
+            <h4 className="text-sm font-medium text-ark-gray">{t('group.section.voiceMapping')}</h4>
             <span className="text-xs text-ark-gray">
               {voicelessCharacters.length > 0
-                ? `${mappedCount}/${voicelessCharacters.length}명 매핑`
-                : '모두 보유'}
+                ? t('group.mapping.count', { mapped: mappedCount, total: voicelessCharacters.length })
+                : t('group.status.allHaveVoice')}
             </span>
           </div>
           {voicelessCharacters.length === 0 ? (
@@ -570,7 +573,7 @@ export default function GroupSetupPanel() {
               <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
                 <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
               </svg>
-              <span className="text-sm">모든 캐릭터가 음성을 보유</span>
+              <span className="text-sm">{t('group.status.allHaveVoice')}</span>
             </div>
           ) : (
             <div className="space-y-2">
@@ -581,7 +584,7 @@ export default function GroupSetupPanel() {
                 <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
                   <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
                 </svg>
-                음성 매핑 설정
+                {t('group.button.voiceMappingSetup')}
               </button>
             </div>
           )}
@@ -589,7 +592,7 @@ export default function GroupSetupPanel() {
 
         {/* 일괄 작업 */}
         <div className="p-4 border-b border-ark-border">
-          <h4 className="text-sm font-medium text-ark-gray mb-4">일괄 작업</h4>
+          <h4 className="text-sm font-medium text-ark-gray mb-4">{t('group.section.batchTasks')}</h4>
 
           {/* 진행 중 상태 표시 */}
           {(isTrainingActive || isGroupRendering) ? (
@@ -605,7 +608,7 @@ export default function GroupSetupPanel() {
                       </span>
                     </div>
                     <span className="text-xs px-2 py-0.5 rounded bg-ark-orange/20 text-ark-orange">
-                      {currentTrainingJob.mode === 'prepare' ? '준비 중' : '학습 중'}
+                      {currentTrainingJob.mode === 'prepare' ? t('character.status.preparing') : t('character.status.training')}
                     </span>
                   </div>
                   <div className="w-full bg-ark-black rounded-full h-2 overflow-hidden">
@@ -616,14 +619,14 @@ export default function GroupSetupPanel() {
                   </div>
                   {trainingQueue.length > 0 && (
                     <p className="text-xs text-ark-gray">
-                      대기열: {trainingQueue.length}개
+                      {t('group.queue.label', { count: trainingQueue.length })}
                     </p>
                   )}
                   <button
                     onClick={handleCancelTraining}
                     className="w-full ark-btn text-sm text-red-400 hover:text-red-300 border-red-400/30"
                   >
-                    취소
+                    {t('common.cancel')}
                   </button>
                 </div>
               )}
@@ -640,7 +643,7 @@ export default function GroupSetupPanel() {
             <div className="space-y-4">
               {/* 필수 섹션 */}
               <div className="space-y-2">
-                <p className="text-xs text-ark-gray font-medium">필수</p>
+                <p className="text-xs text-ark-gray font-medium">{t('group.section.required')}</p>
 
                 {/* 음성 준비 */}
                 <label className="flex items-center justify-between p-2 bg-ark-black/30 rounded cursor-pointer hover:bg-ark-black/50">
@@ -651,10 +654,10 @@ export default function GroupSetupPanel() {
                       onChange={e => setBatchTasks(prev => ({ ...prev, prepare: e.target.checked }))}
                       className="w-4 h-4 rounded border-ark-border bg-ark-black text-ark-orange focus:ring-ark-orange"
                     />
-                    <span className="text-sm text-ark-white">음성 준비 (prepare)</span>
+                    <span className="text-sm text-ark-white">{t('group.task.prepare')}</span>
                   </div>
                   <span className="text-xs text-ark-gray">
-                    {preparedCount}/{characterStats.withVoice} 완료
+                    {t('group.status.preparedCount', { prepared: preparedCount, total: characterStats.withVoice })}
                   </span>
                 </label>
 
@@ -667,17 +670,17 @@ export default function GroupSetupPanel() {
                       onChange={e => setBatchTasks(prev => ({ ...prev, render: e.target.checked }))}
                       className="w-4 h-4 rounded border-ark-border bg-ark-black text-ark-orange focus:ring-ark-orange"
                     />
-                    <span className="text-sm text-ark-white">사전 더빙 (render)</span>
+                    <span className="text-sm text-ark-white">{t('group.task.render')}</span>
                   </div>
                   <span className="text-xs text-ark-gray">
-                    {episodeCacheStats.completed}/{episodeCacheStats.total} 에피소드
+                    {t('group.episodes.count', { completed: episodeCacheStats.completed, total: episodeCacheStats.total })}
                   </span>
                 </label>
               </div>
 
               {/* 고퀄리티 섹션 (선택) */}
               <div className="space-y-2">
-                <p className="text-xs text-ark-gray font-medium">고퀄리티 (선택)</p>
+                <p className="text-xs text-ark-gray font-medium">{t('group.section.quality')}</p>
 
                 {/* 모델 학습 */}
                 <div className="p-2 bg-ark-black/30 rounded">
@@ -689,20 +692,20 @@ export default function GroupSetupPanel() {
                         onChange={e => setBatchTasks(prev => ({ ...prev, finetune: e.target.checked }))}
                         className="w-4 h-4 rounded border-ark-border bg-ark-black text-purple-500 focus:ring-purple-500"
                       />
-                      <span className="text-sm text-ark-white">모델 학습 (fine-tune)</span>
+                      <span className="text-sm text-ark-white">{t('group.task.finetune')}</span>
                     </div>
                     <span className="text-xs text-ark-gray">
-                      {finetunedCount}/{characterStats.withVoice} 완료
+                      {t('group.status.finetunedCount', { finetuned: finetunedCount, total: characterStats.withVoice })}
                     </span>
                   </label>
                   <p className="text-[10px] text-ark-yellow/70 mt-1 ml-7">
-                    캐릭터당 수십 분이 소요될 수 있습니다
+                    {t('group.warning.timeConsuming')}
                   </p>
 
                   {/* 학습 대상 (모델 학습 선택 시만 표시) */}
                   {batchTasks.finetune && (
                     <div className="mt-3 ml-7 space-y-2 border-l-2 border-purple-500/30 pl-3">
-                      <p className="text-xs text-ark-gray">학습 대상:</p>
+                      <p className="text-xs text-ark-gray">{t('group.label.trainTargets')}</p>
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="checkbox"
@@ -710,7 +713,7 @@ export default function GroupSetupPanel() {
                           onChange={e => setFinetuneTarget(prev => ({ ...prev, appearance: e.target.checked }))}
                           className="w-3 h-3 rounded border-ark-border bg-ark-black text-purple-500 focus:ring-purple-500"
                         />
-                        <span className="text-xs text-ark-white">등장 캐릭터 (음성 보유)</span>
+                        <span className="text-xs text-ark-white">{t('group.target.appearanceCharacters')}</span>
                       </label>
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
@@ -719,7 +722,7 @@ export default function GroupSetupPanel() {
                           onChange={e => setFinetuneTarget(prev => ({ ...prev, mapped: e.target.checked }))}
                           className="w-3 h-3 rounded border-ark-border bg-ark-black text-purple-500 focus:ring-purple-500"
                         />
-                        <span className="text-xs text-ark-white">매핑된 캐릭터</span>
+                        <span className="text-xs text-ark-white">{t('group.target.mappedCharacters')}</span>
                       </label>
                     </div>
                   )}
@@ -734,13 +737,13 @@ export default function GroupSetupPanel() {
                   (!canExecute || isExecuting) ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
               >
-                {isExecuting ? '실행 중...' : '일괄 실행'}
+                {isExecuting ? t('group.status.executing') : t('group.button.batchExecute')}
               </button>
 
               {/* 상태 메시지 */}
               {!gptSovitsStatus?.api_running && (
                 <p className="text-xs text-ark-yellow text-center">
-                  * GPT-SoVITS를 먼저 시작하세요
+                  {t('group.note.startGptSovitsFirst')}
                 </p>
               )}
               {groupRenderError && (
@@ -772,10 +775,10 @@ export default function GroupSetupPanel() {
                     : 'text-yellow-400'
               }`}>
                 {gptSovitsStatus?.synthesizing
-                  ? '합성 중...'
+                  ? t('group.status.synthesizing')
                   : gptSovitsStatus?.api_running
-                    ? '연결됨'
-                    : '대기 중'}
+                    ? t('common.connected')
+                    : t('common.waiting')}
               </span>
             </div>
           </div>

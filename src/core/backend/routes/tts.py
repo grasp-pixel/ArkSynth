@@ -50,6 +50,7 @@ class SynthesizeRequest(BaseModel):
     text: str
     char_id: str | None = None  # 캐릭터 ID
     engine: str | None = None  # TTS 엔진 (현재 "gpt_sovits"만 지원), None이면 글로벌 설정 사용
+    language: str | None = None  # 합성 언어 (ko, ja, en), None이면 글로벌 설정 사용
 
 
 @router.post("/synthesize")
@@ -65,56 +66,60 @@ async def synthesize(request: SynthesizeRequest):
     if not request.char_id:
         raise HTTPException(status_code=400, detail="char_id is required")
 
+    # 요청 언어 또는 글로벌 설정
+    language = request.language or config.gpt_sovits_language
+
     # GPT-SoVITS 엔진 처리
     try:
         synthesizer = get_gpt_synthesizer()
         model_manager = get_gpt_model_manager()
 
         # 모델이 준비되어 있는지 확인
-        if not model_manager.is_trained(request.char_id):
+        if not model_manager.is_trained(request.char_id, language):
             # 자동으로 참조 오디오 준비 시도
-            logger.info(f"캐릭터 준비 중: {request.char_id}")
-            audio_dir = config.extracted_path / request.char_id
-            output_dir = config.models_path / "gpt_sovits" / request.char_id
+            logger.info(f"캐릭터 준비 중: {request.char_id} (lang={language})")
+            from ...common.language_codes import short_to_voice_folder
+            voice_folder = short_to_voice_folder(language)
+            audio_dir = config.extracted_path / voice_folder / request.char_id
+            output_dir = config.models_path / "gpt_sovits" / language / request.char_id
 
             if not audio_dir.exists():
                 raise HTTPException(
                     status_code=404,
-                    detail=f"캐릭터 음성 데이터 없음: {request.char_id}"
+                    detail=f"캐릭터 음성 데이터 없음: {request.char_id} ({voice_folder})"
                 )
 
             # 참조 오디오 준비 (동기 실행)
-            # GPTSoVITSConfig의 참조 오디오 길이 설정 사용
             gpt_config = synthesizer.config
             success = prepare_reference_audio(
                 char_id=request.char_id,
                 audio_dir=audio_dir,
                 output_dir=output_dir,
                 gamedata_path=config.gamedata_path,
-                language=config.gpt_sovits_language,
+                language=language,
                 min_duration=gpt_config.min_ref_audio_length,
                 max_duration=gpt_config.max_ref_audio_length,
             )
 
-            if not success or not model_manager.is_trained(request.char_id):
+            if not success or not model_manager.is_trained(request.char_id, language):
                 raise HTTPException(
                     status_code=500,
                     detail=f"GPT-SoVITS 모델 준비 실패: {request.char_id}"
                 )
 
-            # 자동 준비 성공 시 config.json 생성 (list_all_models에 포함되도록)
-            if not model_manager.get_model_info(request.char_id):
+            # 자동 준비 성공 시 config.json 생성
+            if not model_manager.get_model_info(request.char_id, language):
                 model_manager.create_model_info(
                     char_id=request.char_id,
-                    char_name=request.char_id,  # 기본값으로 char_id 사용
+                    char_name=request.char_id,
                     epochs_sovits=0,
                     epochs_gpt=0,
                     ref_audio_count=len(list(audio_dir.glob("*.mp3"))) + len(list(audio_dir.glob("*.wav"))),
-                    language=config.gpt_sovits_language,
+                    language=language,
                 )
-                logger.info(f"캐릭터 준비 완료 (자동): {request.char_id}")
+                logger.info(f"캐릭터 준비 완료 (자동): {request.char_id} (lang={language})")
 
-        logger.info(f"GPT-SoVITS 합성: {request.char_id}")
+        logger.info(f"GPT-SoVITS 합성: {request.char_id} (lang={language})")
 
         # GPT-SoVITS API 서버 연결 확인 (재시도 포함)
         api_running = await synthesizer.api_client.is_api_running()
@@ -145,12 +150,12 @@ async def synthesize(request: SynthesizeRequest):
                     detail=f"GPT-SoVITS 모델 로드 실패: {request.char_id}"
                 )
 
-            # 합성 (GPTSoVITSConfig의 기본값 사용)
+            # 합성
             gpt_config = synthesizer.config
             result = await synthesizer.synthesize(
                 char_id=request.char_id,
                 text=request.text,
-                language=config.gpt_sovits_language,
+                language=language,
                 speed_factor=gpt_config.speed_factor,
                 top_k=gpt_config.top_k,
                 top_p=gpt_config.top_p,

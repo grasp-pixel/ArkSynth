@@ -1,0 +1,777 @@
+{
+  "common": {
+    "loading": "読み込み中...",
+    "cancel": "キャンセル",
+    "close": "閉じる",
+    "refresh": "更新",
+    "refreshing": "更新中...",
+    "retry": "再試行",
+    "copy": "コピー",
+    "open": "開く",
+    "search": "検索",
+    "searching": "検索中...",
+    "reset": "リセット",
+    "add": "追加",
+    "delete": "削除",
+    "accept": "承認",
+    "dismiss": "無視",
+    "ok": "確認",
+    "complete": "完了",
+    "preview": "プレビュー",
+    "play": "再生",
+    "stop": "停止",
+    "enabled": "有効",
+    "disabled": "無効",
+    "connected": "接続済み",
+    "waiting": "待機中",
+    "pending": "待機",
+    "completed": "完了",
+    "partiallyCompleted": "一部完了",
+    "cached": "(キャッシュ済み)",
+    "checking": "確認中...",
+    "selectAll": "すべて選択",
+    "deselect": "選択解除",
+    "noSearchResults": "検索結果がありません",
+    "noCharacters": "キャラクターがいません",
+    "none": "-",
+    "empty": "なし",
+    "searchCharacter": "キャラクター検索...",
+    "sortBy": "ソート：",
+    "error": "エラー"
+  },
+  "app": {
+    "title": "ArkSynth",
+    "description": "アークナイツのストーリーをキャラクターボイスで吹き替えるアプリ",
+    "alert": {
+      "selectGroup": "ストーリーグループを先に選択してください"
+    },
+    "header": {
+      "homeTitle": "ホームへ",
+      "dubbing": "吹き替え中",
+      "characterManagement": "キャラクター管理"
+    },
+    "gpt": {
+      "synthesizing": "合成中...",
+      "label": "GPT-SoVITS",
+      "starting": "起動中...",
+      "startButton": "GPT-SoVITS 起動",
+      "notInstalled": "GPT-SoVITS 未インストール"
+    },
+    "gpu": {
+      "lockEnabled": "GPUロック有効 (OCR/TTS順次実行)",
+      "lockDisabled": "GPUロック無効 (OCR/TTS同時実行可能)",
+      "label": "GPU"
+    },
+    "refreshAll": "全体更新",
+    "settings": "設定",
+    "error": {
+      "backendNotConnected": "バックエンドサーバーに接続できません",
+      "startBatFile": "start.bat",
+      "startBatDescription": "start.batがバックエンドサーバーとアプリを一緒に起動します。",
+      "serverAddress": "サーバーアドレス: http://127.0.0.1:8000",
+      "autoConnect": "接続されると自動的に切り替わります"
+    },
+    "panel": {
+      "expandEpisodeList": "エピソード一覧を展開",
+      "collapseEpisodeList": "エピソード一覧を折りたたむ",
+      "expandSettings": "設定パネルを展開",
+      "collapseSettings": "設定パネルを折りたたむ",
+      "backToGroupSetup": "← グループ設定へ"
+    },
+    "content": {
+      "selectEpisode": "エピソードを選択してください",
+      "selectEpisodeGuide": "左側のリストからストーリーグループを展開してエピソードを選択してください"
+    },
+    "dubbing": {
+      "episodeSetup": "エピソード吹き替え設定",
+      "setupGuide": "エピソード別の詳細設定は上のボタンを押してください"
+    },
+    "home": {
+      "installGuide": "初回セットアップガイド",
+      "openSettings": "右上の ⚙ 設定を開いて以下の項目を完了してください。",
+      "dependencies": "依存関係のインストール",
+      "dependenciesDesc": "FFmpeg、7-Zip、GPT-SoVITSなど必須ツール",
+      "copyAssets": "ゲームアセットのコピー",
+      "copyAssetsDesc": "以下のゲームフォルダからAssetsフォルダにコピー：",
+      "voicePath": "音声: .../Bundles/audio/sound_beta_2/voice_kr → Assets/Voice/voice_kr",
+      "imagePath": "画像: .../Bundles/avg/characters → Assets/Image/avg/characters",
+      "charartPath": ".../Bundles/chararts → Assets/Image/chararts",
+      "extractAssets": "アセット抽出",
+      "extractAssetsDesc": "設定で「音声抽出」「画像抽出」を実行",
+      "storyData": "ストーリーデータ",
+      "storyDataDesc": "設定で「データダウンロード」からストーリーテキストを取得",
+      "dataMapping": "データマッピング",
+      "dataMappingDesc": "「キャラクターマッピングキャッシュ更新」+「実名自動抽出」を実行",
+      "howToUse": "使い方",
+      "startGptSovits": "GPT-SoVITS起動",
+      "startGptSovitsDesc": "ヘッダーの起動ボタンでTTSエンジンを起動",
+      "characterManagement": "キャラクター管理",
+      "characterManagementDesc": "タブ右側のボタンでデフォルト音声キャラクターとナレーターを設定",
+      "characterManagementGuide": "音声がないキャラクターとNPCはデフォルト音声で、話者がない台詞と字幕はナレーター音声で合成されます。",
+      "selectStory": "ストーリー選択",
+      "selectStoryDesc": "カテゴリタブから分類を選択 → 左のリストからグループまたはエピソードを選択",
+      "voiceMappingSetup": "音声マッピング設定",
+      "voiceMappingDesc": "音声がないキャラクターをデフォルトキャラクターにマッピング",
+      "voicePreparation": "音声準備",
+      "voicePreparationDesc": "グループ一括またはエピソード別にキャラクター音声を準備/トレーニング",
+      "realtimeDubbing": "リアルタイム吹き替え",
+      "realtimeDubbingDesc": "OCRウィンドウ設定 → ゲームテキストリアルタイム認識 → マッチした台詞を自動再生",
+      "zeroShotNote": "未トレーニングのキャラクターはゼロショットモードで合成されます。",
+      "gpuNote": "ヘッダーのGPUボタンでOCR/TTSの同時実行を制御します。"
+    }
+  },
+  "settings": {
+    "title": "設定",
+    "loadFailed": "設定の読み込みに失敗しました",
+    "section": {
+      "initialSetup": "初期設定",
+      "dependencies": "依存関係",
+      "gamedata": "ゲームデータ",
+      "voiceExtract": "音声抽出",
+      "imageExtract": "画像抽出",
+      "voiceSettings": "音声設定",
+      "aliases": "キャラクターエイリアス（実名）",
+      "advanced": "詳細設定",
+      "language": "言語",
+      "paths": "パス",
+      "whisperPreprocessing": "Whisper前処理",
+      "ttsParams": "TTS推論パラメータ"
+    },
+    "initialSetupDesc": "初回使用時は以下の項目を順に完了してください",
+    "status": {
+      "notInstalled": "未インストール"
+    },
+    "installing": "インストール中...",
+    "manual": "手動",
+    "installMethod": "インストール方法",
+    "autoInstall": "自動インストール",
+    "manualInstall": "手動インストール：",
+    "createFolder": "フォルダ作成",
+    "extract": "抽出",
+    "extracted": "個抽出",
+    "processed": "処理済み",
+    "bundlesReady": "個バンドル準備完了",
+    "extractResult": "抽出結果：",
+    "gamePath": "ゲーム原本：",
+    "copyLocation": "コピー先：",
+    "ffmpeg": {
+      "installing": "インストール開始中...",
+      "installed": "FFmpegインストール完了！更新してください。",
+      "startFailed": "FFmpegインストール開始に失敗",
+      "included": "FFmpegに含まれています",
+      "installMethod": "FFmpegインストール方法"
+    },
+    "os": {
+      "windows": "Windows (winget使用):"
+    },
+    "sevenzip": {
+      "installMethod": "7-Zipインストール方法"
+    },
+    "flatc": {
+      "installMethodPrefix": "",
+      "installMethodSuffix": " インストール方法"
+    },
+    "characters": {
+      "refreshFailed": "キャラクターデータの更新に失敗：",
+      "refresh": "キャラクターデータ更新",
+      "mappingCache": "キャラクターマッピングキャッシュ"
+    },
+    "folder": {
+      "openFailed": "フォルダを開けませんでした：",
+      "operationFailed": "フォルダ操作に失敗："
+    },
+    "save": "保存",
+    "voice": {
+      "checkFailed": "VoiceAssets確認に失敗：",
+      "extractDescription": "ゲーム音声バンドルからキャラクター別MP3を抽出します。音声トレーニングとゼロショットTTSに使用されます。",
+      "extractWarning": "抽出前にゲーム内で希望する言語の音声をすべてダウンロードしてからアセットをコピーしてください。",
+      "extract": "音声抽出",
+      "extractComplete": "抽出完了：{{count}}個のファイル",
+      "startFailed": "抽出開始に失敗",
+      "cancelFailed": "抽出キャンセルに失敗：",
+      "assetsReady": "Assets/Voice準備完了",
+      "bundleCount": "{{lang}}：{{count}}個のバンドル",
+      "extractProgress": "{{processed}} / {{total}} ファイル処理済み • {{extracted}}個抽出",
+      "gameOriginal": "Android/Data/com.YoStarKR.Arknights/files/Bundles/audio/sound_beta_2/voice_kr",
+      "extractResultDetail": "extracted/フォルダにキャラクター別MP3を生成",
+      "copyLocation": "Assets/Voice/voice_kr"
+    },
+    "image": {
+      "checkFailed": "ImageAssets確認に失敗：",
+      "extractDescription": "キャラクターイラストバンドルから画像を抽出します。2種類の画像をそれぞれ抽出できます。",
+      "extractComplete": "抽出完了：{{count}}個の画像",
+      "startFailed": "画像抽出開始に失敗",
+      "cancelFailed": "画像抽出キャンセルに失敗：",
+      "characterIllustration": "キャラクターイラスト",
+      "characterIllustrationDesc": "対話画面に表示されるキャラクター全身イラスト",
+      "folderMissingCharacters": "フォルダが見つかりません — ゲームバンドルのavg/charactersをコピーしてください",
+      "characterPortrait": "キャラクター肖像画",
+      "characterPortraitDesc": "キャラクター顔アイコン（プロフィール、マッピング表示用）",
+      "folderMissingChararts": "フォルダが見つかりません — ゲームバンドルのcharartsをコピーしてください",
+      "gameCharactersPath": "Android/Data/com.YoStarKR.Arknights/files/Bundles/Assets/Image/avg/characters",
+      "gameCharartsPath": "Android/Data/com.YoStarKR.Arknights/files/Bundles/Assets/Image/chararts",
+      "extractResultDetail": "extracted/images/フォルダにPNGを生成",
+      "extractProgress": "{{processed}} / {{total}} 処理済み • {{extracted}}個抽出",
+      "gameCharactersOriginal": "Android/Data/com.YoStarKR.Arknights/files/Bundles/avg/characters",
+      "gameCharartsOriginal": "Android/Data/com.YoStarKR.Arknights/files/Bundles/chararts",
+      "copyCharactersLocation": "Assets/Image/avg/characters",
+      "copyCharartsLocation": "Assets/Image/chararts"
+    },
+    "gamedata": {
+      "checkFailed": "ゲームデータ状態の確認に失敗：",
+      "loadSourceFailed": "データソース設定の読み込みに失敗：",
+      "changeSourceFailed": "データソースの変更に失敗：",
+      "saveRepoFailed": "リポジトリ設定の保存に失敗：",
+      "description": "ストーリーテキストをダウンロードします。ストーリー表示に必須です。",
+      "ready": "ストーリーデータ準備完了（{{count}}個のファイル）",
+      "notReady": "ストーリーデータなし",
+      "lastUpdated": "最終更新：",
+      "update": "データ更新",
+      "download": "データダウンロード",
+      "updateComplete": "更新完了！",
+      "startFailed": "更新開始に失敗",
+      "cancelFailed": "更新キャンセルに失敗：",
+      "source": "データソース",
+      "arkprtsDesc": "ゲームサーバーから直接最新データをダウンロードします。"
+    },
+    "aliases": {
+      "loadFailed": "エイリアス情報の読み込みに失敗：",
+      "extractFailed": "実名抽出に失敗：",
+      "description": "ストーリーで実名で登場するキャラクターをオペレーターと連携します。",
+      "descriptionExample": "例：「ジョルディ」→ ルーメン、「アンジェリーナ」→ アンジェリーナ",
+      "count": "登録済みエイリアス：",
+      "extracting": "抽出中...",
+      "autoExtract": "実名自動抽出",
+      "extractedComplete": "✓ {{charCount}}名のキャラクターから{{aliasCount}}個のエイリアスを追加",
+      "note": "* ハンドブックデータから「実名はXXX」パターンを抽出します"
+    },
+    "language": {
+      "description": "ゲームクライアント言語とTTS合成言語を表示します。",
+      "game": "ゲーム言語",
+      "gptSovits": "GPT-SoVITS言語"
+    },
+    "paths": {
+      "description": "主要リソースフォルダのパスです。フォルダを開くボタンでエクスプローラーで確認できます。",
+      "gptSovits": "GPT-SoVITS",
+      "models": "モデル",
+      "extracted": "抽出された音声",
+      "gamedata": "ゲームデータ"
+    },
+    "whisper": {
+      "description": "音声トレーニング前処理に使用されるWhisper設定です。デフォルトで十分です。",
+      "model": "モデル",
+      "computeType": "計算タイプ",
+      "usage": "使用",
+      "note": "* 音声準備時にFaster-Whisperで長いオーディオを分割します"
+    },
+    "tts": {
+      "description": "デフォルト推奨。音声合成品質に影響を与えるパラメータです。",
+      "temperatureDesc": "音声ランダム性（低いほど安定、高いほど多様）",
+      "topKDesc": "サンプリング多様性（5～15推奨）",
+      "topPDesc": "ニュークレウスサンプリング（1.0で無効）",
+      "speedFactorLabel": "音声速度",
+      "speedFactorDesc": "1.0 = デフォルト速度",
+      "appliedImmediately": "変更は即座に適用されます。"
+    }
+  },
+  "character": {
+    "management": {
+      "title": "キャラクター音声管理"
+    },
+    "testText": "変わりゆく世界の最前線へ、アークナイツ。",
+    "training": {
+      "progress": "{{mode}}：{{name}}",
+      "modePrepare": "準備",
+      "modeFinetune": "トレーニング",
+      "backgroundInfo": "ウィンドウを閉じてもトレーニングは続行されます",
+      "statusPreparing": "準備中",
+      "statusTraining": "トレーニング中"
+    },
+    "queue": {
+      "waitingPrefix": "+",
+      "waitingSuffix": "待機中"
+    },
+    "sort": {
+      "dialogues": "台詞数",
+      "files": "ファイル数",
+      "releaseDate": "リリース順",
+      "name": "名前順"
+    },
+    "filter": {
+      "defaultFirst": "デフォルト優先",
+      "trainedFirst": "トレーニング済優先",
+      "readyFirst": "準備完了優先"
+    },
+    "status": {
+      "ready": "準備完了",
+      "readyCount": "{{ready}}/{{total}} 準備完了",
+      "trained": "トレーニング済",
+      "prepared": "準備完了",
+      "needsPreparation": "準備必要",
+      "notSet": "未設定",
+      "preparing": "準備中",
+      "training": "トレーニング中"
+    },
+    "selected": {
+      "count": "{{count}}個選択"
+    },
+    "batch": {
+      "prepare": "一括準備",
+      "prepareCount": "一括準備 ({{count}})",
+      "prepareTooltip": "選択したキャラクターを一括準備（Zero-shot）",
+      "prepareAndTrain": "準備+トレーニング",
+      "prepareAndTrainCount": "準備+トレーニング ({{count}})",
+      "prepareAndTrainTooltip": "キャラクターあたり数十分かかります。選択したキャラクターを準備後、自動的にトレーニングを開始",
+      "train": "一括トレーニング",
+      "trainCount": "一括トレーニング ({{count}})",
+      "trainTooltip": "キャラクターあたり数十分かかります。選択したキャラクターを一括トレーニング（Fine-tuning）"
+    },
+    "reset": {
+      "warning": "すべての準備/トレーニングデータ（{{count}}個）が削除されます。この操作は取り消せません。",
+      "tooltip": "すべての準備データをリセット"
+    },
+    "section": {
+      "defaultVoices": "デフォルト音声設定"
+    },
+    "badge": {
+      "female": "女 {{count}}",
+      "male": "男 {{count}}",
+      "narrator": "ナレーター",
+      "defaultFemale": "デフォルト(女)",
+      "defaultMale": "デフォルト(男)",
+      "unknownSpeaker": "???"
+    },
+    "default": {
+      "female": "デフォルト（女性）：",
+      "male": "デフォルト（男性）："
+    },
+    "narration": {
+      "label": "ナレーション：",
+      "labelShort": "ナレーション"
+    },
+    "unknownSpeaker": {
+      "label": "???：",
+      "labelFull": "???（不明な話者）"
+    },
+    "note": {
+      "genders": "* デフォルト（女性）：一般キャラクター / デフォルト（男性）：「男性」「男」「少年」「青年」を含むキャラクター",
+      "unknownSpeaker": "* ???：スプライトのない「???」話者に使用する音声"
+    },
+    "images": {
+      "count": "画像：{{total}}個（{{folders}}フォルダ）"
+    },
+    "info": {
+      "dialogues": "台詞",
+      "extracted": "抽出",
+      "preprocessing": "前処理"
+    },
+    "button": {
+      "unsetDefault": "デフォルト解除",
+      "setDefault": "デフォルト",
+      "unsetNarrator": "ナレーション解除",
+      "setNarrator": "ナレーション",
+      "unsetUnknownSpeaker": "???解除",
+      "setUnknownSpeaker": "???",
+      "test": "テスト",
+      "train": "トレーニング",
+      "prepare": "準備"
+    },
+    "gptSovitsModelTrain": "GPT-SoVITSモデルトレーニング",
+    "resetModelTooltip": "準備/トレーニングデータを削除",
+    "firstPrepareNote": "トレーニングは最初に「準備」を完了する必要があります",
+    "voiceTest": {
+      "label": "音声テスト：",
+      "selectCharacter": "キャラクターを選択...",
+      "inputText": "テストテキストを入力...",
+      "playbackFailed": "オーディオ再生に失敗",
+      "synthesisFailed": "音声合成に失敗"
+    },
+    "zeroShotMode": {
+      "label": "ゼロショット強制モード",
+      "description": "（トレーニング済みモデルを無視、品質比較用）",
+      "toggleFailed": "ゼロショットモードの切り替えに失敗：",
+      "needsConnection": "GPT-SoVITS接続が必要",
+      "switchToTrained": "クリックしてトレーニング済みモデルを使用に切り替え",
+      "switchToZeroShot": "クリックしてゼロショットモードに切り替え"
+    },
+    "aliases": {
+      "manageTitle": "エイリアス管理：{{name}}",
+      "registered": "登録済みエイリアス",
+      "suggestions": "提案（プロフィールから検出）",
+      "newAliasInput": "新しいエイリアスを入力...",
+      "note": "* 実名やニックネームを登録すると、ストーリーでその名前で登場した時にこのキャラクターとして認識されます",
+      "count": "エイリアス {{count}}",
+      "tooltipPrefix": "エイリアス：",
+      "addTooltip": "エイリアスを追加",
+      "addFailed": "エイリアスの追加に失敗",
+      "deleteFailed": "エイリアスの削除に失敗"
+    },
+    "dialogueCount": "{{count}}台詞",
+    "fileCount": "{{count}}個"
+  },
+  "dubbing": {
+    "setup": {
+      "title": "吹き替え設定"
+    },
+    "button": {
+      "backToGroup": "← グループ",
+      "cancelPrepare": "準備キャンセル",
+      "batchPrepare": "音声一括準備",
+      "batchTrain": "音声一括トレーニング（Fine-tune）",
+      "voiceMappingSetup": "音声マッピング設定",
+      "startPreRendering": "事前吹き替え開始",
+      "cancelRendering": "レンダリングキャンセル",
+      "reRender": "再レンダリング",
+      "continueRendering": "続きをレンダリング",
+      "proceed": "続行",
+      "stopDubbing": "吹き替え停止",
+      "startDubbing": "吹き替え開始",
+      "pauseMonitoring": "モニタリング一時停止",
+      "resumeMonitoring": "モニタリング再開",
+      "stopPlayback": "再生停止",
+      "stop": "終了",
+      "capturePreview": "キャプチャプレビュー",
+      "capture": "キャプチャ",
+      "refreshWindowList": "ウィンドウリスト更新",
+      "deleteCache": "キャッシュ削除"
+    },
+    "section": {
+      "characters": "登場キャラクター",
+      "gptSovits": "GPT-SoVITS",
+      "voicePreparation": "音声準備",
+      "voiceMapping": "音声マッピング",
+      "playbackSettings": "再生設定",
+      "preRendering": "事前吹き替え"
+    },
+    "characters": {
+      "hasVoice": "音声 {{withVoice}}/{{total}}",
+      "prepared": "準備 {{trained}}/{{withVoice}}"
+    },
+    "status": {
+      "preprocessing": "オーディオ分析中",
+      "preparing": "準備中",
+      "prepared": "準備完了 {{trained}}/{{withVoice}}",
+      "allPrepared": "全キャラクター準備完了",
+      "noCharactersWithVoice": "音声データがあるキャラクターがいません",
+      "trainableCount": "{{count}}個のキャラクター準備可能",
+      "finetuneableCount": "{{count}}個のキャラクタートレーニング可能",
+      "allHaveVoice": "すべて保有",
+      "allHaveVoiceFull": "すべてのキャラクターが音声を保有しています",
+      "preRenderingComplete": "事前吹き替え完了",
+      "rendering": "レンダリング中",
+      "renderingComplete": "レンダリング完了",
+      "monitoring": "モニタリング中",
+      "waitingForPlayback": "再生待機",
+      "configuringVoice": "音声設定中..."
+    },
+    "mapping": {
+      "count": "{{mapped}}/{{total}}名マッピング",
+      "description": "音声がないキャラクターに代替音声を指定します"
+    },
+    "narrator": {
+      "voice": "音声：{{name}}",
+      "setupGuide": "キャラクター管理でナレーション音声を設定してください"
+    },
+    "unknownSpeaker": {
+      "voice": "音声：{{name}}",
+      "setupGuide": "キャラクター管理で???音声を設定してください"
+    },
+    "note": {
+      "greenMeansVoice": "* 緑 = 音声データ保有",
+      "startGptSovits": "* ヘッダーからGPT-SoVITSを起動してください",
+      "prepareVsTrain": "* 準備：Zero-shot / トレーニング：モデルFine-tuning",
+      "prepareSufficient": "* 音声トレーニングなしで準備だけでも吹き替え実行可能",
+      "resetInCharacterManagement": "* リセットはキャラクター管理から行えます",
+      "startGptSovitsFirst": "* まずGPT-SoVITSを起動してください",
+      "realtimeDuringPreRendering": "* 事前吹き替え中でも吹き替え開始でリアルタイム再生可能"
+    },
+    "warning": {
+      "noDefaultVoices": "* デフォルト音声が設定されていません。キャラクター管理で設定してください。",
+      "narratorNotSet": "ナレーターが設定されていません（{{count}}個のナレーション台詞）",
+      "unknownSpeakerNotSet": "???話者が設定されていません（{{count}}個の台詞）",
+      "selectWindowFirst": "吹き替えを開始するにはキャプチャウィンドウを先に選択してください",
+      "vramShortage": "VRAM不足時にOCR品質低下やクラッシュが発生する可能性があります。"
+    },
+    "info": {
+      "skipDialoguesInfo": "該当台詞はスキップされます。キャラクター管理で設定できます。",
+      "usesCachedVoice": "吹き替えモードでキャッシュされた音声を使用します",
+      "partialCache": "一部の台詞のみキャッシュ済み。残りはリアルタイムで合成されます。",
+      "gpuUsage": "事前吹き替え中に吹き替えモードを開始するとOCRと事前吹き替えが同時にGPUを使用します。",
+      "gpuLockEnabled": "GPUロックが有効化されているため、OCRと事前吹き替えは順次進行します。",
+      "disableGpuLock": "同時に実行するには右上でGPUロックを解除してください。",
+      "gpuLockDisabled": "GPUロックが無効化状態です。",
+      "noPreRendering": "事前吹き替えが行われていないため音声再生ができません。",
+      "canStartDuringPreRendering": "事前吹き替え中でも同時に吹き替えモードを開始できます。",
+      "simultaneousRendering": "事前吹き替えとリアルタイム吹き替えを同時実行中",
+      "gpuAndVram": "同時に実行するには右上でGPUロックを解除してください。VRAM不足時にパフォーマンス低下やクラッシュが発生する可能性があります。"
+    },
+    "autoplay": {
+      "onMatch": "マッチ時に自動再生"
+    },
+    "message": {
+      "selectEpisodeFirst": "まずエピソードを選択してください"
+    },
+    "preRendering": {
+      "description": "エピソード全体の音声を事前に生成します"
+    },
+    "dialog": {
+      "confirmSpeaker": "話者設定確認",
+      "preRenderingRunning": "事前吹き替え実行中",
+      "preRenderingRequired": "事前吹き替えが必要"
+    },
+    "confirm": {
+      "deleteRenderCache": "レンダーキャッシュを削除しますか？"
+    },
+    "queue": {
+      "label": "キュー：",
+      "count": "{{count}}個",
+      "more": "他{{count}}個"
+    },
+    "label": {
+      "captureWindow": "キャプチャウィンドウ",
+      "ocr": "OCR：",
+      "matching": "マッチ："
+    },
+    "placeholder": {
+      "selectWindow": "ウィンドウを選択してください"
+    },
+    "region": {
+      "dialogue": "台詞",
+      "dialoguePercent": "（下部20%）",
+      "subtitle": "字幕",
+      "subtitlePercent": "（中央40〜70%）"
+    },
+    "preview": {
+      "dialogueArea": "台詞領域プレビュー",
+      "subtitleArea": "字幕領域プレビュー"
+    },
+    "rendering": {
+      "count": "{{completed}}/{{total}}",
+      "percent": "{{percent}}%"
+    },
+    "selectWindowForCapture": "キャプチャするウィンドウを選択してください"
+  },
+  "group": {
+    "section": {
+      "setup": "グループ設定",
+      "characters": "グループキャラクター",
+      "voiceMapping": "音声マッピング",
+      "batchTasks": "一括作業",
+      "required": "必須",
+      "quality": "高品質（任意）",
+      "preRendering": "グループ事前吹き替え",
+      "gptSovits": "GPT-SoVITS"
+    },
+    "info": {
+      "name": "{{name}}",
+      "episodeCount": "{{count}}個のエピソード"
+    },
+    "characters": {
+      "hasVoice": "音声 {{withVoice}}/{{total}}"
+    },
+    "rendering": {
+      "progress": "{{completed}}/{{total}} ({{percent}}%)"
+    },
+    "status": {
+      "allHaveVoice": "すべてのキャラクターが音声を保有",
+      "preparedCount": "{{prepared}}/{{total}} 完了",
+      "finetunedCount": "{{finetuned}}/{{total}} 完了",
+      "executing": "実行中...",
+      "synthesizing": "合成中..."
+    },
+    "mapping": {
+      "count": "{{mapped}}/{{total}}名マッピング"
+    },
+    "task": {
+      "prepare": "音声準備（prepare）",
+      "render": "事前吹き替え（render）",
+      "finetune": "モデルトレーニング（fine-tune）"
+    },
+    "label": {
+      "trainTargets": "トレーニング対象："
+    },
+    "target": {
+      "appearanceCharacters": "登場キャラクター（音声保有）",
+      "mappedCharacters": "マッピングされたキャラクター"
+    },
+    "warning": {
+      "timeConsuming": "キャラクターあたり数十分かかる場合があります"
+    },
+    "note": {
+      "startGptSovitsFirst": "* まずGPT-SoVITSを起動してください"
+    },
+    "button": {
+      "voiceMappingSetup": "音声マッピング設定",
+      "batchExecute": "一括実行"
+    },
+    "queue": {
+      "label": "キュー：{{count}}個"
+    },
+    "episodes": {
+      "count": "{{completed}}/{{total}} エピソード"
+    }
+  },
+  "dialogue": {
+    "image": {
+      "enlargeTitle": "クリックで拡大"
+    },
+    "message": {
+      "selectEpisode": "エピソードを選択してください"
+    },
+    "button": {
+      "showCharId": "キャラクターIDを表示",
+      "deleteAudio": "レンダリング音声を削除"
+    },
+    "tag": {
+      "dubbingMode": "吹き替えモード",
+      "narration": "ナレーション",
+      "subtitle": "字幕",
+      "sticker": "スタンプ",
+      "popup": "ポップアップ"
+    },
+    "info": {
+      "dialogueCount": "{{count}}個の台詞",
+      "characterCount": "{{count}}名のキャラクター",
+      "voiceModel": "音声：{{charId}}{{charName}} [{{modelType}}]"
+    },
+    "note": {
+      "previewInfo": "音声が準備された台詞は再生ボタンでプレビューできます。事前合成された音声がある場合は優先して再生されます。"
+    },
+    "confirm": {
+      "deleteAudio": "この台詞のレンダリング音声を削除しますか？"
+    },
+    "status": {
+      "rendering": "レンダリング中",
+      "renderingComplete": "レンダリング完了",
+      "hasVoice": "音声あり",
+      "noVoice": "音声なし",
+      "playing": "再生中...",
+      "characterNotPrepared": "音声が準備されていないキャラクター",
+      "availableAfterPrepare": "吹き替え準備後に使用可能"
+    },
+    "match": {
+      "similarity": "マッチ {{percent}}%"
+    },
+    "label": {
+      "rendered": "レンダリング",
+      "realtime": "リアルタイム"
+    }
+  },
+  "episode": {
+    "error": {
+      "serverNotConnected": "サーバー未接続",
+      "runBackendServer": "バックエンドサーバーを起動してください"
+    },
+    "placeholder": {
+      "search": "ストーリー検索..."
+    },
+    "message": {
+      "noStories": "ストーリーなし",
+      "noSearchResults": "検索結果なし"
+    },
+    "info": {
+      "storyCount": "{{count}}個のストーリー"
+    }
+  },
+  "status": {
+    "audio": {
+      "unmute": "ミュート解除",
+      "mute": "ミュート"
+    }
+  },
+  "install": {
+    "title": "GPT-SoVITSインストール",
+    "stage": {
+      "downloading": "ダウンロード",
+      "extracting": "解凍",
+      "verifying": "検証",
+      "complete": "完了"
+    },
+    "error": {
+      "loadFailed": "インストール情報の読み込みに失敗：",
+      "startFailed": "インストール開始に失敗",
+      "cancelFailed": "インストールキャンセルに失敗：",
+      "cleanupFailed": "クリーンアップに失敗："
+    },
+    "status": {
+      "starting": "開始中...",
+      "complete": "インストール完了！",
+      "installed": "インストール済み",
+      "notInstalled": "未インストール",
+      "alreadyInstalled": "インストール済み"
+    },
+    "confirm": {
+      "deleteFolder": "インストールフォルダを削除しますか？"
+    },
+    "info": {
+      "pytorch": "PyTorch: {{version}}",
+      "cudaAvailable": "CUDA：使用可能",
+      "cudaNotAvailable": "CUDA：使用不可",
+      "diskSpace": "ダウンロード約8.2GB、解凍後約20GB",
+      "gpuSupport": "✓ GPUアクセラレーション対応（CUDA含む）",
+      "includedPackages": "統合パッケージにPyTorch + CUDAが含まれています"
+    },
+    "section": {
+      "items": "インストール項目"
+    },
+    "item": {
+      "gptSovits": "• GPT-SoVITS v2pro（2025.06最新）",
+      "python": "• Pythonランタイム含む",
+      "pytorch": "• PyTorch + CUDA含む",
+      "dependencies": "• すべての依存関係含む"
+    },
+    "button": {
+      "start": "インストール開始",
+      "reinstall": "フォルダ削除後再インストール",
+      "cancel": "インストールキャンセル",
+      "cleanup": "クリーンアップ"
+    }
+  },
+  "mapping": {
+    "title": "音声マッピング設定",
+    "description": "音声がないキャラクターに代替音声を指定します",
+    "info": {
+      "voicelessCount": "音声なしキャラクター：{{count}}名",
+      "mappedCount": "マッピング設定：{{mapped}}/{{total}}名"
+    },
+    "message": {
+      "allHaveVoice": "すべてのキャラクターが音声を保有しています"
+    },
+    "note": {
+      "autoAssignment": "* 自動：名前ベースの分配 / 女性・男性：性別固定",
+      "autoSave": "* 変更時に自動保存（他のエピソードにも適用）"
+    },
+    "button": {
+      "auto": "自動",
+      "resetTooltip": "マッピングリセット（自動選択に戻す）"
+    },
+    "tooltip": {
+      "auto": "自動：{{name}}",
+      "female": "女性：{{name}}",
+      "randomFemale": "女性デフォルト音声からランダム選択",
+      "male": "男性：{{name}}",
+      "randomMale": "男性デフォルト音声からランダム選択",
+      "search": "キャラクター検索"
+    },
+    "placeholder": {
+      "search": "キャラクター検索..."
+    },
+    "tag": {
+      "table": "テーブル",
+      "default": "デフォルト"
+    },
+    "status": {
+      "mappingRequired": "マッピング必要",
+      "saved": "保存済み"
+    }
+  },
+  "languageSettings": {
+    "title": "言語設定",
+    "displayLanguage": "表示言語",
+    "displayDescription": "ストーリーテキストとUIに表示される言語",
+    "voiceLanguage": "音声言語",
+    "voiceDescription": "TTS音声合成に使用される言語",
+    "notAvailable": "データなし",
+    "currentCombo": "ストーリー: {{display}} / 音声: {{voice}}"
+  }
+}

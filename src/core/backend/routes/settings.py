@@ -45,6 +45,8 @@ class SettingsResponse(BaseModel):
     gamedata_path: str
 
     # 언어 설정
+    display_language: str
+    voice_language_short: str
     game_language: str
     voice_language: str
     gpt_sovits_language: str
@@ -204,6 +206,8 @@ async def get_settings():
         models_path=str(config.models_path),
         extracted_path=str(config.extracted_path),
         gamedata_path=str(config.gamedata_path),
+        display_language=config.display_language,
+        voice_language_short=config.voice_language_short,
         game_language=config.game_language,
         voice_language=config.voice_language,
         gpt_sovits_language=config.gpt_sovits_language,
@@ -212,6 +216,100 @@ async def get_settings():
         whisper_compute_type=gpt_config.whisper_compute_type,
         use_whisper_preprocessing=gpt_config.use_whisper_preprocessing,
         dependencies=dependencies,
+    )
+
+
+# ============================================================================
+# 언어 설정 엔드포인트
+# ============================================================================
+
+
+class LanguageSettingsRequest(BaseModel):
+    """언어 설정 변경 요청"""
+    display_language: Optional[str] = None  # "ko_KR", "ja_JP", "en_US"
+    voice_language: Optional[str] = None    # "ko", "ja", "en"
+
+
+class LanguageSettingsResponse(BaseModel):
+    """언어 설정 응답"""
+    display_language: str
+    voice_language: str           # 단축 코드
+    voice_folder: str             # 음성 폴더명
+    gpt_sovits_language: str
+    available_display_languages: list[dict]  # [{short, locale, label, available}]
+    available_voice_languages: list[dict]    # [{short, label, available}]
+
+
+def _check_available_languages() -> tuple[list[dict], list[dict]]:
+    """가용 표시/음성 언어 목록 생성"""
+    from ...common.language_codes import (
+        SUPPORTED_LANGUAGES, LOCALE_TO_SERVER, SHORT_TO_VOICE_FOLDER,
+    )
+
+    display_langs = []
+    for lang in SUPPORTED_LANGUAGES:
+        server = LOCALE_TO_SERVER.get(lang["locale"], "")
+        gamedata_dir = config.gamedata_path / server / "gamedata"
+        display_langs.append({
+            "short": lang["short"],
+            "locale": lang["locale"],
+            "label": lang["native"],
+            "available": gamedata_dir.exists(),
+        })
+
+    voice_langs = []
+    for lang in SUPPORTED_LANGUAGES:
+        voice_folder = SHORT_TO_VOICE_FOLDER.get(lang["short"], "")
+        voice_dir = config.extracted_path / voice_folder
+        voice_langs.append({
+            "short": lang["short"],
+            "label": lang["native"],
+            "available": voice_dir.exists() and any(voice_dir.iterdir()) if voice_dir.exists() else False,
+        })
+
+    return display_langs, voice_langs
+
+
+@router.get("/language", response_model=LanguageSettingsResponse)
+async def get_language_settings():
+    """현재 언어 설정 조회"""
+    display_langs, voice_langs = _check_available_languages()
+
+    return LanguageSettingsResponse(
+        display_language=config.display_language,
+        voice_language=config.voice_language_short,
+        voice_folder=config.voice_language,
+        gpt_sovits_language=config.gpt_sovits_language,
+        available_display_languages=display_langs,
+        available_voice_languages=voice_langs,
+    )
+
+
+@router.put("/language", response_model=LanguageSettingsResponse)
+async def update_language_settings(request: LanguageSettingsRequest):
+    """언어 설정 변경"""
+    from ..shared_loaders import reset_all
+
+    if request.display_language is not None:
+        config.apply_display_language(request.display_language)
+        # 표시 언어 변경 → 스토리/캐릭터 데이터 캐시 리셋
+        reset_all()
+
+    if request.voice_language is not None:
+        config.apply_voice_language(request.voice_language)
+        # 음성 언어 변경 → 음성 매퍼 리셋
+        from ..shared_loaders import reset_voice_mapper
+        reset_voice_mapper()
+
+    display_langs, voice_langs = _check_available_languages()
+
+    return LanguageSettingsResponse(
+        display_language=config.display_language,
+        voice_language=config.voice_language_short,
+        voice_folder=config.voice_language,
+        gpt_sovits_language=config.gpt_sovits_language,
+        available_display_languages=display_langs,
+        available_voice_languages=voice_langs,
     )
 
 
@@ -908,13 +1006,6 @@ async def check_image_assets():
     """Assets/Image 폴더 상태 확인"""
     image_assets_dir = Path("Assets/Image")
 
-    if not image_assets_dir.exists():
-        return {
-            "exists": False,
-            "message": "Assets/Image 폴더가 없습니다",
-            "hint": "게임 클라이언트의 번들을 Assets/Image/avg/characters, Assets/Image/chararts로 복사해주세요"
-        }
-
     # avg/characters 폴더 확인
     characters_dir = image_assets_dir / "avg" / "characters"
     characters_count = len(list(characters_dir.glob("*.ab"))) if characters_dir.exists() else 0
@@ -923,17 +1014,6 @@ async def check_image_assets():
     chararts_dir = image_assets_dir / "chararts"
     chararts_count = len(list(chararts_dir.glob("*.ab"))) if chararts_dir.exists() else 0
 
-    total_bundles = characters_count + chararts_count
-
-    if total_bundles == 0:
-        return {
-            "exists": True,
-            "path": str(image_assets_dir.absolute()),
-            "characters_exists": False,
-            "chararts_exists": False,
-            "total_bundles": 0
-        }
-
     return {
         "exists": True,
         "path": str(image_assets_dir.absolute()),
@@ -941,7 +1021,7 @@ async def check_image_assets():
         "characters_bundles": characters_count,
         "chararts_exists": chararts_count > 0,
         "chararts_bundles": chararts_count,
-        "total_bundles": total_bundles
+        "total_bundles": characters_count + chararts_count,
     }
 
 

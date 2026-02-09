@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { settingsApi, createInstallStream, type InstallProgress, type GptSovitsInstallInfo } from '../services/api'
 
 interface GPTSoVITSInstallDialogProps {
@@ -7,29 +8,30 @@ interface GPTSoVITSInstallDialogProps {
   onInstallComplete: () => void
 }
 
-const STAGES = [
-  { id: 'downloading', label: '다운로드' },
-  { id: 'extracting', label: '압축 해제' },
-  { id: 'verifying', label: '검증' },
-  { id: 'complete', label: '완료' },
-]
-
-function getStageIndex(stage: string | undefined): number {
-  if (!stage) return -1
-  const index = STAGES.findIndex(s => s.id === stage)
-  return index
-}
-
 export default function GPTSoVITSInstallDialog({
   isOpen,
   onClose,
   onInstallComplete,
 }: GPTSoVITSInstallDialogProps) {
+  const { t } = useTranslation()
   const [installInfo, setInstallInfo] = useState<GptSovitsInstallInfo | null>(null)
   const [isInstalling, setIsInstalling] = useState(false)
   const [progress, setProgress] = useState<InstallProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
   const streamRef = useRef<{ close: () => void } | null>(null)
+
+  const STAGES = [
+    { id: 'downloading', label: t('install.stage.downloading') },
+    { id: 'extracting', label: t('install.stage.extracting') },
+    { id: 'verifying', label: t('install.stage.verifying') },
+    { id: 'complete', label: t('install.stage.complete') },
+  ]
+
+  function getStageIndex(stage: string | undefined): number {
+    if (!stage) return -1
+    const index = STAGES.findIndex(s => s.id === stage)
+    return index
+  }
 
   useEffect(() => {
     if (isOpen) {
@@ -49,13 +51,13 @@ export default function GPTSoVITSInstallDialog({
       const info = await settingsApi.getGptSovitsInstallInfo()
       setInstallInfo(info)
     } catch (err) {
-      console.error('설치 정보 로드 실패:', err)
+      console.error(t('install.error.loadFailed'), err)
     }
   }
 
   const handleStartInstall = async () => {
     setIsInstalling(true)
-    setProgress({ stage: 'downloading_python', progress: 0, message: '시작 중...' })
+    setProgress({ stage: 'downloading_python', progress: 0, message: t('install.status.starting') })
     setError(null)
 
     try {
@@ -72,7 +74,7 @@ export default function GPTSoVITSInstallDialog({
         },
         onComplete: () => {
           setIsInstalling(false)
-          setProgress({ stage: 'complete', progress: 1, message: '설치 완료!' })
+          setProgress({ stage: 'complete', progress: 1, message: t('install.status.complete') })
           loadInstallInfo()
           onInstallComplete()
         },
@@ -83,7 +85,7 @@ export default function GPTSoVITSInstallDialog({
       })
     } catch (err) {
       setIsInstalling(false)
-      setError(err instanceof Error ? err.message : '설치 시작 실패')
+      setError(err instanceof Error ? err.message : t('install.error.startFailed'))
     }
   }
 
@@ -97,12 +99,12 @@ export default function GPTSoVITSInstallDialog({
       setIsInstalling(false)
       setProgress(null)
     } catch (err) {
-      console.error('설치 취소 실패:', err)
+      console.error(t('install.error.cancelFailed'), err)
     }
   }
 
   const handleCleanup = async () => {
-    if (!confirm('설치 폴더를 삭제하시겠습니까?')) return
+    if (!confirm(t('install.confirm.deleteFolder'))) return
 
     try {
       await settingsApi.cleanupGptSovitsInstall()
@@ -110,7 +112,7 @@ export default function GPTSoVITSInstallDialog({
       setProgress(null)
       setError(null)
     } catch (err) {
-      console.error('정리 실패:', err)
+      console.error(t('install.error.cleanupFailed'), err)
     }
   }
 
@@ -131,7 +133,7 @@ export default function GPTSoVITSInstallDialog({
         {/* 헤더 */}
         <div className="p-4 border-b border-ark-border flex items-center justify-between">
           <h3 className="text-lg font-bold text-ark-white">
-            GPT-SoVITS 설치
+            {t('install.title')}
           </h3>
           {!isInstalling && (
             <button
@@ -156,16 +158,16 @@ export default function GPTSoVITSInstallDialog({
                   <div className="flex items-center gap-2 mb-2">
                     <span className={`w-2 h-2 rounded-full ${installInfo.is_installed ? 'bg-green-500' : 'bg-yellow-500'}`} />
                     <span className="text-sm text-ark-white">
-                      {installInfo.is_installed ? '설치됨' : '미설치'}
+                      {installInfo.is_installed ? t('install.status.installed') : t('install.status.notInstalled')}
                     </span>
                   </div>
                   {installInfo.is_installed && (
                     <div className="text-xs text-ark-gray space-y-1">
                       {installInfo.torch_version && (
-                        <p>PyTorch: {installInfo.torch_version}</p>
+                        <p>{t('install.info.pytorch', { version: installInfo.torch_version })}</p>
                       )}
                       {installInfo.cuda_available !== undefined && (
-                        <p>CUDA: {installInfo.cuda_available ? '사용 가능' : '사용 불가'}</p>
+                        <p>{installInfo.cuda_available ? t('install.info.cudaAvailable') : t('install.info.cudaNotAvailable')}</p>
                       )}
                     </div>
                   )}
@@ -174,25 +176,25 @@ export default function GPTSoVITSInstallDialog({
 
               {/* 설치 안내 */}
               <div className="p-3 bg-ark-panel rounded border border-ark-border">
-                <p className="text-sm text-ark-white mb-2">설치 항목</p>
+                <p className="text-sm text-ark-white mb-2">{t('install.section.items')}</p>
                 <ul className="text-xs text-ark-gray space-y-1">
-                  <li>• GPT-SoVITS v2pro (2025.06 최신)</li>
-                  <li>• Python 런타임 포함</li>
-                  <li>• PyTorch + CUDA 포함</li>
-                  <li>• 모든 종속성 포함</li>
+                  <li>{t('install.item.gptSovits')}</li>
+                  <li>{t('install.item.python')}</li>
+                  <li>{t('install.item.pytorch')}</li>
+                  <li>{t('install.item.dependencies')}</li>
                 </ul>
                 <p className="text-xs text-ark-orange mt-2">
-                  다운로드 ~8.2GB, 압축 해제 후 ~20GB
+                  {t('install.info.diskSpace')}
                 </p>
               </div>
 
               {/* GPU 정보 */}
               <div className="p-3 bg-green-500/10 border border-green-500/30 rounded">
                 <p className="text-sm text-green-400">
-                  ✓ GPU 가속 지원 (CUDA 포함)
+                  {t('install.info.gpuSupport')}
                 </p>
                 <p className="text-xs text-ark-gray mt-1">
-                  통합 패키지에 PyTorch + CUDA가 포함되어 있습니다
+                  {t('install.info.includedPackages')}
                 </p>
               </div>
 
@@ -202,14 +204,14 @@ export default function GPTSoVITSInstallDialog({
                   onClick={onClose}
                   className="flex-1 ark-btn ark-btn-secondary"
                 >
-                  취소
+                  {t('common.cancel')}
                 </button>
                 <button
                   onClick={handleStartInstall}
                   className="flex-1 ark-btn ark-btn-primary"
                   disabled={installInfo?.is_installed}
                 >
-                  {installInfo?.is_installed ? '이미 설치됨' : '설치 시작'}
+                  {installInfo?.is_installed ? t('install.status.alreadyInstalled') : t('install.button.start')}
                 </button>
               </div>
 
@@ -219,7 +221,7 @@ export default function GPTSoVITSInstallDialog({
                   onClick={handleCleanup}
                   className="w-full text-xs text-red-400 hover:text-red-300"
                 >
-                  설치 폴더 삭제 후 재설치
+                  {t('install.button.reinstall')}
                 </button>
               )}
             </div>
@@ -279,14 +281,14 @@ export default function GPTSoVITSInstallDialog({
                   onClick={handleCancelInstall}
                   className="w-full ark-btn ark-btn-secondary"
                 >
-                  설치 취소
+                  {t('install.button.cancel')}
                 </button>
               ) : progress?.stage === 'complete' ? (
                 <button
                   onClick={onClose}
                   className="w-full ark-btn ark-btn-primary"
                 >
-                  완료
+                  {t('common.complete')}
                 </button>
               ) : progress?.stage === 'error' ? (
                 <div className="flex gap-3">
@@ -294,7 +296,7 @@ export default function GPTSoVITSInstallDialog({
                     onClick={handleCleanup}
                     className="flex-1 ark-btn ark-btn-secondary"
                   >
-                    정리
+                    {t('install.button.cleanup')}
                   </button>
                   <button
                     onClick={() => {
@@ -303,7 +305,7 @@ export default function GPTSoVITSInstallDialog({
                     }}
                     className="flex-1 ark-btn ark-btn-primary"
                   >
-                    다시 시도
+                    {t('common.retry')}
                   </button>
                 </div>
               ) : null}

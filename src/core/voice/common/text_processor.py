@@ -262,55 +262,54 @@ def normalize_numbers_for_tts(text: str) -> str:
     return text
 
 
-def preprocess_text_for_tts(text: str) -> str | None:
-    """TTS 합성을 위한 텍스트 전처리
+def _preprocess_common(text: str) -> str | None:
+    """언어 공통 텍스트 전처리 (특수문자 정리 등)
 
-    GPT-SoVITS 등 TTS 엔진이 제대로 처리하지 못하는 패턴을 변환합니다.
+    Returns:
+        정리된 텍스트, 또는 None (합성 불가능한 텍스트)
+    """
+    meaningful_chars = re.sub(r"[.\s…,?!]+", "", text)
+    if not meaningful_chars:
+        return "음..."
+
+    # 괄호 안의 연출 지시문 제거
+    text = re.sub(r"\([^)]+\)", "", text)
+    # 연속 마침표/말줄임표
+    text = re.sub(r"\.{2,}", ".", text)
+    text = re.sub(r"…+", ".", text)
+    # 연속 물음표/느낌표
+    text = re.sub(r"[?!]{2,}", "?", text)
+    # 공백 정리
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"^[,.。\s]+", "", text)
+    text = re.sub(r",\s*,+", ",", text)
+
+    if not text.strip():
+        return None
+
+    return text
+
+
+def preprocess_text_for_tts(text: str, language: str = "ko") -> str | None:
+    """TTS 합성을 위한 텍스트 전처리
 
     Args:
         text: 원본 텍스트
+        language: 언어 코드 (ko, ja, en, zh)
 
     Returns:
         전처리된 텍스트, 또는 None (합성 불가능한 텍스트)
     """
-    # 원본 텍스트가 의미있는 내용을 포함하는지 확인
-    # 말줄임표/마침표만 있는 경우 비언어적 발성으로 대체
-    meaningful_chars = re.sub(r"[.\s…,?!]+", "", text)
-    if not meaningful_chars:
-        # 말줄임표나 문장부호만 있는 텍스트 → 비언어적 발성
-        return "음..."
+    text = _preprocess_common(text)
+    if text is None:
+        return None
 
-    # 괄호 안의 감탄사/의성어 제거 (예: "(한숨)" -> "")
-    # TTS로 읽을 필요 없는 연출 지시문
-    text = re.sub(r"\([^)]+\)", "", text)
+    # 한국어 전용 변환
+    if language == "ko":
+        text = normalize_time_for_tts(text)
+        text = normalize_units_to_korean(text)
+        text = normalize_numbers_for_tts(text)
 
-    # 연속된 마침표 및 말줄임표 정리 (... 또는 … -> 단일 마침표)
-    # 분할 시 마침표 기준으로 나뉘므로 단일화만 수행
-    text = re.sub(r"\.{2,}", ".", text)
-    text = re.sub(r"…+", ".", text)  # 유니코드 말줄임표(…)도 처리
-
-    # 연속된 물음표/느낌표 단순화
-    text = re.sub(r"[?!]{2,}", "?", text)
-
-    # 앞뒤 공백 및 연속 공백 정리
-    text = re.sub(r"\s+", " ", text).strip()
-
-    # 문장 시작의 쉼표/마침표 제거 (한글 마침표 포함)
-    text = re.sub(r"^[,.。\s]+", "", text)
-
-    # 연속된 쉼표 정리
-    text = re.sub(r",\s*,+", ",", text)
-
-    # 시간 표기를 한국어로 변환 (11:37 P.M. → 오후 11시 37분)
-    text = normalize_time_for_tts(text)
-
-    # 영문 단위 약어를 한국어로 변환
-    text = normalize_units_to_korean(text)
-
-    # 숫자를 한국어 읽기로 변환
-    text = normalize_numbers_for_tts(text)
-
-    # 전처리 후에도 빈 문자열이면 None 반환
     if not text.strip():
         return None
 

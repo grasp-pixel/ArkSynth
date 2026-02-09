@@ -1,0 +1,777 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "cancel": "Cancel",
+    "close": "Close",
+    "refresh": "Refresh",
+    "refreshing": "Refreshing...",
+    "retry": "Retry",
+    "copy": "Copy",
+    "open": "Open",
+    "search": "Search",
+    "searching": "Searching...",
+    "reset": "Reset",
+    "add": "Add",
+    "delete": "Delete",
+    "accept": "Accept",
+    "dismiss": "Dismiss",
+    "ok": "OK",
+    "complete": "Complete",
+    "preview": "Preview",
+    "play": "Play",
+    "stop": "Stop",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "connected": "Connected",
+    "waiting": "Waiting",
+    "pending": "Pending",
+    "completed": "Completed",
+    "partiallyCompleted": "Partially Completed",
+    "cached": "(Cached)",
+    "checking": "Checking...",
+    "selectAll": "Select All",
+    "deselect": "Deselect",
+    "noSearchResults": "No search results",
+    "noCharacters": "No characters",
+    "none": "-",
+    "empty": "None",
+    "searchCharacter": "Search characters...",
+    "sortBy": "Sort:",
+    "error": "Error"
+  },
+  "app": {
+    "title": "ArkSynth",
+    "description": "App for dubbing Arknights stories with character voices",
+    "alert": {
+      "selectGroup": "Please select a story group first"
+    },
+    "header": {
+      "homeTitle": "Go to Home",
+      "dubbing": "Dubbing",
+      "characterManagement": "Character Management"
+    },
+    "gpt": {
+      "synthesizing": "Synthesizing...",
+      "label": "GPT-SoVITS",
+      "starting": "Starting...",
+      "startButton": "Start GPT-SoVITS",
+      "notInstalled": "GPT-SoVITS Not Installed"
+    },
+    "gpu": {
+      "lockEnabled": "GPU Lock Enabled (OCR/TTS Sequential)",
+      "lockDisabled": "GPU Lock Disabled (OCR/TTS Concurrent)",
+      "label": "GPU"
+    },
+    "refreshAll": "Refresh All",
+    "settings": "Settings",
+    "error": {
+      "backendNotConnected": "Cannot connect to backend server",
+      "startBatFile": "start.bat",
+      "startBatDescription": "start.bat starts the backend server and app together.",
+      "serverAddress": "Server address: http://127.0.0.1:8000",
+      "autoConnect": "Will switch automatically when connected"
+    },
+    "panel": {
+      "expandEpisodeList": "Expand episode list",
+      "collapseEpisodeList": "Collapse episode list",
+      "expandSettings": "Expand settings panel",
+      "collapseSettings": "Collapse settings panel",
+      "backToGroupSetup": "← Back to Group Setup"
+    },
+    "content": {
+      "selectEpisode": "Select an episode",
+      "selectEpisodeGuide": "Expand a story group from the left list to select an episode"
+    },
+    "dubbing": {
+      "episodeSetup": "Episode Dubbing Setup",
+      "setupGuide": "Press the button above for detailed per-episode settings"
+    },
+    "home": {
+      "installGuide": "First-time Setup Guide",
+      "openSettings": "Open ⚙ Settings in the top-right to complete the following items.",
+      "dependencies": "Install Dependencies",
+      "dependenciesDesc": "FFmpeg, 7-Zip, GPT-SoVITS and other required tools",
+      "copyAssets": "Copy Game Assets",
+      "copyAssetsDesc": "Copy from game folders to Assets folder:",
+      "voicePath": "Voice: .../Bundles/audio/sound_beta_2/voice_kr → Assets/Voice/voice_kr",
+      "imagePath": "Image: .../Bundles/avg/characters → Assets/Image/avg/characters",
+      "charartPath": ".../Bundles/chararts → Assets/Image/chararts",
+      "extractAssets": "Extract Assets",
+      "extractAssetsDesc": "Run \"Voice Extraction\" and \"Image Extraction\" in Settings",
+      "storyData": "Story Data",
+      "storyDataDesc": "Download story text via \"Download Data\" in Settings",
+      "dataMapping": "Data Mapping",
+      "dataMappingDesc": "Run \"Refresh Character Mapping Cache\" + \"Auto Extract Real Names\"",
+      "howToUse": "How to Use",
+      "startGptSovits": "Start GPT-SoVITS",
+      "startGptSovitsDesc": "Launch TTS engine via the Start button in the header",
+      "characterManagement": "Character Management",
+      "characterManagementDesc": "Set default voice characters and narrator in the tab header button",
+      "characterManagementGuide": "Characters without voice and NPCs use default voice; dialogues without speaker and subtitles use narrator voice.",
+      "selectStory": "Select Story",
+      "selectStoryDesc": "Select category from tabs → Select group or episode from left list",
+      "voiceMappingSetup": "Voice Mapping Setup",
+      "voiceMappingDesc": "Map voiceless characters to default characters",
+      "voicePreparation": "Voice Preparation",
+      "voicePreparationDesc": "Prepare/train character voices by group or episode",
+      "realtimeDubbing": "Real-time Dubbing",
+      "realtimeDubbingDesc": "OCR window setup → Real-time game text recognition → Auto-play matched dialogues",
+      "zeroShotNote": "Untrained characters are synthesized in zero-shot mode.",
+      "gpuNote": "Control OCR/TTS concurrent execution with the GPU button in the header."
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "loadFailed": "Failed to load settings",
+    "section": {
+      "initialSetup": "Initial Setup",
+      "dependencies": "Dependencies",
+      "gamedata": "Game Data",
+      "voiceExtract": "Voice Extraction",
+      "imageExtract": "Image Extraction",
+      "voiceSettings": "Voice Settings",
+      "aliases": "Character Aliases (Real Names)",
+      "advanced": "Advanced Settings",
+      "language": "Language",
+      "paths": "Paths",
+      "whisperPreprocessing": "Whisper Preprocessing",
+      "ttsParams": "TTS Inference Parameters"
+    },
+    "initialSetupDesc": "Complete the items below in order for first-time use",
+    "status": {
+      "notInstalled": "Not Installed"
+    },
+    "installing": "Installing...",
+    "manual": "Manual",
+    "installMethod": "Install Method",
+    "autoInstall": "Auto Install",
+    "manualInstall": "Manual Install:",
+    "createFolder": "Create Folder",
+    "extract": "Extract",
+    "extracted": "extracted",
+    "processed": "processed",
+    "bundlesReady": "bundles ready",
+    "extractResult": "Extraction Result:",
+    "gamePath": "Game Source:",
+    "copyLocation": "Copy Location:",
+    "ffmpeg": {
+      "installing": "Starting installation...",
+      "installed": "FFmpeg installed! Please refresh.",
+      "startFailed": "Failed to start FFmpeg installation",
+      "included": "Included in FFmpeg",
+      "installMethod": "FFmpeg Installation Method"
+    },
+    "os": {
+      "windows": "Windows (using winget):"
+    },
+    "sevenzip": {
+      "installMethod": "7-Zip Installation Method"
+    },
+    "flatc": {
+      "installMethodPrefix": "",
+      "installMethodSuffix": " Installation Method"
+    },
+    "characters": {
+      "refreshFailed": "Failed to refresh character data:",
+      "refresh": "Refresh Character Data",
+      "mappingCache": "Character Mapping Cache"
+    },
+    "folder": {
+      "openFailed": "Failed to open folder:",
+      "operationFailed": "Folder operation failed:"
+    },
+    "save": "Save",
+    "voice": {
+      "checkFailed": "Failed to check VoiceAssets:",
+      "extractDescription": "Extract per-character MP3 from game voice bundles. Used for voice training and zero-shot TTS.",
+      "extractWarning": "Before extraction, please download all desired language voices in-game and then copy the assets.",
+      "extract": "Voice Extraction",
+      "extractComplete": "Extraction complete: {{count}} files",
+      "startFailed": "Failed to start extraction",
+      "cancelFailed": "Failed to cancel extraction:",
+      "assetsReady": "Assets/Voice Ready",
+      "bundleCount": "{{lang}}: {{count}} bundles",
+      "extractProgress": "{{processed}} / {{total}} files processed • {{extracted}} extracted",
+      "gameOriginal": "Android/Data/com.YoStarKR.Arknights/files/Bundles/audio/sound_beta_2/voice_kr",
+      "extractResultDetail": "Per-character MP3 generated in extracted/ folder",
+      "copyLocation": "Assets/Voice/voice_kr"
+    },
+    "image": {
+      "checkFailed": "Failed to check ImageAssets:",
+      "extractDescription": "Extract images from character illustration bundles. Two types of images can be extracted separately.",
+      "extractComplete": "Extraction complete: {{count}} images",
+      "startFailed": "Failed to start image extraction",
+      "cancelFailed": "Failed to cancel image extraction:",
+      "characterIllustration": "Character Illustration",
+      "characterIllustrationDesc": "Full-body character illustrations displayed in dialogue screen",
+      "folderMissingCharacters": "Folder not found — Please copy avg/characters from game bundle",
+      "characterPortrait": "Character Portrait",
+      "characterPortraitDesc": "Character face icons (for profile and mapping display)",
+      "folderMissingChararts": "Folder not found — Please copy chararts from game bundle",
+      "gameCharactersPath": "Android/Data/com.YoStarKR.Arknights/files/Bundles/Assets/Image/avg/characters",
+      "gameCharartsPath": "Android/Data/com.YoStarKR.Arknights/files/Bundles/Assets/Image/chararts",
+      "extractResultDetail": "Generate PNG in extracted/images/ folder",
+      "extractProgress": "{{processed}} / {{total}} processed • {{extracted}} extracted",
+      "gameCharactersOriginal": "Android/Data/com.YoStarKR.Arknights/files/Bundles/avg/characters",
+      "gameCharartsOriginal": "Android/Data/com.YoStarKR.Arknights/files/Bundles/chararts",
+      "copyCharactersLocation": "Assets/Image/avg/characters",
+      "copyCharartsLocation": "Assets/Image/chararts"
+    },
+    "gamedata": {
+      "checkFailed": "Failed to check game data status:",
+      "loadSourceFailed": "Failed to load data source settings:",
+      "changeSourceFailed": "Failed to change data source:",
+      "saveRepoFailed": "Failed to save repository settings:",
+      "description": "Download story text. Required for story display.",
+      "ready": "Story data ready ({{count}} files)",
+      "notReady": "No story data",
+      "lastUpdated": "Last updated:",
+      "update": "Update Data",
+      "download": "Download Data",
+      "updateComplete": "Update complete!",
+      "startFailed": "Failed to start update",
+      "cancelFailed": "Failed to cancel update:",
+      "source": "Data Source",
+      "arkprtsDesc": "Download latest data directly from game server."
+    },
+    "aliases": {
+      "loadFailed": "Failed to load alias info:",
+      "extractFailed": "Failed to extract real names:",
+      "description": "Connect characters that appear by their real names in stories with operators.",
+      "descriptionExample": "e.g.: \"Jordi\" → Lumen, \"Angelina\" → Angelina",
+      "count": "Registered aliases:",
+      "extracting": "Extracting...",
+      "autoExtract": "Auto Extract Real Names",
+      "extractedComplete": "✓ {{aliasCount}} aliases added from {{charCount}} characters",
+      "note": "* Extracts \"Real name is XXX\" pattern from handbook data"
+    },
+    "language": {
+      "description": "Displays game client language and TTS synthesis language.",
+      "game": "Game Language",
+      "gptSovits": "GPT-SoVITS Language"
+    },
+    "paths": {
+      "description": "Main resource folder paths. You can view them in explorer via the open folder button.",
+      "gptSovits": "GPT-SoVITS",
+      "models": "Models",
+      "extracted": "Extracted Voice",
+      "gamedata": "Game Data"
+    },
+    "whisper": {
+      "description": "Whisper settings used for voice training preprocessing. Default is sufficient.",
+      "model": "Model",
+      "computeType": "Compute Type",
+      "usage": "Usage",
+      "note": "* Splits long audio with Faster-Whisper during voice preparation"
+    },
+    "tts": {
+      "description": "Default recommended. Parameters that affect voice synthesis quality.",
+      "temperatureDesc": "Voice randomness (lower is stable, higher is diverse)",
+      "topKDesc": "Sampling diversity (5-15 recommended)",
+      "topPDesc": "Nucleus sampling (1.0 to disable)",
+      "speedFactorLabel": "Voice Speed",
+      "speedFactorDesc": "1.0 = default speed",
+      "appliedImmediately": "Changes apply immediately."
+    }
+  },
+  "character": {
+    "management": {
+      "title": "Character Voice Management"
+    },
+    "testText": "Beyond change to the frontline, Arknights.",
+    "training": {
+      "progress": "{{mode}}: {{name}}",
+      "modePrepare": "Preparing",
+      "modeFinetune": "Training",
+      "backgroundInfo": "Training will continue even if you close the window",
+      "statusPreparing": "Preparing",
+      "statusTraining": "Training"
+    },
+    "queue": {
+      "waitingPrefix": "+",
+      "waitingSuffix": "waiting"
+    },
+    "sort": {
+      "dialogues": "Dialogues",
+      "files": "Files",
+      "releaseDate": "Release Order",
+      "name": "By Name"
+    },
+    "filter": {
+      "defaultFirst": "Default First",
+      "trainedFirst": "Trained First",
+      "readyFirst": "Ready First"
+    },
+    "status": {
+      "ready": "Ready",
+      "readyCount": "{{ready}}/{{total}} Ready",
+      "trained": "Trained",
+      "prepared": "Ready",
+      "needsPreparation": "Needs Preparation",
+      "notSet": "Not Set",
+      "preparing": "Preparing",
+      "training": "Training"
+    },
+    "selected": {
+      "count": "{{count}} selected"
+    },
+    "batch": {
+      "prepare": "Batch Prepare",
+      "prepareCount": "Batch Prepare ({{count}})",
+      "prepareTooltip": "Batch prepare selected characters (Zero-shot)",
+      "prepareAndTrain": "Prepare+Train",
+      "prepareAndTrainCount": "Prepare+Train ({{count}})",
+      "prepareAndTrainTooltip": "Takes dozens of minutes per character. Automatically starts training after preparing selected characters",
+      "train": "Batch Train",
+      "trainCount": "Batch Train ({{count}})",
+      "trainTooltip": "Takes dozens of minutes per character. Batch train selected characters (Fine-tuning)"
+    },
+    "reset": {
+      "warning": "All preparation/training data ({{count}}) will be deleted. This action cannot be undone.",
+      "tooltip": "Reset all preparation data"
+    },
+    "section": {
+      "defaultVoices": "Default Voice Settings"
+    },
+    "badge": {
+      "female": "F {{count}}",
+      "male": "M {{count}}",
+      "narrator": "Narrator",
+      "defaultFemale": "Default(F)",
+      "defaultMale": "Default(M)",
+      "unknownSpeaker": "???"
+    },
+    "default": {
+      "female": "Default (Female):",
+      "male": "Default (Male):"
+    },
+    "narration": {
+      "label": "Narration:",
+      "labelShort": "Narration"
+    },
+    "unknownSpeaker": {
+      "label": "???:",
+      "labelFull": "??? (Unknown Speaker)"
+    },
+    "note": {
+      "genders": "* Default (Female): General characters / Default (Male): Characters with \"male\", \"man\", \"boy\", \"youth\"",
+      "unknownSpeaker": "* ???: Voice to use for \"???\" speaker without sprite"
+    },
+    "images": {
+      "count": "Images: {{total}} ({{folders}} folders)"
+    },
+    "info": {
+      "dialogues": "Dialogues",
+      "extracted": "Extracted",
+      "preprocessing": "Preprocessing"
+    },
+    "button": {
+      "unsetDefault": "Unset Default",
+      "setDefault": "Default",
+      "unsetNarrator": "Unset Narrator",
+      "setNarrator": "Narrator",
+      "unsetUnknownSpeaker": "Unset ???",
+      "setUnknownSpeaker": "???",
+      "test": "Test",
+      "train": "Train",
+      "prepare": "Prepare"
+    },
+    "gptSovitsModelTrain": "GPT-SoVITS Model Training",
+    "resetModelTooltip": "Delete preparation/training data",
+    "firstPrepareNote": "Complete 'Prepare' first before training",
+    "voiceTest": {
+      "label": "Voice Test:",
+      "selectCharacter": "Select character...",
+      "inputText": "Enter test text...",
+      "playbackFailed": "Audio playback failed",
+      "synthesisFailed": "Voice synthesis failed"
+    },
+    "zeroShotMode": {
+      "label": "Zero-shot Forced Mode",
+      "description": "(Ignore trained models, for quality comparison)",
+      "toggleFailed": "Failed to toggle zero-shot mode:",
+      "needsConnection": "GPT-SoVITS connection required",
+      "switchToTrained": "Click to switch to trained model",
+      "switchToZeroShot": "Click to switch to zero-shot mode"
+    },
+    "aliases": {
+      "manageTitle": "Alias Management: {{name}}",
+      "registered": "Registered Aliases",
+      "suggestions": "Suggestions (detected from profile)",
+      "newAliasInput": "Enter new alias...",
+      "note": "* Register real names or nicknames to be recognized as this character when they appear in the story",
+      "count": "Alias {{count}}",
+      "tooltipPrefix": "Aliases: ",
+      "addTooltip": "Add alias",
+      "addFailed": "Failed to add alias",
+      "deleteFailed": "Failed to delete alias"
+    },
+    "dialogueCount": "{{count}} dialogues",
+    "fileCount": "{{count}}"
+  },
+  "dubbing": {
+    "setup": {
+      "title": "Dubbing Setup"
+    },
+    "button": {
+      "backToGroup": "← Group",
+      "cancelPrepare": "Cancel Preparation",
+      "batchPrepare": "Batch Voice Prepare",
+      "batchTrain": "Batch Voice Train (Fine-tune)",
+      "voiceMappingSetup": "Voice Mapping Setup",
+      "startPreRendering": "Start Pre-rendering",
+      "cancelRendering": "Cancel Rendering",
+      "reRender": "Re-render",
+      "continueRendering": "Continue Rendering",
+      "proceed": "Proceed",
+      "stopDubbing": "Stop Dubbing",
+      "startDubbing": "Start Dubbing",
+      "pauseMonitoring": "Pause Monitoring",
+      "resumeMonitoring": "Resume Monitoring",
+      "stopPlayback": "Stop Playback",
+      "stop": "Stop",
+      "capturePreview": "Capture Preview",
+      "capture": "Capture",
+      "refreshWindowList": "Refresh Window List",
+      "deleteCache": "Delete Cache"
+    },
+    "section": {
+      "characters": "Characters",
+      "gptSovits": "GPT-SoVITS",
+      "voicePreparation": "Voice Preparation",
+      "voiceMapping": "Voice Mapping",
+      "playbackSettings": "Playback Settings",
+      "preRendering": "Pre-rendering"
+    },
+    "characters": {
+      "hasVoice": "Voice {{withVoice}}/{{total}}",
+      "prepared": "Ready {{trained}}/{{withVoice}}"
+    },
+    "status": {
+      "preprocessing": "Analyzing audio",
+      "preparing": "Preparing",
+      "prepared": "Ready {{trained}}/{{withVoice}}",
+      "allPrepared": "All characters prepared",
+      "noCharactersWithVoice": "No characters with voice data",
+      "trainableCount": "{{count}} characters available for preparation",
+      "finetuneableCount": "{{count}} characters available for training",
+      "allHaveVoice": "All have voice",
+      "allHaveVoiceFull": "All characters have voice data",
+      "preRenderingComplete": "Pre-rendering complete",
+      "rendering": "Rendering",
+      "renderingComplete": "Rendering complete",
+      "monitoring": "Monitoring",
+      "waitingForPlayback": "Waiting for playback",
+      "configuringVoice": "Configuring voice..."
+    },
+    "mapping": {
+      "count": "{{mapped}}/{{total}} mapped",
+      "description": "Assign substitute voices to voiceless characters"
+    },
+    "narrator": {
+      "voice": "Voice: {{name}}",
+      "setupGuide": "Set narrator voice in Character Management"
+    },
+    "unknownSpeaker": {
+      "voice": "Voice: {{name}}",
+      "setupGuide": "Set ??? voice in Character Management"
+    },
+    "note": {
+      "greenMeansVoice": "* Green = has voice data",
+      "startGptSovits": "* Start GPT-SoVITS from the header",
+      "prepareVsTrain": "* Prepare: Zero-shot / Train: Model Fine-tuning",
+      "prepareSufficient": "* Dubbing is possible with preparation only, without training",
+      "resetInCharacterManagement": "* Reset is available in Character Management",
+      "startGptSovitsFirst": "* Start GPT-SoVITS first",
+      "realtimeDuringPreRendering": "* Real-time playback available during pre-rendering via Start Dubbing"
+    },
+    "warning": {
+      "noDefaultVoices": "* Default voice not set. Set it in Character Management.",
+      "narratorNotSet": "Narrator not set ({{count}} narration dialogues)",
+      "unknownSpeakerNotSet": "??? speaker not set ({{count}} dialogues)",
+      "selectWindowFirst": "Select a capture window first to start dubbing",
+      "vramShortage": "OCR quality degradation or crashes may occur with insufficient VRAM."
+    },
+    "info": {
+      "skipDialoguesInfo": "Those dialogues will be skipped. You can set it in Character Management.",
+      "usesCachedVoice": "Uses cached voice in dubbing mode",
+      "partialCache": "Only some dialogues cached. The rest will be synthesized in real-time.",
+      "gpuUsage": "Starting dubbing mode during pre-rendering will cause OCR and pre-rendering to use GPU simultaneously.",
+      "gpuLockEnabled": "GPU lock is enabled, OCR and pre-rendering will run sequentially.",
+      "disableGpuLock": "Disable GPU lock in the top-right to run simultaneously.",
+      "gpuLockDisabled": "GPU lock is disabled.",
+      "noPreRendering": "Voice playback unavailable as pre-rendering has not been done.",
+      "canStartDuringPreRendering": "You can start dubbing mode simultaneously during pre-rendering.",
+      "simultaneousRendering": "Pre-rendering and real-time dubbing running simultaneously",
+      "gpuAndVram": "Disable GPU lock in the top-right to run simultaneously. Insufficient VRAM may cause performance degradation or crashes."
+    },
+    "autoplay": {
+      "onMatch": "Auto-play on match"
+    },
+    "message": {
+      "selectEpisodeFirst": "Select an episode first"
+    },
+    "preRendering": {
+      "description": "Pre-generate all episode voices"
+    },
+    "dialog": {
+      "confirmSpeaker": "Confirm Speaker Settings",
+      "preRenderingRunning": "Pre-rendering in Progress",
+      "preRenderingRequired": "Pre-rendering Required"
+    },
+    "confirm": {
+      "deleteRenderCache": "Delete render cache?"
+    },
+    "queue": {
+      "label": "Queue: ",
+      "count": "{{count}}",
+      "more": "and {{count}} more"
+    },
+    "label": {
+      "captureWindow": "Capture Window",
+      "ocr": "OCR:",
+      "matching": "Match:"
+    },
+    "placeholder": {
+      "selectWindow": "Select a window"
+    },
+    "region": {
+      "dialogue": "Dialogue",
+      "dialoguePercent": "(Bottom 20%)",
+      "subtitle": "Subtitle",
+      "subtitlePercent": "(Center 40-70%)"
+    },
+    "preview": {
+      "dialogueArea": "Dialogue area preview",
+      "subtitleArea": "Subtitle area preview"
+    },
+    "rendering": {
+      "count": "{{completed}}/{{total}}",
+      "percent": "{{percent}}%"
+    },
+    "selectWindowForCapture": "Please select a window to capture"
+  },
+  "group": {
+    "section": {
+      "setup": "Group Setup",
+      "characters": "Group Characters",
+      "voiceMapping": "Voice Mapping",
+      "batchTasks": "Batch Tasks",
+      "required": "Required",
+      "quality": "High Quality (Optional)",
+      "preRendering": "Group Pre-rendering",
+      "gptSovits": "GPT-SoVITS"
+    },
+    "info": {
+      "name": "{{name}}",
+      "episodeCount": "{{count}} episodes"
+    },
+    "characters": {
+      "hasVoice": "Voice {{withVoice}}/{{total}}"
+    },
+    "rendering": {
+      "progress": "{{completed}}/{{total}} ({{percent}}%)"
+    },
+    "status": {
+      "allHaveVoice": "All characters have voice",
+      "preparedCount": "{{prepared}}/{{total}} completed",
+      "finetunedCount": "{{finetuned}}/{{total}} completed",
+      "executing": "Executing...",
+      "synthesizing": "Synthesizing..."
+    },
+    "mapping": {
+      "count": "{{mapped}}/{{total}} mapped"
+    },
+    "task": {
+      "prepare": "Voice Prepare",
+      "render": "Pre-rendering",
+      "finetune": "Model Training (fine-tune)"
+    },
+    "label": {
+      "trainTargets": "Training targets:"
+    },
+    "target": {
+      "appearanceCharacters": "Appearing characters (with voice)",
+      "mappedCharacters": "Mapped characters"
+    },
+    "warning": {
+      "timeConsuming": "May take dozens of minutes per character"
+    },
+    "note": {
+      "startGptSovitsFirst": "* Start GPT-SoVITS first"
+    },
+    "button": {
+      "voiceMappingSetup": "Voice Mapping Setup",
+      "batchExecute": "Batch Execute"
+    },
+    "queue": {
+      "label": "Queue: {{count}}"
+    },
+    "episodes": {
+      "count": "{{completed}}/{{total}} episodes"
+    }
+  },
+  "dialogue": {
+    "image": {
+      "enlargeTitle": "Click to enlarge"
+    },
+    "message": {
+      "selectEpisode": "Select an episode"
+    },
+    "button": {
+      "showCharId": "Show character ID",
+      "deleteAudio": "Delete rendered audio"
+    },
+    "tag": {
+      "dubbingMode": "Dubbing Mode",
+      "narration": "Narration",
+      "subtitle": "Subtitle",
+      "sticker": "Sticker",
+      "popup": "Popup"
+    },
+    "info": {
+      "dialogueCount": "{{count}} dialogues",
+      "characterCount": "{{count}} characters",
+      "voiceModel": "Voice: {{charId}}{{charName}} [{{modelType}}]"
+    },
+    "note": {
+      "previewInfo": "Dialogues with prepared voices can be previewed with the play button. Pre-synthesized audio takes priority."
+    },
+    "confirm": {
+      "deleteAudio": "Delete rendered audio for this dialogue?"
+    },
+    "status": {
+      "rendering": "Rendering",
+      "renderingComplete": "Rendering complete",
+      "hasVoice": "Has voice",
+      "noVoice": "No voice",
+      "playing": "Playing...",
+      "characterNotPrepared": "Character voice not prepared",
+      "availableAfterPrepare": "Available after dubbing preparation"
+    },
+    "match": {
+      "similarity": "Match {{percent}}%"
+    },
+    "label": {
+      "rendered": "Rendered",
+      "realtime": "Realtime"
+    }
+  },
+  "episode": {
+    "error": {
+      "serverNotConnected": "Server not connected",
+      "runBackendServer": "Please start the backend server"
+    },
+    "placeholder": {
+      "search": "Search stories..."
+    },
+    "message": {
+      "noStories": "No stories",
+      "noSearchResults": "No search results"
+    },
+    "info": {
+      "storyCount": "{{count}} stories"
+    }
+  },
+  "status": {
+    "audio": {
+      "unmute": "Unmute",
+      "mute": "Mute"
+    }
+  },
+  "install": {
+    "title": "GPT-SoVITS Installation",
+    "stage": {
+      "downloading": "Download",
+      "extracting": "Extract",
+      "verifying": "Verify",
+      "complete": "Complete"
+    },
+    "error": {
+      "loadFailed": "Failed to load installation info:",
+      "startFailed": "Failed to start installation",
+      "cancelFailed": "Failed to cancel installation:",
+      "cleanupFailed": "Cleanup failed:"
+    },
+    "status": {
+      "starting": "Starting...",
+      "complete": "Installation complete!",
+      "installed": "Installed",
+      "notInstalled": "Not Installed",
+      "alreadyInstalled": "Already Installed"
+    },
+    "confirm": {
+      "deleteFolder": "Delete the installation folder?"
+    },
+    "info": {
+      "pytorch": "PyTorch: {{version}}",
+      "cudaAvailable": "CUDA: Available",
+      "cudaNotAvailable": "CUDA: Not Available",
+      "diskSpace": "Download ~8.2GB, ~20GB after extraction",
+      "gpuSupport": "✓ GPU acceleration supported (CUDA included)",
+      "includedPackages": "PyTorch + CUDA included in the integrated package"
+    },
+    "section": {
+      "items": "Installation Items"
+    },
+    "item": {
+      "gptSovits": "• GPT-SoVITS v2pro (2025.06 latest)",
+      "python": "• Python runtime included",
+      "pytorch": "• PyTorch + CUDA included",
+      "dependencies": "• All dependencies included"
+    },
+    "button": {
+      "start": "Start Installation",
+      "reinstall": "Delete folder and reinstall",
+      "cancel": "Cancel Installation",
+      "cleanup": "Cleanup"
+    }
+  },
+  "mapping": {
+    "title": "Voice Mapping Setup",
+    "description": "Assign substitute voices to voiceless characters",
+    "info": {
+      "voicelessCount": "Voiceless characters: {{count}}",
+      "mappedCount": "Mapping: {{mapped}}/{{total}}"
+    },
+    "message": {
+      "allHaveVoice": "All characters have voice data"
+    },
+    "note": {
+      "autoAssignment": "* Auto: name-based assignment / Female·Male: gender fixed",
+      "autoSave": "* Auto-saved on change (applies to other episodes too)"
+    },
+    "button": {
+      "auto": "Auto",
+      "resetTooltip": "Reset mapping (revert to auto selection)"
+    },
+    "tooltip": {
+      "auto": "Auto: {{name}}",
+      "female": "Female: {{name}}",
+      "randomFemale": "Random from female default voices",
+      "male": "Male: {{name}}",
+      "randomMale": "Random from male default voices",
+      "search": "Search characters"
+    },
+    "placeholder": {
+      "search": "Search characters..."
+    },
+    "tag": {
+      "table": "Table",
+      "default": "Default"
+    },
+    "status": {
+      "mappingRequired": "Mapping required",
+      "saved": "Saved"
+    }
+  },
+  "languageSettings": {
+    "title": "Language Settings",
+    "displayLanguage": "Display Language",
+    "displayDescription": "Language for story text and UI",
+    "voiceLanguage": "Voice Language",
+    "voiceDescription": "Language used for TTS voice synthesis",
+    "notAvailable": "No data",
+    "currentCombo": "Story: {{display}} / Voice: {{voice}}"
+  }
+}

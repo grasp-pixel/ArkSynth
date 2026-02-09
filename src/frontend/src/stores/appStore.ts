@@ -28,6 +28,7 @@ import {
   type TrainedModel,
   type RenderProgress,
   type VoiceCharacter,
+  type LanguageOption,
 } from '../services/api'
 
 type CaptureMode = 'monitor' | 'window'
@@ -163,6 +164,12 @@ interface AppState {
   volume: number  // 재생 볼륨 (0.0~1.0)
   isMuted: boolean
 
+  // 언어 설정
+  displayLanguage: string
+  voiceLanguage: string
+  availableDisplayLanguages: LanguageOption[]
+  availableVoiceLanguages: LanguageOption[]
+
   // 패널 접기 상태
   isLeftPanelCollapsed: boolean
   isRightPanelCollapsed: boolean
@@ -291,6 +298,11 @@ interface AppState {
   // 볼륨 설정
   setVolume: (volume: number) => void
   toggleMute: () => void
+
+  // 언어 설정
+  loadLanguageSettings: () => Promise<void>
+  setDisplayLanguage: (locale: string) => Promise<void>
+  setVoiceLanguage: (short: string) => Promise<void>
 
   // 패널 접기
   toggleLeftPanel: () => void
@@ -605,6 +617,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   // 볼륨 설정 초기 상태 (localStorage에서 복원)
   volume: persistedState.volume ?? 1.0,
   isMuted: persistedState.isMuted ?? false,
+
+  // 언어 설정 초기 상태
+  displayLanguage: 'ko_KR',
+  voiceLanguage: 'ko',
+  availableDisplayLanguages: [],
+  availableVoiceLanguages: [],
 
   // 패널 접기 초기 상태 (localStorage에서 복원)
   isLeftPanelCollapsed: persistedState.isLeftPanelCollapsed ?? false,
@@ -2628,6 +2646,61 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleRightPanel: () => {
     set((state) => ({ isRightPanelCollapsed: !state.isRightPanelCollapsed }))
     persistCurrentState(get)
+  },
+
+  // 언어 설정 로드
+  loadLanguageSettings: async () => {
+    try {
+      const data = await settingsApi.getLanguageSettings()
+      set({
+        displayLanguage: data.display_language,
+        voiceLanguage: data.voice_language,
+        availableDisplayLanguages: data.available_display_languages,
+        availableVoiceLanguages: data.available_voice_languages,
+      })
+    } catch (error) {
+      console.error('Failed to load language settings:', error)
+    }
+  },
+
+  // 표시 언어 변경
+  setDisplayLanguage: async (locale: string) => {
+    try {
+      const data = await settingsApi.updateLanguage({ display_language: locale })
+      set({
+        displayLanguage: data.display_language,
+        availableDisplayLanguages: data.available_display_languages,
+        availableVoiceLanguages: data.available_voice_languages,
+      })
+      // i18n 언어 변경
+      const { changeLanguage } = await import('../i18n')
+      const shortCode = locale.split('_')[0]  // "ko_KR" → "ko"
+      changeLanguage(shortCode)
+      // 스토리 데이터 재로드
+      await get().loadCategories()
+    } catch (error) {
+      console.error('Failed to set display language:', error)
+    }
+  },
+
+  // 음성 언어 변경
+  setVoiceLanguage: async (short: string) => {
+    try {
+      const data = await settingsApi.updateLanguage({ voice_language: short })
+      set({
+        voiceLanguage: data.voice_language,
+        availableDisplayLanguages: data.available_display_languages,
+        availableVoiceLanguages: data.available_voice_languages,
+      })
+      // 음성 관련 데이터 재로드
+      await Promise.all([
+        get().loadVoiceCharacters(),
+        get().loadTrainedModels(),
+        get().checkGptSovitsStatus(),
+      ])
+    } catch (error) {
+      console.error('Failed to set voice language:', error)
+    }
   },
 }))
 

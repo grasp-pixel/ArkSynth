@@ -100,13 +100,8 @@ class GPTSoVITSTrainer:
             logger.info(f"[Debug] audio_dir from files: {audio_dir}")
         else:
             # 언어별 폴더 매핑
-            lang_folder_map = {
-                "ko": "voice_kr",
-                "ja": "voice",
-                "zh": "voice_cn",
-                "en": "voice_en",
-            }
-            lang_folder = lang_folder_map.get(self.config.default_language, "voice")
+            from ...common.language_codes import SHORT_TO_VOICE_FOLDER
+            lang_folder = SHORT_TO_VOICE_FOLDER.get(self.config.default_language, "voice")
             audio_dir = (self.config.extracted_path / lang_folder / char_id).absolute()
             logger.info(f"[Debug] audio_dir from config: {audio_dir}")
 
@@ -120,7 +115,7 @@ class GPTSoVITSTrainer:
             self._last_error = f"오디오 디렉토리가 없습니다: {audio_dir}"
             return False
 
-        output_dir = self.config.get_model_path(char_id)
+        output_dir = self.config.get_model_path(char_id)  # default_language 사용
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # mode에 따라 워커 스크립트 선택

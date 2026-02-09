@@ -49,6 +49,9 @@ def reset_all() -> None:
     """모든 로더 리셋"""
     reset_story_loader()
     reset_voice_mapper()
+    # 렌더 캐시도 리셋
+    from .routes.render import reset_render_cache
+    reset_render_cache()
 
 
 def find_operator_id_by_name(

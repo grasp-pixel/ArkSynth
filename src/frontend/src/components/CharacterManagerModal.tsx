@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useLayoutEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore } from "../stores/appStore";
 import {
   ttsApi,
@@ -19,6 +20,8 @@ export default function CharacterManagerModal({
   isOpen,
   onClose,
 }: CharacterManagerModalProps) {
+  const { t } = useTranslation();
+
   const {
     voiceCharacters,
     isLoadingVoiceCharacters,
@@ -64,7 +67,7 @@ export default function CharacterManagerModal({
 
   // 테스트 관련 상태
   const [testCharId, setTestCharId] = useState<string | null>(null);
-  const [testText, setTestText] = useState("변경을 넘어 최전방으로, 명일방주.");
+  const [testText, setTestText] = useState("");
   const [isTesting, setIsTesting] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
   const testAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -171,6 +174,9 @@ export default function CharacterManagerModal({
       loadTrainedModels();
       loadImageStatus();
       loadCharacterAliases();
+
+      // 테스트 텍스트 기본값 설정
+      if (!testText) setTestText(t('character.testText'));
 
       // 성별 데이터 로드
       voiceApi
@@ -420,15 +426,15 @@ export default function CharacterManagerModal({
       };
       audio.onerror = () => {
         setIsTesting(false);
-        setTestError("오디오 재생 실패");
+        setTestError(t('character.voiceTest.playbackFailed'));
         URL.revokeObjectURL(audioUrl);
       };
 
       await audio.play();
     } catch (error: any) {
-      console.error("[Test] 음성 합성 실패:", error);
+      console.error("[Test]", t('character.voiceTest.synthesisFailed'), error);
       setTestError(
-        error?.response?.data?.detail || error?.message || "음성 합성 실패",
+        error?.response?.data?.detail || error?.message || t('character.voiceTest.synthesisFailed'),
       );
       setIsTesting(false);
     }
@@ -479,8 +485,8 @@ export default function CharacterManagerModal({
       setNewAliasInput("");
       await loadCharacterAliases();
     } catch (error: any) {
-      console.error("별칭 추가 실패:", error);
-      alert(error?.response?.data?.detail || "별칭 추가 실패");
+      console.error(t('character.aliases.addFailed'), error);
+      alert(error?.response?.data?.detail || t('character.aliases.addFailed'));
     } finally {
       setIsAddingAlias(false);
     }
@@ -494,8 +500,8 @@ export default function CharacterManagerModal({
       // 제안 목록에서 제거
       setAliasSuggestions((prev) => prev.filter((s) => s.name !== name));
     } catch (error: any) {
-      console.error("별칭 추가 실패:", error);
-      alert(error?.response?.data?.detail || "별칭 추가 실패");
+      console.error(t('character.aliases.addFailed'), error);
+      alert(error?.response?.data?.detail || t('character.aliases.addFailed'));
     }
   };
 
@@ -510,8 +516,8 @@ export default function CharacterManagerModal({
       await aliasesApi.removeAlias(alias);
       await loadCharacterAliases();
     } catch (error: any) {
-      console.error("별칭 삭제 실패:", error);
-      alert(error?.response?.data?.detail || "별칭 삭제 실패");
+      console.error(t('character.aliases.deleteFailed'), error);
+      alert(error?.response?.data?.detail || t('character.aliases.deleteFailed'));
     }
   };
 
@@ -535,21 +541,21 @@ export default function CharacterManagerModal({
               >
                 <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
               </svg>
-              캐릭터 음성 관리
+              {t('character.management.title')}
             </h2>
             {/* 학습 진행 상황 표시 */}
             {isTrainingActive && currentTrainingJob && (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-ark-orange/20 border border-ark-orange/30">
                 <span className="w-2 h-2 rounded-full bg-ark-orange ark-pulse" />
                 <span className="text-sm text-ark-orange">
-                  {currentTrainingJob.mode === "finetune" ? "학습" : "준비"}:{" "}
+                  {currentTrainingJob.mode === "finetune" ? t('character.training.modeFinetune') : t('character.training.modePrepare')}:{" "}
                   {currentTrainingJob.char_name}
                   {currentTrainingJob.progress != null &&
                     ` (${Math.round(currentTrainingJob.progress * 100)}%)`}
                 </span>
                 {trainingQueue.length > 1 && (
                   <span className="text-xs text-ark-orange/70">
-                    +{trainingQueue.length - 1} 대기
+                    {t('character.queue.waitingPrefix')}{trainingQueue.length - 1} {t('character.queue.waitingSuffix')}
                   </span>
                 )}
               </div>
@@ -558,7 +564,7 @@ export default function CharacterManagerModal({
           <div className="flex items-center gap-2">
             {isTrainingActive && (
               <span className="text-xs text-ark-gray">
-                창을 닫아도 학습은 계속됩니다
+                {t('character.training.backgroundInfo')}
               </span>
             )}
             <button
@@ -578,23 +584,23 @@ export default function CharacterManagerModal({
             <div className="flex-1">
               <input
                 type="text"
-                placeholder="캐릭터 검색..."
+                placeholder={t('common.searchCharacter')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="ark-input w-full"
               />
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-sm text-ark-gray">정렬:</span>
+              <span className="text-sm text-ark-gray">{t('common.sortBy')}</span>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as SortBy)}
                 className="ark-input text-sm"
               >
-                <option value="dialogues">대사 수</option>
-                <option value="files">파일 수</option>
-                <option value="id">출시순</option>
-                <option value="name">이름순</option>
+                <option value="dialogues">{t('character.sort.dialogues')}</option>
+                <option value="files">{t('character.sort.files')}</option>
+                <option value="id">{t('character.sort.releaseDate')}</option>
+                <option value="name">{t('character.sort.name')}</option>
               </select>
             </div>
             <label className="flex items-center gap-1.5 cursor-pointer select-none">
@@ -604,7 +610,7 @@ export default function CharacterManagerModal({
                 onChange={(e) => setDefaultFirst(e.target.checked)}
                 className="w-3.5 h-3.5 rounded border-ark-border bg-ark-black text-ark-orange focus:ring-ark-orange"
               />
-              <span className="text-xs text-ark-gray">기본 우선</span>
+              <span className="text-xs text-ark-gray">{t('character.filter.defaultFirst')}</span>
             </label>
             <label className="flex items-center gap-1.5 cursor-pointer select-none">
               <input
@@ -613,7 +619,7 @@ export default function CharacterManagerModal({
                 onChange={(e) => setTrainedFirst(e.target.checked)}
                 className="w-3.5 h-3.5 rounded border-ark-border bg-ark-black text-ark-orange focus:ring-ark-orange"
               />
-              <span className="text-xs text-ark-gray">학습됨 우선</span>
+              <span className="text-xs text-ark-gray">{t('character.filter.trainedFirst')}</span>
             </label>
             <label className="flex items-center gap-1.5 cursor-pointer select-none">
               <input
@@ -622,13 +628,13 @@ export default function CharacterManagerModal({
                 onChange={(e) => setReadyFirst(e.target.checked)}
                 className="w-3.5 h-3.5 rounded border-ark-border bg-ark-black text-ark-orange focus:ring-ark-orange"
               />
-              <span className="text-xs text-ark-gray">준비됨 우선</span>
+              <span className="text-xs text-ark-gray">{t('character.filter.readyFirst')}</span>
             </label>
           </div>
           {/* 선택 & 일괄 처리 */}
           <div className="flex items-center gap-3">
             <span className="text-sm text-ark-gray">
-              {stats.ready}/{stats.total} 준비됨
+              {t('character.status.readyCount', { ready: stats.ready, total: stats.total })}
             </span>
             <div className="w-px h-4 bg-ark-border" />
             {/* 선택 버튼 */}
@@ -636,18 +642,18 @@ export default function CharacterManagerModal({
               onClick={selectAll}
               className="text-xs px-2 py-1 rounded bg-white/10 text-white/70 hover:bg-white/20 transition-colors"
             >
-              전체 선택
+              {t('common.selectAll')}
             </button>
             <button
               onClick={deselectAll}
               disabled={selectedCharIds.size === 0}
               className="text-xs px-2 py-1 rounded bg-white/10 text-white/70 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              선택 해제
+              {t('common.deselect')}
             </button>
             {selectedCharIds.size > 0 && (
               <span className="text-xs text-ark-orange font-medium">
-                {selectedCharIds.size}개 선택됨
+                {t('character.selected.count', { count: selectedCharIds.size })}
               </span>
             )}
             <div className="w-px h-4 bg-ark-border" />
@@ -656,33 +662,33 @@ export default function CharacterManagerModal({
               onClick={() => startBatchTraining(selectedIds, "prepare")}
               disabled={isTrainingActive || selectedCharIds.size === 0}
               className="text-xs px-2 py-1 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title="선택된 캐릭터 일괄 준비 (Zero-shot)"
+              title={t('character.batch.prepareTooltip')}
             >
-              일괄 준비{selectedCharIds.size > 0 ? ` (${selectedCharIds.size})` : ""}
+              {selectedCharIds.size > 0 ? t('character.batch.prepareCount', { count: selectedCharIds.size }) : t('character.batch.prepare')}
             </button>
             <button
               onClick={() => startFullBatchTraining(selectedIds)}
               disabled={isTrainingActive || selectedCharIds.size === 0}
               className="text-xs px-2 py-1 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title="캐릭터당 수십 분 소요. 선택된 캐릭터 준비 후 자동으로 학습 시작"
+              title={t('character.batch.prepareAndTrainTooltip')}
             >
-              준비+학습{selectedCharIds.size > 0 ? ` (${selectedCharIds.size})` : ""}
+              {selectedCharIds.size > 0 ? t('character.batch.prepareAndTrainCount', { count: selectedCharIds.size }) : t('character.batch.prepareAndTrain')}
             </button>
             <button
               onClick={() => startBatchTraining(selectedIds, "finetune")}
               disabled={isTrainingActive || selectedCharIds.size === 0}
               className="text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title="캐릭터당 수십 분 소요. 선택된 캐릭터 일괄 학습 (Fine-tuning)"
+              title={t('character.batch.trainTooltip')}
             >
-              일괄 학습{selectedCharIds.size > 0 ? ` (${selectedCharIds.size})` : ""}
+              {selectedCharIds.size > 0 ? t('character.batch.trainCount', { count: selectedCharIds.size }) : t('character.batch.train')}
             </button>
             {stats.ready > 0 && (
               <button
                 onClick={() => setShowResetConfirm(true)}
                 className="text-xs px-2 py-1 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
-                title="모든 준비 데이터 초기화"
+                title={t('character.reset.tooltip')}
               >
-                초기화
+                {t('common.reset')}
               </button>
             )}
           </div>
@@ -693,14 +699,14 @@ export default function CharacterManagerModal({
                 <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
               </svg>
               <span className="text-sm text-red-300">
-                모든 준비/학습 데이터({stats.ready}개)가 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
+                {t('character.reset.warning', { count: stats.ready })}
               </span>
               <div className="flex gap-2 ml-auto shrink-0">
                 <button
                   onClick={() => setShowResetConfirm(false)}
                   className="text-xs px-3 py-1 rounded bg-white/10 text-white/70 hover:bg-white/20 transition-colors"
                 >
-                  취소
+                  {t('common.cancel')}
                 </button>
                 <button
                   onClick={() => {
@@ -709,7 +715,7 @@ export default function CharacterManagerModal({
                   }}
                   className="text-xs px-3 py-1 rounded bg-red-500/30 text-red-300 hover:bg-red-500/50 transition-colors"
                 >
-                  초기화
+                  {t('common.reset')}
                 </button>
               </div>
             </div>
@@ -731,30 +737,30 @@ export default function CharacterManagerModal({
               >
                 <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z" />
               </svg>
-              <span className="text-sm text-ark-gray">기본 음성 설정</span>
+              <span className="text-sm text-ark-gray">{t('character.section.defaultVoices')}</span>
             </div>
             {/* 접힌 상태에서 요약 표시 */}
             {!isDefaultsExpanded && (
               <div className="flex items-center gap-2">
                 {defaultFemaleVoices.length > 0 && (
                   <span className="text-xs px-2 py-0.5 bg-pink-500/20 text-pink-400 rounded">
-                    여 {defaultFemaleVoices.length}
+                    {t('character.badge.female', { count: defaultFemaleVoices.length })}
                   </span>
                 )}
                 {defaultMaleVoices.length > 0 && (
                   <span className="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded">
-                    남 {defaultMaleVoices.length}
+                    {t('character.badge.male', { count: defaultMaleVoices.length })}
                   </span>
                 )}
                 {narratorCharId && (
                   <span className="text-xs px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded">
-                    나레이터
+                    {t('character.badge.narrator')}
                   </span>
                 )}
                 {defaultFemaleVoices.length === 0 &&
                   defaultMaleVoices.length === 0 &&
                   !narratorCharId && (
-                    <span className="text-xs text-ark-gray/50">설정 안 됨</span>
+                    <span className="text-xs text-ark-gray/50">{t('character.status.notSet')}</span>
                   )}
               </div>
             )}
@@ -766,11 +772,11 @@ export default function CharacterManagerModal({
               {/* 여성 기본 음성 */}
               <div className="flex items-center gap-2">
                 <span className="text-sm text-ark-gray whitespace-nowrap w-24">
-                  기본(여성):
+                  {t('character.default.female')}
                 </span>
                 <div className="flex flex-wrap gap-1 flex-1">
                   {defaultFemaleVoices.length === 0 ? (
-                    <span className="text-xs text-ark-gray/50">설정 안 됨</span>
+                    <span className="text-xs text-ark-gray/50">{t('character.status.notSet')}</span>
                   ) : (
                     defaultFemaleVoices.map((charId, idx) => {
                       const char = voiceCharacters.find(
@@ -801,11 +807,11 @@ export default function CharacterManagerModal({
               {/* 남성 기본 음성 */}
               <div className="flex items-center gap-2">
                 <span className="text-sm text-ark-gray whitespace-nowrap w-24">
-                  기본(남성):
+                  {t('character.default.male')}
                 </span>
                 <div className="flex flex-wrap gap-1 flex-1">
                   {defaultMaleVoices.length === 0 ? (
-                    <span className="text-xs text-ark-gray/50">설정 안 됨</span>
+                    <span className="text-xs text-ark-gray/50">{t('character.status.notSet')}</span>
                   ) : (
                     defaultMaleVoices.map((charId, idx) => {
                       const char = voiceCharacters.find(
@@ -836,7 +842,7 @@ export default function CharacterManagerModal({
               {/* 나레이션 */}
               <div className="flex items-center gap-2">
                 <span className="text-sm text-ark-gray whitespace-nowrap w-24">
-                  나레이션:
+                  {t('character.narration.label')}
                 </span>
                 <div className="flex flex-wrap gap-1 flex-1">
                   {narratorCharId ? (
@@ -854,14 +860,14 @@ export default function CharacterManagerModal({
                       </button>
                     </span>
                   ) : (
-                    <span className="text-xs text-ark-gray/50">설정 안 됨</span>
+                    <span className="text-xs text-ark-gray/50">{t('character.status.notSet')}</span>
                   )}
                 </div>
               </div>
               {/* 알 수 없는 화자 */}
               <div className="flex items-center gap-2">
                 <span className="text-sm text-ark-gray whitespace-nowrap w-24">
-                  ???:
+                  {t('character.unknownSpeaker.label')}
                 </span>
                 <div className="flex flex-wrap gap-1 flex-1">
                   {unknownSpeakerCharId ? (
@@ -879,16 +885,15 @@ export default function CharacterManagerModal({
                       </button>
                     </span>
                   ) : (
-                    <span className="text-xs text-ark-gray/50">설정 안 됨</span>
+                    <span className="text-xs text-ark-gray/50">{t('character.status.notSet')}</span>
                   )}
                 </div>
               </div>
               <p className="text-[10px] text-ark-gray/50 mt-1">
-                * 기본(여성): 일반 캐릭터 / 기본(남성): "남자", "남성", "소년",
-                "청년" 포함 캐릭터
+                {t('character.note.genders')}
               </p>
               <p className="text-[10px] text-ark-gray/50">
-                * ???: 스프라이트 없는 "???" 화자에 사용할 음성
+                {t('character.note.unknownSpeaker')}
               </p>
 
               {/* 이미지 캐시 관리 */}
@@ -902,9 +907,8 @@ export default function CharacterManagerModal({
                     <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
                   </svg>
                   <span>
-                    이미지:{" "}
                     {imageStatus
-                      ? `${imageStatus.total_images}개 (${imageStatus.total_folders}폴더)`
+                      ? t('character.images.count', { total: imageStatus.total_images, folders: imageStatus.total_folders })
                       : "..."}
                   </span>
                 </div>
@@ -917,11 +921,11 @@ export default function CharacterManagerModal({
         <div className="flex-1 overflow-y-auto p-4">
           {isLoadingVoiceCharacters ? (
             <div className="text-center text-ark-gray py-8 ark-pulse">
-              로딩 중...
+              {t('common.loading')}
             </div>
           ) : sortedCharacters.length === 0 ? (
             <div className="text-center text-ark-gray py-8">
-              {searchQuery ? "검색 결과가 없습니다" : "캐릭터가 없습니다"}
+              {searchQuery ? t('common.noSearchResults') : t('common.noCharacters')}
             </div>
           ) : (
             <div ref={gridContainerRef} className="grid grid-cols-3 gap-4">
@@ -1024,17 +1028,17 @@ export default function CharacterManagerModal({
                         <div className="flex gap-1 mt-1 flex-wrap">
                           {isFemaleDefault && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-pink-500/40 text-pink-200">
-                              기본(여)
+                              {t('character.badge.defaultFemale')}
                             </span>
                           )}
                           {isMaleDefault && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/40 text-blue-200">
-                              기본(남)
+                              {t('character.badge.defaultMale')}
                             </span>
                           )}
                           {isNarrator && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/40 text-purple-200">
-                              나레이션
+                              {t('character.narration.labelShort')}
                             </span>
                           )}
                           {isUnknownSpeaker && (
@@ -1051,11 +1055,11 @@ export default function CharacterManagerModal({
                             }`}
                             title={
                               characterAliases[char.char_id]?.length > 0
-                                ? `별칭: ${characterAliases[char.char_id].join(", ")}`
-                                : "별칭 추가"
+                                ? t('character.aliases.tooltipPrefix') + characterAliases[char.char_id].join(", ")
+                                : t('character.aliases.addTooltip')
                             }
                           >
-                            별칭 {characterAliases[char.char_id]?.length || 0}
+                            {t('character.aliases.count', { count: characterAliases[char.char_id]?.length || 0 })}
                           </button>
                         </div>
                       </div>
@@ -1064,15 +1068,15 @@ export default function CharacterManagerModal({
                       <div className="mt-auto">
                         <div className="text-xs text-white/80 space-y-0.5 mb-2 bg-black/40 rounded px-1.5 py-1 inline-block">
                           <div className="flex justify-between">
-                            <span>대사</span>
+                            <span>{t('character.info.dialogues')}</span>
                             <span className="text-white font-medium">
                               {char.dialogue_count?.toLocaleString() || 0}
                             </span>
                           </div>
                           <div className="flex justify-between">
-                            <span>추출</span>
+                            <span>{t('character.info.extracted')}</span>
                             <span className="text-white font-medium">
-                              {char.file_count}개
+                              {t('character.fileCount', { count: char.file_count })}
                             </span>
                           </div>
                           {(() => {
@@ -1082,9 +1086,9 @@ export default function CharacterManagerModal({
                             const isIntact = wavCount > 0 && wavCount === txtCount
                             return (
                               <div className={`flex justify-between ${isIntact ? 'text-green-300' : 'text-amber-300'}`}>
-                                <span>전처리</span>
+                                <span>{t('character.info.preprocessing')}</span>
                                 <span title={`WAV: ${wavCount}, TXT: ${txtCount}`}>
-                                  {isIntact ? `${wavCount}개` : `${wavCount}/${txtCount}`}
+                                  {isIntact ? t('character.fileCount', { count: wavCount }) : `${wavCount}/${txtCount}`}
                                 </span>
                               </div>
                             )
@@ -1098,7 +1102,7 @@ export default function CharacterManagerModal({
                               {getModelType(char.char_id) === "finetuned" ? (
                                 <span
                                   className="text-xs text-purple-300 flex items-center gap-1"
-                                  title="학습됨"
+                                  title={t('character.status.trained')}
                                 >
                                   <svg
                                     viewBox="0 0 24 24"
@@ -1107,12 +1111,12 @@ export default function CharacterManagerModal({
                                   >
                                     <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
                                   </svg>
-                                  학습됨
+                                  {t('character.status.trained')}
                                 </span>
                               ) : (
                                 <span
                                   className="text-xs text-green-300 flex items-center gap-1"
-                                  title="준비됨"
+                                  title={t('character.status.prepared')}
                                 >
                                   <svg
                                     viewBox="0 0 24 24"
@@ -1121,7 +1125,7 @@ export default function CharacterManagerModal({
                                   >
                                     <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
                                   </svg>
-                                  준비됨
+                                  {t('character.status.prepared')}
                                 </span>
                               )}
                             </>
@@ -1131,8 +1135,8 @@ export default function CharacterManagerModal({
                                 <span className="w-2 h-2 rounded-full bg-ark-orange ark-pulse" />
                                 <span className="text-xs text-ark-orange">
                                   {currentTrainingJob?.mode === "finetune"
-                                    ? "학습 중"
-                                    : "준비 중"}
+                                    ? t('character.training.statusTraining')
+                                    : t('character.training.statusPreparing')}
                                   {currentTrainingJob?.progress != null &&
                                     ` ${Math.round(currentTrainingJob.progress * 100)}%`}
                                 </span>
@@ -1158,7 +1162,7 @@ export default function CharacterManagerModal({
                             </div>
                           ) : (
                             <span className="text-xs text-white/40">
-                              준비 필요
+                              {t('character.status.needsPreparation')}
                             </span>
                           )}
                         </div>
@@ -1185,7 +1189,7 @@ export default function CharacterManagerModal({
                                       }
                                       className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${defaultColor}`}
                                     >
-                                      {isDefault ? "기본 해제" : "기본"}
+                                      {isDefault ? t('character.button.unsetDefault') : t('character.button.setDefault')}
                                     </button>
                                     <button
                                       onClick={() =>
@@ -1198,8 +1202,8 @@ export default function CharacterManagerModal({
                                       }`}
                                     >
                                       {isNarrator
-                                        ? "나레이션 해제"
-                                        : "나레이션"}
+                                        ? t('character.button.unsetNarrator')
+                                        : t('character.button.setNarrator')}
                                     </button>
                                     <button
                                       onClick={() =>
@@ -1212,8 +1216,8 @@ export default function CharacterManagerModal({
                                       }`}
                                     >
                                       {isUnknownSpeaker
-                                        ? "??? 해제"
-                                        : "???"}
+                                        ? t('character.button.unsetUnknownSpeaker')
+                                        : t('character.button.setUnknownSpeaker')}
                                     </button>
                                     <button
                                       onClick={() =>
@@ -1225,7 +1229,7 @@ export default function CharacterManagerModal({
                                           : "bg-white/10 text-white/70 hover:bg-white/20"
                                       }`}
                                     >
-                                      테스트
+                                      {t('character.button.test')}
                                     </button>
                                     {getModelType(char.char_id) !==
                                       "finetuned" && (
@@ -1235,9 +1239,9 @@ export default function CharacterManagerModal({
                                         }
                                         disabled={isTrainingActive}
                                         className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/40 text-purple-200 hover:bg-purple-500/60 disabled:opacity-50"
-                                        title="GPT-SoVITS 모델 학습"
+                                        title={t('character.gptSovitsModelTrain')}
                                       >
-                                        학습
+                                        {t('character.button.train')}
                                       </button>
                                     )}
                                     <button
@@ -1246,9 +1250,9 @@ export default function CharacterManagerModal({
                                       }
                                       disabled={isTrainingActive}
                                       className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/30 text-red-300 hover:bg-red-500/50 disabled:opacity-50"
-                                      title="준비/학습 데이터 삭제"
+                                      title={t('character.resetModelTooltip')}
                                     >
-                                      초기화
+                                      {t('common.reset')}
                                     </button>
                                   </>
                                 ) : (
@@ -1260,14 +1264,14 @@ export default function CharacterManagerModal({
                                       disabled={isTrainingActive}
                                       className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/40 text-green-200 hover:bg-green-500/60 disabled:opacity-50"
                                     >
-                                      준비
+                                      {t('character.button.prepare')}
                                     </button>
                                     <button
                                       disabled={true}
                                       className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300/40 cursor-not-allowed"
-                                      title="먼저 '준비'를 완료해야 학습할 수 있습니다"
+                                      title={t('character.firstPrepareNote')}
                                     >
-                                      학습
+                                      {t('character.button.train')}
                                     </button>
                                     <button
                                       onClick={() =>
@@ -1275,7 +1279,7 @@ export default function CharacterManagerModal({
                                       }
                                       className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${defaultColor}`}
                                     >
-                                      {isDefault ? "기본 해제" : "기본"}
+                                      {isDefault ? t('character.button.unsetDefault') : t('character.button.setDefault')}
                                     </button>
                                     <button
                                       onClick={() =>
@@ -1288,8 +1292,8 @@ export default function CharacterManagerModal({
                                       }`}
                                     >
                                       {isNarrator
-                                        ? "나레이션 해제"
-                                        : "나레이션"}
+                                        ? t('character.button.unsetNarrator')
+                                        : t('character.button.setNarrator')}
                                     </button>
                                     <button
                                       onClick={() =>
@@ -1302,8 +1306,8 @@ export default function CharacterManagerModal({
                                       }`}
                                     >
                                       {isUnknownSpeaker
-                                        ? "??? 해제"
-                                        : "???"}
+                                        ? t('character.button.unsetUnknownSpeaker')
+                                        : t('character.button.setUnknownSpeaker')}
                                     </button>
                                   </>
                                 )}
@@ -1340,14 +1344,14 @@ export default function CharacterManagerModal({
               </div>
             )}
             <span className="text-sm text-ark-gray whitespace-nowrap">
-              음성 테스트:
+              {t('character.voiceTest.label')}
             </span>
             <select
               value={testCharId ?? ""}
               onChange={(e) => setTestCharId(e.target.value || null)}
               className="ark-input text-sm flex-1"
             >
-              <option value="">캐릭터 선택...</option>
+              <option value="">{t('character.voiceTest.selectCharacter')}</option>
               {voiceCharacters
                 .filter((c) => trainedCharIds.has(c.char_id))
                 .map((c) => (
@@ -1362,7 +1366,7 @@ export default function CharacterManagerModal({
               type="text"
               value={testText}
               onChange={(e) => setTestText(e.target.value)}
-              placeholder="테스트 텍스트 입력..."
+              placeholder={t('character.voiceTest.inputText')}
               className="ark-input text-sm flex-1"
             />
             <button
@@ -1374,15 +1378,15 @@ export default function CharacterManagerModal({
                   : "ark-btn-primary"
               } ${!testCharId || !testText.trim() ? "opacity-50 cursor-not-allowed" : ""}`}
             >
-              {isTesting ? "중지" : "테스트"}
+              {isTesting ? t('common.stop') : t('character.button.test')}
             </button>
           </div>
           {/* 제로샷 강제 모드 토글 (테스트/비교용) */}
           <div className="flex items-center justify-between pt-2 border-t border-ark-border/50">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-ark-gray">제로샷 강제 모드</span>
+              <span className="text-xs text-ark-gray">{t('character.zeroShotMode.label')}</span>
               <span className="text-[10px] text-ark-gray/50">
-                (학습 모델 무시, 품질 비교용)
+                {t('character.zeroShotMode.description')}
               </span>
             </div>
             <button
@@ -1392,7 +1396,7 @@ export default function CharacterManagerModal({
                   await ttsApi.setForceZeroShot(newState);
                   checkGptSovitsStatus();
                 } catch (e) {
-                  console.error("제로샷 모드 토글 실패:", e);
+                  console.error(t('character.zeroShotMode.toggleFailed'), e);
                 }
               }}
               disabled={!gptSovitsStatus?.api_running}
@@ -1405,10 +1409,10 @@ export default function CharacterManagerModal({
               }`}
               title={
                 !gptSovitsStatus?.api_running
-                  ? "GPT-SoVITS 연결 필요"
+                  ? t('character.zeroShotMode.needsConnection')
                   : gptSovitsStatus?.force_zero_shot
-                    ? "클릭하면 학습 모델 사용으로 전환"
-                    : "클릭하면 제로샷 모드로 전환"
+                    ? t('character.zeroShotMode.switchToTrained')
+                    : t('character.zeroShotMode.switchToZeroShot')
               }
             >
               <span
@@ -1438,11 +1442,7 @@ export default function CharacterManagerModal({
             {/* 헤더 */}
             <div className="flex items-center justify-between p-4 border-b border-ark-border">
               <h3 className="text-base font-bold text-ark-white">
-                별칭 관리:{" "}
-                {
-                  voiceCharacters.find((c) => c.char_id === aliasEditCharId)
-                    ?.name
-                }
+                {t('character.aliases.manageTitle', { name: voiceCharacters.find((c) => c.char_id === aliasEditCharId)?.name })}
               </h3>
               <button
                 onClick={() => {
@@ -1465,7 +1465,7 @@ export default function CharacterManagerModal({
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {/* 등록된 별칭 */}
               <div>
-                <h4 className="text-xs text-ark-gray mb-2">등록된 별칭</h4>
+                <h4 className="text-xs text-ark-gray mb-2">{t('character.aliases.registered')}</h4>
                 {characterAliases[aliasEditCharId]?.length > 0 ? (
                   <div className="space-y-2">
                     {characterAliases[aliasEditCharId].map((alias) => (
@@ -1478,14 +1478,14 @@ export default function CharacterManagerModal({
                           onClick={() => handleRemoveAlias(alias)}
                           className="text-red-400 hover:text-red-300 text-xs"
                         >
-                          삭제
+                          {t('common.delete')}
                         </button>
                       </div>
                     ))}
                   </div>
                 ) : (
                   <p className="text-sm text-ark-gray/50 text-center py-2">
-                    없음
+                    {t('common.empty')}
                   </p>
                 )}
               </div>
@@ -1493,9 +1493,9 @@ export default function CharacterManagerModal({
               {/* 제안된 별칭 */}
               <div>
                 <h4 className="text-xs text-ark-gray mb-2">
-                  제안 (프로필에서 감지)
+                  {t('character.aliases.suggestions')}
                   {isLoadingSuggestions && (
-                    <span className="ml-2 text-ark-gray/50">로딩...</span>
+                    <span className="ml-2 text-ark-gray/50">{t('common.loading')}</span>
                   )}
                 </h4>
                 {aliasSuggestions.length > 0 ? (
@@ -1519,7 +1519,7 @@ export default function CharacterManagerModal({
                               }
                               className="text-[10px] px-2 py-0.5 rounded bg-green-500/30 text-green-300 hover:bg-green-500/50"
                             >
-                              수락
+                              {t('common.accept')}
                             </button>
                             <button
                               onClick={() =>
@@ -1527,7 +1527,7 @@ export default function CharacterManagerModal({
                               }
                               className="text-[10px] px-2 py-0.5 rounded bg-red-500/20 text-red-300 hover:bg-red-500/40"
                             >
-                              무시
+                              {t('common.dismiss')}
                             </button>
                           </div>
                         </div>
@@ -1542,7 +1542,7 @@ export default function CharacterManagerModal({
                   </div>
                 ) : !isLoadingSuggestions ? (
                   <p className="text-sm text-ark-gray/50 text-center py-2">
-                    없음
+                    {t('common.empty')}
                   </p>
                 ) : null}
               </div>
@@ -1555,7 +1555,7 @@ export default function CharacterManagerModal({
                   type="text"
                   value={newAliasInput}
                   onChange={(e) => setNewAliasInput(e.target.value)}
-                  placeholder="새 별칭 입력..."
+                  placeholder={t('character.aliases.newAliasInput')}
                   className="ark-input flex-1 text-sm"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !isAddingAlias) {
@@ -1568,12 +1568,11 @@ export default function CharacterManagerModal({
                   disabled={isAddingAlias || !newAliasInput.trim()}
                   className="ark-btn ark-btn-primary text-sm px-4 py-2 disabled:opacity-50"
                 >
-                  {isAddingAlias ? "..." : "추가"}
+                  {isAddingAlias ? "..." : t('common.add')}
                 </button>
               </div>
               <p className="text-[10px] text-ark-gray/60 mt-2">
-                * 본명이나 닉네임을 등록하면 스토리에서 해당 이름으로 등장할 때
-                이 캐릭터로 인식됩니다
+                {t('character.aliases.note')}
               </p>
             </div>
           </div>

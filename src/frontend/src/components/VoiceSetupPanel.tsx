@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAppStore, isMysteryName } from '../stores/appStore'
 import VoiceMappingModal from './VoiceMappingModal'
 
 export default function VoiceSetupPanel() {
+  const { t } = useTranslation()
   const [isVoiceMappingModalOpen, setIsVoiceMappingModalOpen] = useState(false)
 
   const {
@@ -282,20 +284,20 @@ export default function VoiceSetupPanel() {
           <svg viewBox="0 0 24 24" className="w-5 h-5 text-ark-orange" fill="currentColor">
             <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/>
           </svg>
-          더빙 설정
+          {t('dubbing.setup.title')}
         </h3>
         <div className="flex items-center gap-2">
           <button
             onClick={clearEpisode}
             className="text-ark-cyan hover:text-ark-white text-sm"
           >
-            ← 그룹
+            {t('dubbing.button.backToGroup')}
           </button>
           <button
             onClick={cancelPrepare}
             className="text-ark-gray hover:text-ark-white text-sm"
           >
-            취소
+            {t('common.cancel')}
           </button>
         </div>
       </div>
@@ -304,20 +306,20 @@ export default function VoiceSetupPanel() {
         {/* 캐릭터 목록 (현재 에피소드 기준) */}
         <div className="p-4 border-b border-ark-border">
           <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-medium text-ark-gray">등장 캐릭터</h4>
+            <h4 className="text-sm font-medium text-ark-gray">{t('dubbing.section.characters')}</h4>
             <div className="flex items-center gap-3">
               <span className="text-xs text-ark-gray">
-                음성 {characterStats.withVoice}/{characterStats.total}
+                {t('dubbing.characters.hasVoice', { withVoice: characterStats.withVoice, total: characterStats.total })}
               </span>
               <span className={`text-xs ${characterStats.trained === characterStats.withVoice ? 'text-green-400' : 'text-ark-yellow'}`}>
-                준비 {characterStats.trained}/{characterStats.withVoice}
+                {t('dubbing.characters.prepared', { trained: characterStats.trained, withVoice: characterStats.withVoice })}
               </span>
             </div>
           </div>
           {isLoadingEpisodeCharacters ? (
-            <div className="text-center text-ark-gray py-4 ark-pulse">로딩 중...</div>
+            <div className="text-center text-ark-gray py-4 ark-pulse">{t('common.loading')}</div>
           ) : episodeCharacters.length === 0 ? (
-            <div className="text-center text-ark-gray py-4">캐릭터 없음</div>
+            <div className="text-center text-ark-gray py-4">{t('common.noCharacters')}</div>
           ) : (
             <div className="space-y-1 max-h-48 overflow-y-auto">
               {episodeCharacters.map((char, idx) => (
@@ -328,23 +330,23 @@ export default function VoiceSetupPanel() {
                   <div className="flex items-center gap-2 flex-1 min-w-0">
                     <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
                       char.has_voice ? 'bg-green-500' : 'bg-ark-gray/50'
-                    }`} title={char.has_voice ? '음성 보유' : '음성 없음'} />
+                    }`} title={char.has_voice ? t('dialogue.status.hasVoice') : t('dialogue.status.noVoice')} />
                     <span className="text-ark-white truncate">{char.name}</span>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <span className="text-xs text-ark-gray">
-                      {char.dialogue_count}대사
+                      {t('character.dialogueCount', { count: char.dialogue_count })}
                     </span>
                     {(() => {
                       const voiceId = char.voice_char_id || char.char_id
                       if (voiceId && trainedCharIds.has(voiceId)) {
                         const modelType = getModelType(voiceId)
                         if (modelType === 'finetuned') {
-                          return <span className="text-xs text-purple-400 font-medium">학습됨</span>
+                          return <span className="text-xs text-purple-400 font-medium">{t('character.status.trained')}</span>
                         }
-                        return <span className="text-xs text-green-400 font-medium">준비됨</span>
+                        return <span className="text-xs text-green-400 font-medium">{t('character.status.prepared')}</span>
                       } else if (char.has_voice) {
-                        return <span className="text-xs text-ark-yellow">준비 필요</span>
+                        return <span className="text-xs text-ark-yellow">{t('character.status.needsPreparation')}</span>
                       }
                       return null
                     })()}
@@ -354,20 +356,20 @@ export default function VoiceSetupPanel() {
             </div>
           )}
           <p className="mt-2 text-xs text-ark-gray/70">
-            * 녹색 = 음성 데이터 보유
+            {t('dubbing.note.greenMeansVoice')}
           </p>
 
           {/* 나레이션 대사 수 */}
           {episodeNarrationCount > 0 && (
             <div className="mt-3 p-2 bg-purple-500/10 rounded border border-purple-500/20">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-purple-400">나레이션</span>
-                <span className="text-xs text-purple-300">{episodeNarrationCount}대사</span>
+                <span className="text-xs text-purple-400">{t('character.narration.labelShort')}</span>
+                <span className="text-xs text-purple-300">{t('character.dialogueCount', { count: episodeNarrationCount })}</span>
               </div>
               <p className="text-[10px] text-purple-400/70 mt-1">
                 {narratorCharId
-                  ? `음성: ${voiceCharacters.find(c => c.char_id === narratorCharId)?.name ?? narratorCharId}`
-                  : '캐릭터 관리에서 나레이션 음성을 설정하세요'}
+                  ? t('dubbing.narrator.voice', { name: voiceCharacters.find(c => c.char_id === narratorCharId)?.name ?? narratorCharId })
+                  : t('dubbing.narrator.setupGuide')}
               </p>
             </div>
           )}
@@ -376,13 +378,13 @@ export default function VoiceSetupPanel() {
           {unknownSpeakerCount > 0 && (
             <div className="mt-3 p-2 bg-amber-500/10 rounded border border-amber-500/20">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-amber-400">??? (알 수 없는 화자)</span>
-                <span className="text-xs text-amber-300">{unknownSpeakerCount}대사</span>
+                <span className="text-xs text-amber-400">{t('character.unknownSpeaker.labelFull')}</span>
+                <span className="text-xs text-amber-300">{t('character.dialogueCount', { count: unknownSpeakerCount })}</span>
               </div>
               <p className="text-[10px] text-amber-400/70 mt-1">
                 {unknownSpeakerCharId
-                  ? `음성: ${voiceCharacters.find(c => c.char_id === unknownSpeakerCharId)?.name ?? unknownSpeakerCharId}`
-                  : '캐릭터 관리에서 ??? 음성을 설정하세요'}
+                  ? t('dubbing.unknownSpeaker.voice', { name: voiceCharacters.find(c => c.char_id === unknownSpeakerCharId)?.name ?? unknownSpeakerCharId })
+                  : t('dubbing.unknownSpeaker.setupGuide')}
               </p>
             </div>
           )}
@@ -391,7 +393,7 @@ export default function VoiceSetupPanel() {
         {/* GPT-SoVITS 연결 상태 */}
         <div className="p-4 border-b border-ark-border">
           <div className="flex items-center justify-between">
-            <h4 className="text-sm font-medium text-ark-gray">GPT-SoVITS</h4>
+            <h4 className="text-sm font-medium text-ark-gray">{t('dubbing.section.gptSovits')}</h4>
             <div className="flex items-center gap-2">
               <span className={`w-2 h-2 rounded-full ${
                 gptSovitsStatus?.synthesizing
@@ -408,16 +410,16 @@ export default function VoiceSetupPanel() {
                     : 'text-yellow-400'
               }`}>
                 {gptSovitsStatus?.synthesizing
-                  ? '합성 중...'
+                  ? t('app.gpt.synthesizing')
                   : gptSovitsStatus?.api_running
-                    ? '연결됨'
-                    : '대기 중'}
+                    ? t('common.connected')
+                    : t('common.waiting')}
               </span>
             </div>
           </div>
           {!gptSovitsStatus?.api_running && (
             <p className="mt-2 text-xs text-ark-gray/70">
-              * 상단 헤더에서 GPT-SoVITS를 시작하세요
+              {t('dubbing.note.startGptSovits')}
             </p>
           )}
         </div>
@@ -425,9 +427,9 @@ export default function VoiceSetupPanel() {
         {/* 음성 준비 섹션 */}
         <div className="p-4 border-b border-ark-border">
           <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-medium text-ark-gray">음성 준비</h4>
+            <h4 className="text-sm font-medium text-ark-gray">{t('dubbing.section.voicePreparation')}</h4>
             <span className="text-xs text-ark-gray">
-              준비 완료 {characterStats.trained}/{characterStats.withVoice}
+              {t('dubbing.status.prepared', { trained: characterStats.trained, withVoice: characterStats.withVoice })}
             </span>
           </div>
 
@@ -443,9 +445,9 @@ export default function VoiceSetupPanel() {
                   </span>
                 </div>
                 <span className="text-xs px-2 py-0.5 rounded bg-ark-orange/20 text-ark-orange">
-                  {currentTrainingJob.status === 'preprocessing' && '오디오 분석 중'}
-                  {currentTrainingJob.status === 'training' && '준비 중'}
-                  {currentTrainingJob.status === 'pending' && '대기'}
+                  {currentTrainingJob.status === 'preprocessing' && t('dubbing.status.preprocessing')}
+                  {currentTrainingJob.status === 'training' && t('dubbing.status.preparing')}
+                  {currentTrainingJob.status === 'pending' && t('common.pending')}
                 </span>
               </div>
 
@@ -469,7 +471,7 @@ export default function VoiceSetupPanel() {
                 <div className="flex items-center gap-2 text-xs">
                   <span className="text-ark-gray font-mono">LOG</span>
                   <span className="text-ark-white truncate">
-                    {currentTrainingJob.message || '준비 중...'}
+                    {currentTrainingJob.message || t('dubbing.status.preparing')}
                   </span>
                 </div>
               </div>
@@ -477,11 +479,11 @@ export default function VoiceSetupPanel() {
               {/* 대기열 */}
               {trainingQueue.length > 0 && (
                 <div className="text-xs text-ark-gray">
-                  <span>대기열: </span>
-                  <span className="text-ark-white">{trainingQueue.length}개</span>
+                  <span>{t('dubbing.queue.label')}</span>
+                  <span className="text-ark-white">{t('dubbing.queue.count', { count: trainingQueue.length })}</span>
                   <span className="ml-2 text-ark-gray/70">
                     ({trainingQueue.slice(0, 3).map(j => j.char_name).join(', ')}
-                    {trainingQueue.length > 3 && ` 외 ${trainingQueue.length - 3}개`})
+                    {trainingQueue.length > 3 && ` ${t('dubbing.queue.more', { count: trainingQueue.length - 3 })}`})
                   </span>
                 </div>
               )}
@@ -490,7 +492,7 @@ export default function VoiceSetupPanel() {
                 onClick={handleCancelTraining}
                 className="w-full ark-btn text-sm text-red-400 hover:text-red-300 border-red-400/30"
               >
-                준비 취소
+                {t('dubbing.button.cancelPrepare')}
               </button>
             </div>
           ) : totalTrainableCount > 0 ? (
@@ -498,28 +500,28 @@ export default function VoiceSetupPanel() {
             <div className="space-y-3">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-ark-gray">
-                  {totalTrainableCount}개 캐릭터 준비 가능
+                  {t('dubbing.status.trainableCount', { count: totalTrainableCount })}
                 </span>
               </div>
               <button
                 onClick={handleStartBatchTraining}
                 className="w-full ark-btn ark-btn-secondary text-sm ark-pulse-subtle"
               >
-                음성 일괄 준비
+                {t('dubbing.button.batchPrepare')}
               </button>
               <button
                 onClick={handleStartBatchFinetuning}
                 className="w-full ark-btn text-sm text-purple-400 hover:text-purple-300 border-purple-400/30 mt-2"
                 disabled={!gptSovitsStatus?.api_running}
-                title={!gptSovitsStatus?.api_running ? 'GPT-SoVITS 연결 필요' : '실제 모델 학습 (시간 소요)'}
+                title={!gptSovitsStatus?.api_running ? t('character.zeroShotMode.needsConnection') : t('dubbing.button.batchTrain')}
               >
-                음성 일괄 학습 (Fine-tune)
+                {t('dubbing.button.batchTrain')}
               </button>
               <p className="text-xs text-ark-gray/50 text-center">
-                * 준비: Zero-shot / 학습: 모델 Fine-tuning
+                {t('dubbing.note.prepareVsTrain')}
               </p>
               <p className="text-xs text-green-400/70 text-center mt-1">
-                * 음성 학습 없이 준비만으로도 더빙 실행 가능
+                {t('dubbing.note.prepareSufficient')}
               </p>
             </div>
           ) : characterStats.withVoice > 0 ? (
@@ -529,32 +531,32 @@ export default function VoiceSetupPanel() {
                 <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
                   <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
                 </svg>
-                <span className="text-sm">모든 캐릭터 준비 완료</span>
+                <span className="text-sm">{t('dubbing.status.allPrepared')}</span>
               </div>
               {/* Fine-tune 가능한 캐릭터가 있으면 학습 버튼 표시 */}
               {totalFinetuneableCount > 0 && (
                 <>
                   <div className="text-xs text-ark-gray">
-                    {totalFinetuneableCount}개 캐릭터 학습 가능
+                    {t('dubbing.status.finetuneableCount', { count: totalFinetuneableCount })}
                   </div>
                   <button
                     onClick={handleStartBatchFinetuning}
                     className="w-full ark-btn text-sm text-purple-400 hover:text-purple-300 border-purple-400/30"
                     disabled={!gptSovitsStatus?.api_running}
-                    title={!gptSovitsStatus?.api_running ? 'GPT-SoVITS 연결 필요' : '실제 모델 학습 (시간 소요)'}
+                    title={!gptSovitsStatus?.api_running ? t('character.zeroShotMode.needsConnection') : t('dubbing.button.batchTrain')}
                   >
-                    음성 일괄 학습 (Fine-tune)
+                    {t('dubbing.button.batchTrain')}
                   </button>
                 </>
               )}
               <p className="text-xs text-ark-gray/70">
-                * 초기화는 캐릭터 관리에서 가능합니다
+                {t('dubbing.note.resetInCharacterManagement')}
               </p>
             </div>
           ) : (
             // 학습 가능한 캐릭터 없음
             <p className="text-xs text-ark-gray/70">
-              음성 데이터가 있는 캐릭터가 없습니다
+              {t('dubbing.status.noCharactersWithVoice')}
             </p>
           )}
         </div>
@@ -562,26 +564,26 @@ export default function VoiceSetupPanel() {
         {/* 음성 매핑 (간소화) */}
         <div className="p-4 border-b border-ark-border">
           <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-medium text-ark-gray">음성 매핑</h4>
+            <h4 className="text-sm font-medium text-ark-gray">{t('dubbing.section.voiceMapping')}</h4>
             <span className="text-xs text-ark-gray">
               {voicelessCharacters.length > 0
-                ? `${mappedCount}/${voicelessCharacters.length}명 매핑`
-                : '모두 보유'}
+                ? t('dubbing.mapping.count', { mapped: mappedCount, total: voicelessCharacters.length })
+                : t('dubbing.status.allHaveVoice')}
             </span>
           </div>
           {isLoadingEpisodeCharacters ? (
-            <div className="text-center text-ark-gray py-4 ark-pulse">로딩 중...</div>
+            <div className="text-center text-ark-gray py-4 ark-pulse">{t('common.loading')}</div>
           ) : voicelessCharacters.length === 0 ? (
             <div className="flex items-center gap-2 text-green-400">
               <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
                 <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
               </svg>
-              <span className="text-sm">모든 캐릭터가 음성을 보유하고 있습니다</span>
+              <span className="text-sm">{t('dubbing.status.allHaveVoiceFull')}</span>
             </div>
           ) : (
             <div className="space-y-2">
               <p className="text-xs text-ark-gray/70">
-                음성이 없는 캐릭터에 대체 음성을 지정합니다
+                {t('dubbing.mapping.description')}
               </p>
               <button
                 onClick={() => setIsVoiceMappingModalOpen(true)}
@@ -590,11 +592,11 @@ export default function VoiceSetupPanel() {
                 <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
                   <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
                 </svg>
-                음성 매핑 설정
+                {t('dubbing.button.voiceMappingSetup')}
               </button>
               {defaultFemaleVoices.length === 0 && defaultMaleVoices.length === 0 && (
                 <p className="text-xs text-ark-yellow">
-                  * 기본 음성이 설정되지 않았습니다. 캐릭터 관리에서 설정하세요.
+                  {t('dubbing.warning.noDefaultVoices')}
                 </p>
               )}
             </div>
@@ -609,7 +611,7 @@ export default function VoiceSetupPanel() {
 
         {/* 재생 설정 */}
         <div className="p-4 border-b border-ark-border">
-          <h4 className="text-sm font-medium text-ark-gray mb-3">재생 설정</h4>
+          <h4 className="text-sm font-medium text-ark-gray mb-3">{t('dubbing.section.playbackSettings')}</h4>
           <label className="flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"
@@ -617,25 +619,25 @@ export default function VoiceSetupPanel() {
               onChange={toggleAutoPlay}
               className="w-4 h-4 rounded border-ark-border bg-ark-black text-ark-orange focus:ring-ark-orange"
             />
-            <span className="text-ark-white text-sm">매칭 시 자동 재생</span>
+            <span className="text-ark-white text-sm">{t('dubbing.autoplay.onMatch')}</span>
           </label>
         </div>
 
         {/* 사전 더빙 */}
         <div className="p-4 border-b border-ark-border">
           <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-medium text-ark-gray">사전 더빙</h4>
+            <h4 className="text-sm font-medium text-ark-gray">{t('dubbing.section.preRendering')}</h4>
             {episodeCacheStatus === 'completed' && (
-              <span className="text-xs text-green-400">완료됨</span>
+              <span className="text-xs text-green-400">{t('common.completed')}</span>
             )}
             {episodeCacheStatus === 'partial' && (
-              <span className="text-xs text-ark-yellow">부분 완료</span>
+              <span className="text-xs text-ark-yellow">{t('common.partiallyCompleted')}</span>
             )}
           </div>
 
           {!selectedEpisodeId ? (
             <p className="text-xs text-ark-gray/70">
-              에피소드를 먼저 선택하세요
+              {t('dubbing.message.selectEpisodeFirst')}
             </p>
           ) : isRendering && renderProgress ? (
             // 렌더링 진행 중
@@ -660,13 +662,13 @@ export default function VoiceSetupPanel() {
                 </p>
               )}
               <p className="text-xs text-ark-cyan/70 mt-1">
-                * 사전 더빙 중에도 더빙 시작으로 실시간 재생 가능
+                {t('dubbing.note.realtimeDuringPreRendering')}
               </p>
               <button
                 onClick={cancelRender}
                 className="w-full ark-btn text-sm text-red-400 hover:text-red-300 border-red-400/30 mt-2"
               >
-                렌더링 취소
+                {t('dubbing.button.cancelRendering')}
               </button>
             </div>
           ) : episodeCacheStatus === 'completed' ? (
@@ -676,10 +678,10 @@ export default function VoiceSetupPanel() {
                 <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
                   <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
                 </svg>
-                <span className="text-sm">사전 더빙 완료</span>
+                <span className="text-sm">{t('dubbing.status.preRenderingComplete')}</span>
               </div>
               <p className="text-xs text-ark-gray/70">
-                더빙 모드에서 캐시된 음성을 사용합니다
+                {t('dubbing.info.usesCachedVoice')}
               </p>
               <div className="flex gap-2">
                 <button
@@ -689,16 +691,16 @@ export default function VoiceSetupPanel() {
                     !gptSovitsStatus?.api_running ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
                 >
-                  다시 렌더링
+                  {t('dubbing.button.reRender')}
                 </button>
                 <button
                   onClick={() => {
-                    if (selectedEpisodeId && confirm('렌더 캐시를 삭제하시겠습니까?')) {
+                    if (selectedEpisodeId && confirm(t('dubbing.confirm.deleteRenderCache'))) {
                       deleteRenderCache(selectedEpisodeId)
                     }
                   }}
                   className="ark-btn text-sm bg-red-900/50 hover:bg-red-800/50 text-red-300"
-                  title="캐시 삭제"
+                  title={t('dubbing.button.deleteCache')}
                 >
                   <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
                     <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
@@ -714,7 +716,7 @@ export default function VoiceSetupPanel() {
                   <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
                     <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
                   </svg>
-                  <span className="text-sm">부분 완료</span>
+                  <span className="text-sm">{t('common.partiallyCompleted')}</span>
                 </div>
                 {renderProgress && (
                   <span className="text-xs text-ark-gray">
@@ -731,7 +733,7 @@ export default function VoiceSetupPanel() {
                 </div>
               )}
               <p className="text-xs text-ark-gray/70">
-                일부 대사만 캐시됨. 나머지는 실시간 합성됩니다.
+                {t('dubbing.info.partialCache')}
               </p>
               <div className="flex gap-2">
                 <button
@@ -741,16 +743,16 @@ export default function VoiceSetupPanel() {
                     !gptSovitsStatus?.api_running ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
                 >
-                  이어서 렌더링
+                  {t('dubbing.button.continueRendering')}
                 </button>
                 <button
                   onClick={() => {
-                    if (selectedEpisodeId && confirm('렌더 캐시를 삭제하시겠습니까?')) {
+                    if (selectedEpisodeId && confirm(t('dubbing.confirm.deleteRenderCache'))) {
                       deleteRenderCache(selectedEpisodeId)
                     }
                   }}
                   className="ark-btn text-sm bg-red-900/50 hover:bg-red-800/50 text-red-300"
-                  title="캐시 삭제"
+                  title={t('dubbing.button.deleteCache')}
                 >
                   <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
                     <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
@@ -762,7 +764,7 @@ export default function VoiceSetupPanel() {
             // 사전 더빙 시작 가능
             <div className="space-y-2">
               <p className="text-xs text-ark-gray/70">
-                에피소드 전체 음성을 미리 생성합니다
+                {t('dubbing.preRendering.description')}
               </p>
               <button
                 onClick={() => handleStartRender(false)}
@@ -771,11 +773,11 @@ export default function VoiceSetupPanel() {
                   !gptSovitsStatus?.api_running ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
               >
-                사전 더빙 시작
+                {t('dubbing.button.startPreRendering')}
               </button>
               {!gptSovitsStatus?.api_running && (
                 <p className="text-xs text-ark-yellow">
-                  * GPT-SoVITS를 먼저 시작하세요
+                  {t('dubbing.note.startGptSovitsFirst')}
                 </p>
               )}
             </div>
@@ -794,21 +796,21 @@ export default function VoiceSetupPanel() {
                   <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
                 </svg>
               </div>
-              <h3 className="text-base font-bold text-ark-white">화자 설정 확인</h3>
+              <h3 className="text-base font-bold text-ark-white">{t('dubbing.dialog.confirmSpeaker')}</h3>
             </div>
             <div className="space-y-2 mb-6">
               {episodeNarrationCount > 0 && !narratorCharId && (
                 <p className="text-sm text-amber-400">
-                  나레이터가 설정되지 않았습니다 ({episodeNarrationCount}개 나레이션 대사)
+                  {t('dubbing.warning.narratorNotSet', { count: episodeNarrationCount })}
                 </p>
               )}
               {unknownSpeakerCount > 0 && !unknownSpeakerCharId && (
                 <p className="text-sm text-amber-400">
-                  ??? 화자가 설정되지 않았습니다 ({unknownSpeakerCount}개 대사)
+                  {t('dubbing.warning.unknownSpeakerNotSet', { count: unknownSpeakerCount })}
                 </p>
               )}
               <p className="text-xs text-ark-gray">
-                해당 대사는 건너뜁니다. 캐릭터 관리에서 설정할 수 있습니다.
+                {t('dubbing.info.skipDialoguesInfo')}
               </p>
             </div>
             <div className="flex justify-end gap-3">
@@ -816,13 +818,13 @@ export default function VoiceSetupPanel() {
                 onClick={() => setShowNarratorWarning(false)}
                 className="ark-btn text-sm px-4 py-2"
               >
-                취소
+                {t('common.cancel')}
               </button>
               <button
                 onClick={confirmRenderWithWarning}
                 className="ark-btn ark-btn-primary text-sm px-4 py-2"
               >
-                계속 진행
+                {t('dubbing.button.proceed')}
               </button>
             </div>
           </div>

@@ -71,15 +71,16 @@ class RenderCache:
 
     구조:
         rendered/
-        └── {episode_id}/
-            ├── meta.json
-            ├── 0000.wav
-            ├── 0001.wav
-            └── ...
+        └── {voice_lang}/
+            └── {episode_id}/
+                ├── meta.json
+                ├── 0000.wav
+                └── ...
     """
 
-    def __init__(self, cache_path: Path | None = None):
-        self.cache_path = cache_path or Path("rendered")
+    def __init__(self, cache_path: Path | None = None, voice_language: str = "ko"):
+        base = cache_path or Path("rendered")
+        self.cache_path = base / voice_language
         self.cache_path.mkdir(parents=True, exist_ok=True)
 
     def get_episode_path(self, episode_id: str) -> Path:
@@ -306,11 +307,20 @@ class RenderCache:
 
 # 싱글톤 인스턴스
 _render_cache: RenderCache | None = None
+_render_cache_lang: str | None = None
 
 
-def get_render_cache() -> RenderCache:
-    """캐시 싱글톤 인스턴스"""
-    global _render_cache
-    if _render_cache is None:
-        _render_cache = RenderCache()
+def get_render_cache(voice_language: str = "ko") -> RenderCache:
+    """캐시 싱글톤 인스턴스 (음성 언어별)"""
+    global _render_cache, _render_cache_lang
+    if _render_cache is None or _render_cache_lang != voice_language:
+        _render_cache = RenderCache(voice_language=voice_language)
+        _render_cache_lang = voice_language
     return _render_cache
+
+
+def reset_render_cache() -> None:
+    """렌더 캐시 싱글톤 리셋"""
+    global _render_cache, _render_cache_lang
+    _render_cache = None
+    _render_cache_lang = None

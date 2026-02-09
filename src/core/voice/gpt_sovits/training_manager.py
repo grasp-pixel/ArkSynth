@@ -222,13 +222,8 @@ class TrainingManager:
     def _get_audio_files(self, char_id: str) -> list[Path]:
         """캐릭터 오디오 파일 목록 (extracted/{lang_folder}/{char_id}/ 구조)"""
         # 언어별 폴더 매핑
-        lang_folder_map = {
-            "ko": "voice_kr",
-            "ja": "voice",
-            "zh": "voice_cn",
-            "en": "voice_en",
-        }
-        lang_folder = lang_folder_map.get(self.config.default_language, "voice")
+        from ...common.language_codes import SHORT_TO_VOICE_FOLDER
+        lang_folder = SHORT_TO_VOICE_FOLDER.get(self.config.default_language, "voice")
         # 절대 경로 사용 (CWD 무관하게 동작)
         audio_dir = (self.config.extracted_path / lang_folder / char_id).absolute()
 

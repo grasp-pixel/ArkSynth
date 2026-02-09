@@ -1,10 +1,12 @@
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/appStore'
 import { ocrApi } from '../services/api'
 
 const PREVIEW_REFRESH_INTERVAL = 3000 // 미리보기 갱신 주기 (ms)
 
 export default function DubbingControlBar() {
+  const { t } = useTranslation()
   const {
     isPrepared,
     isDubbingMode,
@@ -89,7 +91,7 @@ export default function DubbingControlBar() {
             <svg viewBox="0 0 24 24" className="w-5 h-5 flex-shrink-0" fill="currentColor">
               <path d="M21 2H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h7v2H8v2h8v-2h-2v-2h7c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H3V4h18v12z"/>
             </svg>
-            <label className="text-sm font-medium whitespace-nowrap">캡처 윈도우</label>
+            <label className="text-sm font-medium whitespace-nowrap">{t('dubbing.label.captureWindow')}</label>
           </div>
           <select
             value={selectedWindowHwnd ?? ''}
@@ -101,7 +103,7 @@ export default function DubbingControlBar() {
             }`}
             disabled={isDubbingMode}
           >
-            <option value="">윈도우를 선택하세요</option>
+            <option value="">{t('dubbing.placeholder.selectWindow')}</option>
             {sortedWindows.map((win) => (
               <option key={win.hwnd} value={win.hwnd}>
                 {win.title || `Window ${win.hwnd}`}
@@ -112,7 +114,7 @@ export default function DubbingControlBar() {
             onClick={loadWindows}
             disabled={isDubbingMode}
             className="text-ark-gray hover:text-ark-orange p-1.5 disabled:opacity-50 transition-colors"
-            title="윈도우 목록 새로고침"
+            title={t('dubbing.button.refreshWindowList')}
           >
             <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
               <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
@@ -125,7 +127,7 @@ export default function DubbingControlBar() {
           {/* 대사 영역 */}
           <div className="flex-1 bg-ark-black/50 border border-ark-border rounded overflow-hidden">
             <div className="px-1.5 py-0.5 bg-ark-panel/50 border-b border-ark-border">
-              <span className="text-[10px] text-ark-orange">대사</span>
+              <span className="text-[10px] text-ark-orange">{t('dubbing.region.dialogue')}</span>
             </div>
             <div
               className="relative"
@@ -135,13 +137,13 @@ export default function DubbingControlBar() {
                 <img
                   ref={dialogueImgRef}
                   src={dialogueUrl}
-                  alt="대사 영역"
+                  alt={t('dubbing.region.dialogue')}
                   className="w-full h-full object-contain"
                   onLoad={onDialogueLoad}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-ark-gray/30 text-[10px]">
-                  미리보기
+                  {t('common.preview')}
                 </div>
               )}
             </div>
@@ -149,7 +151,7 @@ export default function DubbingControlBar() {
           {/* 자막 영역 */}
           <div className="flex-1 bg-ark-black/50 border border-ark-border rounded overflow-hidden">
             <div className="px-1.5 py-0.5 bg-ark-panel/50 border-b border-ark-border">
-              <span className="text-[10px] text-purple-400">자막</span>
+              <span className="text-[10px] text-purple-400">{t('dubbing.region.subtitle')}</span>
             </div>
             <div
               className="relative"
@@ -159,13 +161,13 @@ export default function DubbingControlBar() {
                 <img
                   ref={subtitleImgRef}
                   src={subtitleUrl}
-                  alt="자막 영역"
+                  alt={t('dubbing.region.subtitle')}
                   className="w-full h-full object-contain"
                   onLoad={onSubtitleLoad}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-ark-gray/30 text-[10px]">
-                  미리보기
+                  {t('common.preview')}
                 </div>
               )}
             </div>
@@ -181,7 +183,7 @@ export default function DubbingControlBar() {
             >
               <span className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-red-400 ark-pulse" />
-                더빙 중지
+                {t('dubbing.button.stopDubbing')}
               </span>
             </button>
           ) : (
@@ -196,7 +198,7 @@ export default function DubbingControlBar() {
                 <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
                   <path d="M8 5v14l11-7z"/>
                 </svg>
-                더빙 시작
+                {t('dubbing.button.startDubbing')}
               </span>
             </button>
           )}
@@ -210,7 +212,7 @@ export default function DubbingControlBar() {
             <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
           </svg>
           <span className="text-sm text-ark-orange font-medium">
-            더빙을 시작하려면 캡처할 윈도우를 먼저 선택하세요
+            {t('dubbing.warning.selectWindowFirst')}
           </span>
         </div>
       )}
@@ -228,21 +230,21 @@ export default function DubbingControlBar() {
                       <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
                     </svg>
                   </div>
-                  <h3 className="text-base font-bold text-ark-white">사전 더빙 실행 중</h3>
+                  <h3 className="text-base font-bold text-ark-white">{t('dubbing.dialog.preRenderingRunning')}</h3>
                 </div>
                 <div className="text-sm text-ark-gray mb-4">
-                  사전 더빙 중에 더빙 모드를 시작하면 OCR과 사전 더빙이 동시에 GPU를 사용합니다.
+                  {t('dubbing.info.gpuUsage')}
                 </div>
                 <div className="p-3 rounded border mb-6 text-xs bg-ark-yellow/5 border-ark-yellow/30 text-ark-yellow">
                   {gpuSemaphoreEnabled ? (
                     <>
-                      <p className="font-medium">GPU 잠금이 활성화되어 OCR과 사전 더빙이 순차적으로 진행됩니다.</p>
-                      <p className="text-ark-yellow/70 mt-1">동시에 실행하려면 우상단에서 GPU 잠금을 해제하세요.</p>
+                      <p className="font-medium">{t('dubbing.info.gpuLockEnabled')}</p>
+                      <p className="text-ark-yellow/70 mt-1">{t('dubbing.info.disableGpuLock')}</p>
                     </>
                   ) : (
                     <>
-                      <p className="font-medium">GPU 잠금이 비활성화 상태입니다.</p>
-                      <p className="text-ark-yellow/70 mt-1">VRAM 부족 시 OCR 품질 저하 또는 크래시가 발생할 수 있습니다.</p>
+                      <p className="font-medium">{t('dubbing.info.gpuLockDisabled')}</p>
+                      <p className="text-ark-yellow/70 mt-1">{t('dubbing.warning.vramShortage')}</p>
                     </>
                   )}
                 </div>
@@ -251,13 +253,13 @@ export default function DubbingControlBar() {
                     onClick={dismissNoCacheWarning}
                     className="ark-btn text-sm px-4 py-2"
                   >
-                    취소
+                    {t('common.cancel')}
                   </button>
                   <button
                     onClick={confirmStartDubbing}
                     className="ark-btn ark-btn-primary text-sm px-4 py-2"
                   >
-                    더빙 시작
+                    {t('dubbing.button.startDubbing')}
                   </button>
                 </div>
               </>
@@ -270,20 +272,20 @@ export default function DubbingControlBar() {
                       <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
                     </svg>
                   </div>
-                  <h3 className="text-base font-bold text-ark-white">사전 더빙 필요</h3>
+                  <h3 className="text-base font-bold text-ark-white">{t('dubbing.dialog.preRenderingRequired')}</h3>
                 </div>
                 <p className="text-sm text-ark-gray mb-2">
-                  사전 더빙이 되어있지 않아 음성 재생이 불가합니다.
+                  {t('dubbing.info.noPreRendering')}
                 </p>
                 <p className="text-xs text-ark-gray/70 mb-6">
-                  사전 더빙 중에도 동시에 더빙 모드를 시작할 수 있습니다.
+                  {t('dubbing.info.canStartDuringPreRendering')}
                 </p>
                 <div className="flex justify-end">
                   <button
                     onClick={dismissNoCacheWarning}
                     className="ark-btn text-sm px-4 py-2"
                   >
-                    확인
+                    {t('common.ok')}
                   </button>
                 </div>
               </>
@@ -301,13 +303,13 @@ export default function DubbingControlBar() {
           <div className="text-xs text-ark-yellow">
             {gpuSemaphoreEnabled ? (
               <>
-                <p className="font-medium">GPU 잠금이 활성화되어 OCR과 사전 더빙이 순차적으로 진행됩니다</p>
-                <p className="text-ark-yellow/70 mt-0.5">동시에 실행하려면 우상단에서 GPU 잠금을 해제하세요. VRAM 부족 시 성능 저하나 크래시가 발생할 수 있습니다.</p>
+                <p className="font-medium">{t('dubbing.info.gpuLockEnabled')}</p>
+                <p className="text-ark-yellow/70 mt-0.5">{t('dubbing.info.gpuAndVram')}</p>
               </>
             ) : (
               <>
-                <p className="font-medium">사전 더빙과 실시간 더빙 동시 실행 중</p>
-                <p className="text-ark-yellow/70 mt-0.5">VRAM 부족 시 OCR 품질 저하 또는 크래시가 발생할 수 있습니다</p>
+                <p className="font-medium">{t('dubbing.info.simultaneousRendering')}</p>
+                <p className="text-ark-yellow/70 mt-0.5">{t('dubbing.warning.vramShortage')}</p>
               </>
             )}
           </div>

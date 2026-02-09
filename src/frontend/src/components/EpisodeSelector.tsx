@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/appStore'
 
 export default function EpisodeSelector() {
+  const { t } = useTranslation()
   const {
     backendStatus,
     categories,
@@ -45,8 +47,8 @@ export default function EpisodeSelector() {
         <svg viewBox="0 0 24 24" className="w-12 h-12 text-red-500 mb-4" fill="currentColor">
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
         </svg>
-        <p className="text-ark-white mb-2">서버 연결 안됨</p>
-        <p className="text-sm text-ark-gray">백엔드 서버를 실행해주세요</p>
+        <p className="text-ark-white mb-2">{t('episode.error.serverNotConnected')}</p>
+        <p className="text-sm text-ark-gray">{t('episode.error.runBackendServer')}</p>
       </div>
     )
   }
@@ -58,7 +60,7 @@ export default function EpisodeSelector() {
         <div className="relative">
           <input
             type="text"
-            placeholder="스토리 검색..."
+            placeholder={t('episode.placeholder.search')}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="ark-input pl-10"
@@ -73,11 +75,11 @@ export default function EpisodeSelector() {
       <div className="flex-1 overflow-y-auto">
         {isLoadingGroups ? (
           <div className="flex items-center justify-center h-32 text-ark-gray">
-            <div className="ark-pulse">로딩 중...</div>
+            <div className="ark-pulse">{t('common.loading')}</div>
           </div>
         ) : filteredGroups.length === 0 ? (
           <div className="flex items-center justify-center h-32 text-ark-gray">
-            {searchTerm ? '검색 결과 없음' : '스토리 없음'}
+            {searchTerm ? t('episode.message.noSearchResults') : t('episode.message.noStories')}
           </div>
         ) : (
           <div>
@@ -106,7 +108,7 @@ export default function EpisodeSelector() {
                   <div className="bg-ark-black/30">
                     {isLoadingGroupEpisodes && selectedGroupId === group.id ? (
                       <div className="p-4 text-center text-ark-gray text-sm ark-pulse">
-                        로딩 중...
+                        {t('common.loading')}
                       </div>
                     ) : (
                       <ul>
@@ -151,7 +153,7 @@ export default function EpisodeSelector() {
         {selectedCategoryId && (
           <>
             <span>{categories.find((c) => c.id === selectedCategoryId)?.name}</span>
-            <span>{storyGroups.length}개 스토리</span>
+            <span>{t('episode.info.storyCount', { count: storyGroups.length })}</span>
           </>
         )}
       </div>

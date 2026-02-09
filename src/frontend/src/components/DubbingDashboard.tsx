@@ -1,7 +1,9 @@
+import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/appStore'
 import { ocrApi } from '../services/api'
 
 export default function DubbingDashboard() {
+  const { t } = useTranslation()
   const {
     isDubbingMode,
     isMonitoring,
@@ -45,12 +47,12 @@ export default function DubbingDashboard() {
             {isRendering ? (
               <>
                 <span className="w-2 h-2 rounded-full bg-ark-orange ark-pulse" />
-                <span className="text-ark-orange">렌더링 중</span>
+                <span className="text-ark-orange">{t('dubbing.status.rendering')}</span>
               </>
             ) : renderProgress?.status === 'completed' ? (
               <>
                 <span className="w-2 h-2 rounded-full bg-green-500" />
-                <span className="text-green-400">렌더링 완료</span>
+                <span className="text-green-400">{t('dubbing.status.renderingComplete')}</span>
               </>
             ) : null}
           </div>
@@ -90,7 +92,7 @@ export default function DubbingDashboard() {
                   onClick={cancelRender}
                   className="text-xs text-ark-gray hover:text-ark-white"
                 >
-                  취소
+                  {t('common.cancel')}
                 </button>
               )}
             </>
@@ -110,9 +112,9 @@ export default function DubbingDashboard() {
             </span>
           </div>
           {isMonitoring ? (
-            <span className="text-xs text-green-400">모니터링 중</span>
+            <span className="text-xs text-green-400">{t('dubbing.status.monitoring')}</span>
           ) : (
-            <span className="text-xs text-ark-gray">대기</span>
+            <span className="text-xs text-ark-gray">{t('common.pending')}</span>
           )}
         </div>
 
@@ -122,7 +124,7 @@ export default function DubbingDashboard() {
         {/* OCR 결과 */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs text-ark-gray">OCR:</span>
+            <span className="text-xs text-ark-gray">{t('dubbing.label.ocr')}</span>
             {detectedText ? (
               <>
                 <span className="text-ark-white text-sm truncate max-w-xs">
@@ -133,13 +135,13 @@ export default function DubbingDashboard() {
                 </span>
               </>
             ) : (
-              <span className="text-ark-gray text-sm">대기 중...</span>
+              <span className="text-ark-gray text-sm">{t('common.waiting')}</span>
             )}
           </div>
 
           {/* 매칭 결과 */}
           <div className="flex items-center gap-2">
-            <span className="text-xs text-ark-gray">매칭:</span>
+            <span className="text-xs text-ark-gray">{t('dubbing.label.matching')}</span>
             {matchedDialogue ? (
               <>
                 {matchedDialogue.speaker_name && (
@@ -169,13 +171,13 @@ export default function DubbingDashboard() {
             <div className="flex items-center gap-2">
               <span className="text-ark-orange ark-pulse">▶</span>
               <span className="text-ark-white text-sm truncate max-w-24">
-                {currentDialogue.speaker_name || '나레이터'}
+                {currentDialogue.speaker_name || t('character.narration.labelShort')}
               </span>
             </div>
           ) : dubbingWarning ? (
             <span className="text-yellow-500 text-xs">{dubbingWarning}</span>
           ) : (
-            <span className="text-ark-gray text-sm">재생 대기</span>
+            <span className="text-ark-gray text-sm">{t('dubbing.status.waitingForPlayback')}</span>
           )}
         </div>
 
@@ -190,7 +192,7 @@ export default function DubbingDashboard() {
             className={`ark-btn text-sm px-3 py-1.5 ${
               showCapturePreview ? 'bg-ark-orange/20 border-ark-orange/50' : ''
             }`}
-            title="캡처 미리보기"
+            title={t('dubbing.button.capturePreview')}
           >
             <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
               <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
@@ -202,7 +204,7 @@ export default function DubbingDashboard() {
             onClick={captureWindow}
             disabled={!selectedWindowHwnd}
             className="ark-btn text-sm px-3 py-1.5"
-            title="캡처"
+            title={t('dubbing.button.capture')}
           >
             <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
               <path d="M9.4 10.5l4.77-8.26C13.47 2.09 12.75 2 12 2c-2.4 0-4.6.85-6.32 2.25l3.66 6.35.06-.1zM21.54 9c-.92-2.92-3.15-5.26-6-6.34L11.88 9h9.66zm.26 1h-7.49l.29.5 4.76 8.25C21 16.97 22 14.61 22 12c0-.69-.07-1.35-.2-2zM8.54 12l-3.9-6.75C3.01 7.03 2 9.39 2 12c0 .69.07 1.35.2 2h7.49l-1.15-2zm-6.08 3c.92 2.92 3.15 5.26 6 6.34L12.12 15H2.46zm11.27 0l-3.9 6.76c.7.15 1.42.24 2.17.24 2.4 0 4.6-.85 6.32-2.25l-3.66-6.35-.93 1.6z"/>
@@ -213,7 +215,7 @@ export default function DubbingDashboard() {
             <button
               onClick={stopMonitoring}
               className="ark-btn text-sm px-3 py-1.5"
-              title="모니터링 일시정지"
+              title={t('dubbing.button.pauseMonitoring')}
             >
               <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
                 <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
@@ -223,7 +225,7 @@ export default function DubbingDashboard() {
             <button
               onClick={startMonitoring}
               className="ark-btn text-sm px-3 py-1.5"
-              title="모니터링 재개"
+              title={t('dubbing.button.resumeMonitoring')}
             >
               <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
                 <path d="M8 5v14l11-7z"/>
@@ -235,7 +237,7 @@ export default function DubbingDashboard() {
             <button
               onClick={stopPlayback}
               className="ark-btn text-sm px-3 py-1.5 bg-red-600/50 hover:bg-red-600/70 border-red-500/50"
-              title="재생 중지"
+              title={t('dubbing.button.stopPlayback')}
             >
               <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
                 <path d="M6 6h12v12H6z"/>
@@ -247,7 +249,7 @@ export default function DubbingDashboard() {
             onClick={stopDubbing}
             className="ark-btn text-sm px-4 py-1.5 bg-ark-panel hover:bg-ark-panel/80"
           >
-            종료
+            {t('dubbing.button.stop')}
           </button>
         </div>
       </div>
@@ -259,13 +261,13 @@ export default function DubbingDashboard() {
             <svg viewBox="0 0 24 24" className="w-5 h-5 text-ark-orange flex-shrink-0" fill="currentColor">
               <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
             </svg>
-            <span className="text-ark-orange text-sm">캡처할 윈도우를 선택해주세요</span>
+            <span className="text-ark-orange text-sm">{t('dubbing.selectWindowForCapture')}</span>
             <select
               value=""
               onChange={(e) => setWindow(Number(e.target.value))}
               className="ark-input text-sm py-1 px-2 ml-auto"
             >
-              <option value="">윈도우 선택...</option>
+              <option value="">{t('dubbing.placeholder.selectWindow')}</option>
               {windows.map((win) => (
                 <option key={win.hwnd} value={win.hwnd}>
                   {win.title || `Window ${win.hwnd}`}
@@ -273,7 +275,7 @@ export default function DubbingDashboard() {
               ))}
             </select>
             <button onClick={loadWindows} className="text-ark-gray hover:text-ark-white text-sm">
-              새로고침
+              {t('common.refresh')}
             </button>
           </div>
         </div>
@@ -286,12 +288,12 @@ export default function DubbingDashboard() {
             {/* 대사 영역 (하단) */}
             <div className="flex-1 bg-ark-black/50 border border-ark-border rounded overflow-hidden">
               <div className="px-2 py-1 bg-ark-panel/50 border-b border-ark-border">
-                <span className="text-xs text-ark-orange font-medium">대사 영역</span>
-                <span className="text-xs text-ark-gray ml-2">(하단 20%)</span>
+                <span className="text-xs text-ark-orange font-medium">{t('dubbing.region.dialogue')}</span>
+                <span className="text-xs text-ark-gray ml-2">{t('dubbing.region.dialoguePercent')}</span>
               </div>
               <img
                 src={ocrApi.getWindowRegionImageUrl(selectedWindowHwnd, 'dialogue')}
-                alt="대사 영역 미리보기"
+                alt={t('dubbing.preview.dialogueArea')}
                 className="w-full object-contain"
                 key={`dialogue-${Date.now()}`}
               />
@@ -299,12 +301,12 @@ export default function DubbingDashboard() {
             {/* 자막 영역 (중앙) */}
             <div className="flex-1 bg-ark-black/50 border border-ark-border rounded overflow-hidden">
               <div className="px-2 py-1 bg-ark-panel/50 border-b border-ark-border">
-                <span className="text-xs text-purple-400 font-medium">자막 영역</span>
-                <span className="text-xs text-ark-gray ml-2">(중앙 40~70%)</span>
+                <span className="text-xs text-purple-400 font-medium">{t('dubbing.region.subtitle')}</span>
+                <span className="text-xs text-ark-gray ml-2">{t('dubbing.region.subtitlePercent')}</span>
               </div>
               <img
                 src={ocrApi.getWindowRegionImageUrl(selectedWindowHwnd, 'subtitle')}
-                alt="자막 영역 미리보기"
+                alt={t('dubbing.preview.subtitleArea')}
                 className="w-full object-contain"
                 key={`subtitle-${Date.now()}`}
               />
