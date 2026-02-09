@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -440,7 +440,7 @@ async def get_character_image(char_id: str):
     file_path = image_provider.get_image(char_id)
 
     if not file_path:
-        raise HTTPException(status_code=404, detail=f"이미지 없음: {char_id}")
+        return Response(status_code=204)
 
     return FileResponse(
         file_path,
