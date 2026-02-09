@@ -116,15 +116,15 @@ flowchart TD
     Mode -->|prepare| Whisper[Whisper 전처리<br/>음성 → 텍스트 레이블]
     Mode -->|finetune| Whisper
 
-    Whisper --> RefSelect[참조 오디오 선택<br/>3~10초, 최대 3개]
+    Whisper --> RefSelect[참조 오디오 선택<br/>3~10초, 최대 5개]
     RefSelect --> PrepareRef[ref_audio/ 저장<br/>info.json 생성]
 
     PrepareRef --> IsFT{finetune?}
 
     IsFT -->|No| Done([완료<br/>model_type: prepared])
 
-    IsFT -->|Yes| TrainSoVITS[SoVITS 학습<br/>기본 8 epoch]
-    TrainSoVITS --> TrainGPT[GPT 학습<br/>기본 10 epoch]
+    IsFT -->|Yes| TrainSoVITS[SoVITS 학습<br/>기본 12 epoch]
+    TrainSoVITS --> TrainGPT[GPT 학습<br/>기본 15 epoch]
     TrainGPT --> Cleanup{cleanup?}
 
     Cleanup -->|Yes| Clean[중간 파일 삭제]

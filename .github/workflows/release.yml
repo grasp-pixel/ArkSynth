@@ -1,0 +1,194 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: '버전 bump 타입'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: src/frontend/package-lock.json
+
+      # --- 버전 결정 ---
+
+      # A) 태그 푸시: 태그에서 버전 추출
+      - name: Get version from tag
+        if: github.event_name == 'push'
+        id: tag_version
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+
+      # B) workflow_dispatch: 버전 bump + 커밋 + 태그
+      - name: Bump version
+        if: github.event_name == 'workflow_dispatch'
+        id: bump_version
+        shell: pwsh
+        run: |
+          $vj = Get-Content version.json -Raw | ConvertFrom-Json
+          $oldVersion = $vj.version
+          $parts = $oldVersion.Split('.')
+
+          switch ("${{ inputs.bump }}") {
+            "major" { $parts[0] = [int]$parts[0] + 1; $parts[1] = 0; $parts[2] = 0 }
+            "minor" { $parts[1] = [int]$parts[1] + 1; $parts[2] = 0 }
+            "patch" { $parts[2] = [int]$parts[2] + 1 }
+          }
+
+          $newVersion = $parts -join '.'
+          $vj.version = $newVersion
+          $vj | ConvertTo-Json | Set-Content version.json -Encoding UTF8
+          echo "VERSION=$newVersion" >> $env:GITHUB_OUTPUT
+          Write-Host "Bumped: $oldVersion -> $newVersion"
+
+      - name: Commit and tag version bump
+        if: github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        run: |
+          $version = "${{ steps.bump_version.outputs.VERSION }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.json
+          git commit -m "v$version"
+          git tag "v$version"
+          git push origin HEAD --tags
+
+      # 통합 버전 변수
+      - name: Set version
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "push") {
+            $v = "${{ steps.tag_version.outputs.VERSION }}"
+          } else {
+            $v = "${{ steps.bump_version.outputs.VERSION }}"
+          }
+          echo "VERSION=$v" >> $env:GITHUB_OUTPUT
+          echo "RELEASE_NAME=ArkSynth-v$v" >> $env:GITHUB_OUTPUT
+          Write-Host "Building version: $v"
+
+      # --- 빌드 ---
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend
+        run: npm ci
+
+      - name: Build Electron app
+        working-directory: src/frontend
+        run: npm run build:dist
+
+      # --- 패키징 ---
+
+      - name: Assemble release package
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+          $releaseName = "${{ steps.version.outputs.RELEASE_NAME }}"
+          $releaseDir = "release/$releaseName"
+
+          # 폴더 구성
+          if (Test-Path $releaseDir) { Remove-Item $releaseDir -Recurse -Force }
+          New-Item -ItemType Directory -Path "$releaseDir/app/src" -Force | Out-Null
+
+          # Python 소스 복사
+          Copy-Item -Path "src/core" -Destination "$releaseDir/app/src/core" -Recurse
+          Copy-Item -Path "src/tools" -Destination "$releaseDir/app/src/tools" -Recurse
+          if (Test-Path "src/__init__.py") {
+            Copy-Item "src/__init__.py" "$releaseDir/app/src/"
+          }
+
+          # 프로젝트 파일
+          Copy-Item "pyproject.toml" "$releaseDir/app/"
+          Copy-Item "uv.lock" "$releaseDir/app/"
+          Copy-Item "version.json" "$releaseDir/app/"
+
+          # 실행 스크립트 + README
+          Copy-Item "start.bat" "$releaseDir/"
+          if (Test-Path "README.txt") { Copy-Item "README.txt" "$releaseDir/" }
+
+          # Electron exe
+          $exe = Get-ChildItem "src/frontend/release/ArkSynth.exe" -ErrorAction SilentlyContinue
+          if (-not $exe) {
+            $exe = Get-ChildItem "src/frontend/release/*.exe" | Select-Object -First 1
+          }
+          if ($exe) {
+            Copy-Item $exe.FullName "$releaseDir/app/ArkSynth.exe"
+          } else {
+            Write-Error "ArkSynth.exe not found in src/frontend/release/"
+            exit 1
+          }
+
+          # __pycache__ 정리
+          Get-ChildItem -Path $releaseDir -Recurse -Directory -Filter "__pycache__" |
+            Remove-Item -Recurse -Force
+
+      - name: Create ZIP packages
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+          $releaseName = "${{ steps.version.outputs.RELEASE_NAME }}"
+
+          # 전체 패키지
+          Compress-Archive -Path "release/$releaseName" -DestinationPath "release/$releaseName.zip" -Force
+
+          # 업데이트 패키지 (app/ 폴더만)
+          Compress-Archive -Path "release/$releaseName/app" -DestinationPath "release/ArkSynth-$version-update.zip" -Force
+
+          $fullSize = [math]::Round((Get-Item "release/$releaseName.zip").Length / 1MB, 2)
+          $updateSize = [math]::Round((Get-Item "release/ArkSynth-$version-update.zip").Length / 1MB, 2)
+          Write-Host "Full: $fullSize MB / Update: $updateSize MB"
+
+      - name: Generate update-manifest.json
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+          $updateZip = "release/ArkSynth-$version-update.zip"
+
+          $sha256 = (Get-FileHash $updateZip -Algorithm SHA256).Hash.ToLower()
+          $size = (Get-Item $updateZip).Length
+
+          @{
+            version = $version
+            minimum_version = "1.0.0"
+            sha256 = $sha256
+            filename = "ArkSynth-$version-update.zip"
+            size = [long]$size
+            changelog = "ArkSynth v$version 업데이트"
+          } | ConvertTo-Json | Set-Content "release/update-manifest.json" -Encoding UTF8
+
+          Write-Host "SHA256: $sha256 / Size: $size bytes"
+
+      # --- 릴리즈 ---
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: ArkSynth v${{ steps.version.outputs.VERSION }}
+          generate_release_notes: true
+          files: |
+            release/${{ steps.version.outputs.RELEASE_NAME }}.zip
+            release/ArkSynth-${{ steps.version.outputs.VERSION }}-update.zip
+            release/update-manifest.json
