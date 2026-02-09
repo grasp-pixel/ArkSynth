@@ -2,6 +2,7 @@
 name = "avt"
 version = "0.1.0"
 description = "Arknights Voice Tools - 명일방주 스토리 실시간 음성 더빙"
+license = {text = "MIT"}
 requires-python = ">=3.10,<3.13"
 dependencies = [
     # 기존 (음성 추출용)

@@ -51,8 +51,8 @@ rendered/
 # External tools (GPT-SoVITS 등)
 tools/
 
-# Documentation (auto-generated)
-docs/
+# Documentation (auto-generated only)
+docs/api/
 
 # Cache
 data/cache/
