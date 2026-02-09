@@ -203,7 +203,7 @@ class GPTSoVITSSynthesizer:
 
             text_hash = hashlib.md5(text.encode()).hexdigest()[:8]
             output_path = (
-                self.config.models_path / char_id / "outputs" / f"{text_hash}.wav"
+                self.config.get_model_path(char_id, language) / "outputs" / f"{text_hash}.wav"
             )
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
