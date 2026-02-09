@@ -504,11 +504,13 @@ class GPTSoVITSAPIClient:
         logger.info(f"[합성] 참조 텍스트: {prompt_text}")
 
         # GPT-SoVITS v2 언어 코드 변환
+        # GPT-SoVITS v2Pro: all_ 접두사는 해당 언어 전용 모드
+        # 영어는 기본 언어이므로 all_en이 없고 "en"만 지원
         lang_map = {
             "ko": "all_ko",
             "ja": "all_ja",
             "zh": "all_zh",
-            "en": "all_en",
+            "en": "en",
         }
         api_lang = lang_map.get(language, language)
 
