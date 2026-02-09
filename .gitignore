@@ -3,7 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
-build/
+/build/
 dist/
 wheels/
 *.egg-info/
@@ -42,14 +42,14 @@ data/character_aliases.json
 
 # Large assets (음성, 이미지, 모델 등)
 extracted/
-models/
+/models/
 Assets/
 VoiceAssets/
 ImageAssets/
 rendered/
 
 # External tools (GPT-SoVITS 등)
-tools/
+/tools/
 
 # Documentation (auto-generated only)
 docs/api/
