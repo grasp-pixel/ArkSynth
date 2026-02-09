@@ -93,7 +93,7 @@
       "dependenciesDesc": "FFmpeg, 7-Zip, GPT-SoVITS 등 필수 도구",
       "copyAssets": "게임 에셋 복사",
       "copyAssetsDesc": "아래 게임 폴더에서 Assets 폴더로 복사:",
-      "voicePath": "음성: .../Bundles/audio/sound_beta_2/voice_kr → Assets/Voice/voice_kr",
+      "voicePath": "음성: .../Bundles/audio/sound_beta_2/{{voiceFolder}} → Assets/Voice/{{voiceFolder}}",
       "imagePath": "이미지: .../Bundles/avg/characters → Assets/Image/avg/characters",
       "charartPath": ".../Bundles/chararts → Assets/Image/chararts",
       "extractAssets": "에셋 추출",
@@ -192,9 +192,9 @@
       "assetsReady": "Assets/Voice 준비됨",
       "bundleCount": "{{lang}}: {{count}}개 번들",
       "extractProgress": "{{processed}} / {{total}} 파일 처리됨 • {{extracted}}개 추출됨",
-      "gameOriginal": "Android/Data/com.YoStarKR.Arknights/files/Bundles/audio/sound_beta_2/voice_kr",
+      "gameOriginal": "Android/Data/.../Bundles/audio/sound_beta_2/{{voiceFolder}}",
       "extractResultDetail": "extracted/ 폴더에 캐릭터별 MP3 생성",
-      "copyLocation": "Assets/Voice/voice_kr"
+      "copyLocation": "Assets/Voice/{{voiceFolder}}"
     },
     "image": {
       "checkFailed": "ImageAssets 확인 실패:",

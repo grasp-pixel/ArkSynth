@@ -167,6 +167,7 @@ interface AppState {
   // 언어 설정
   displayLanguage: string
   voiceLanguage: string
+  voiceFolder: string
   availableDisplayLanguages: LanguageOption[]
   availableVoiceLanguages: LanguageOption[]
 
@@ -621,6 +622,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // 언어 설정 초기 상태
   displayLanguage: 'ko_KR',
   voiceLanguage: 'ko',
+  voiceFolder: 'voice_kr',
   availableDisplayLanguages: [],
   availableVoiceLanguages: [],
 
@@ -2655,6 +2657,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         displayLanguage: data.display_language,
         voiceLanguage: data.voice_language,
+        voiceFolder: data.voice_folder,
         availableDisplayLanguages: data.available_display_languages,
         availableVoiceLanguages: data.available_voice_languages,
       })
@@ -2689,6 +2692,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const data = await settingsApi.updateLanguage({ voice_language: short })
       set({
         voiceLanguage: data.voice_language,
+        voiceFolder: data.voice_folder,
         availableDisplayLanguages: data.available_display_languages,
         availableVoiceLanguages: data.available_voice_languages,
       })

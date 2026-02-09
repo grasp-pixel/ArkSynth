@@ -35,6 +35,7 @@ interface SettingsModalProps {
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { t } = useTranslation();
+  const { voiceFolder } = useAppStore();
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [ffmpegGuide, setFFmpegGuide] = useState<FFmpegInstallGuide | null>(
     null,
@@ -1108,19 +1109,20 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     {/* 경로 안내 (항상 표시) */}
                     <div className="mt-3 pt-3 border-t border-ark-border space-y-1">
                       <p className="text-[10px] text-ark-gray/60">
-                        <span className="text-ark-gray">{t('settings.gamePath')}</span> {t('settings.voice.gameOriginal')}
+                        <span className="text-ark-gray">{t('settings.gamePath')}</span> {t('settings.voice.gameOriginal', { voiceFolder })}
                       </p>
                       <div className="flex items-center justify-between">
                         <p className="text-[10px] text-ark-gray/60">
-                          <span className="text-ark-gray">{t('settings.copyLocation')}</span> {t('settings.voice.copyLocation')}
+                          <span className="text-ark-gray">{t('settings.copyLocation')}</span> {t('settings.voice.copyLocation', { voiceFolder })}
                         </p>
                         <button
                           onClick={async () => {
                             try {
+                              const folderPath = `Assets/Voice/${voiceFolder}`;
                               if (voiceAssetsStatus?.exists) {
-                                await settingsApi.openFolder('Assets/Voice/voice_kr');
+                                await settingsApi.openFolder(folderPath);
                               } else {
-                                await settingsApi.createFolder('Assets/Voice/voice_kr');
+                                await settingsApi.createFolder(folderPath);
                                 checkVoiceAssets();
                               }
                             } catch (err) {

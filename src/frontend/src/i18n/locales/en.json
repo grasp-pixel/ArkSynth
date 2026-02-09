@@ -93,7 +93,7 @@
       "dependenciesDesc": "FFmpeg, 7-Zip, GPT-SoVITS and other required tools",
       "copyAssets": "Copy Game Assets",
       "copyAssetsDesc": "Copy from game folders to Assets folder:",
-      "voicePath": "Voice: .../Bundles/audio/sound_beta_2/voice_kr → Assets/Voice/voice_kr",
+      "voicePath": "Voice: .../Bundles/audio/sound_beta_2/{{voiceFolder}} → Assets/Voice/{{voiceFolder}}",
       "imagePath": "Image: .../Bundles/avg/characters → Assets/Image/avg/characters",
       "charartPath": ".../Bundles/chararts → Assets/Image/chararts",
       "extractAssets": "Extract Assets",
@@ -192,9 +192,9 @@
       "assetsReady": "Assets/Voice Ready",
       "bundleCount": "{{lang}}: {{count}} bundles",
       "extractProgress": "{{processed}} / {{total}} files processed • {{extracted}} extracted",
-      "gameOriginal": "Android/Data/com.YoStarKR.Arknights/files/Bundles/audio/sound_beta_2/voice_kr",
+      "gameOriginal": "Android/Data/.../Bundles/audio/sound_beta_2/{{voiceFolder}}",
       "extractResultDetail": "Per-character MP3 generated in extracted/ folder",
-      "copyLocation": "Assets/Voice/voice_kr"
+      "copyLocation": "Assets/Voice/{{voiceFolder}}"
     },
     "image": {
       "checkFailed": "Failed to check ImageAssets:",

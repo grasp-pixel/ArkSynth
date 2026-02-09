@@ -47,6 +47,7 @@ function App() {
     // 언어 설정
     loadLanguageSettings,
     voiceLanguage,
+    voiceFolder,
     // 패널 접기
     isLeftPanelCollapsed,
     isRightPanelCollapsed,
@@ -456,7 +457,7 @@ function App() {
                             <p className="text-ark-white font-medium">{t('app.home.copyAssets')}</p>
                             <p className="text-ark-gray/80">{t('app.home.copyAssetsDesc')}</p>
                             <div className="mt-1 space-y-0.5 text-[10px] text-ark-gray/60">
-                              <p>{t('app.home.voicePath')}</p>
+                              <p>{t('app.home.voicePath', { voiceFolder })}</p>
                               <p>{t('app.home.imagePath')}</p>
                               <p className="ml-[38px]">{t('app.home.charartPath')}</p>
                             </div>
