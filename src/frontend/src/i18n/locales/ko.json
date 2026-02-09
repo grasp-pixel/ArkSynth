@@ -93,13 +93,13 @@
       "dependenciesDesc": "FFmpeg, 7-Zip, GPT-SoVITS 등 필수 도구",
       "copyAssets": "게임 에셋 복사",
       "copyAssetsDesc": "아래 게임 폴더에서 Assets 폴더로 복사:",
-      "voicePath": "음성: .../Bundles/audio/sound_beta_2/{voice_kr, voice, voice_en} → Assets/Voice/",
+      "voicePath": "음성: .../Bundles/audio/sound_beta_2/{voice_kr, voice, voice_en, ...} → Assets/Voice/ (사용할 언어만)",
       "imagePath": "이미지: .../Bundles/avg/characters → Assets/Image/avg/characters",
       "charartPath": ".../Bundles/chararts → Assets/Image/chararts",
       "extractAssets": "에셋 추출",
       "extractAssetsDesc": "설정에서 \"음성 추출\", \"이미지 추출\" 실행",
       "storyData": "스토리 데이터",
-      "storyDataDesc": "설정에서 \"데이터 다운로드\"로 스토리 텍스트 받기",
+      "storyDataDesc": "설정에서 사용할 언어별로 스토리 데이터 다운로드",
       "dataMapping": "데이터 매핑",
       "dataMappingDesc": "\"캐릭터 매핑 캐시 새로고침\" + \"본명 자동 추출\" 실행",
       "howToUse": "사용 방법",
@@ -135,7 +135,8 @@
       "language": "언어",
       "paths": "경로",
       "whisperPreprocessing": "Whisper 전처리",
-      "ttsParams": "TTS 추론 파라미터"
+      "ttsParams": "TTS 추론 파라미터",
+      "update": "앱 업데이트"
     },
     "initialSetupDesc": "처음 사용 시 아래 항목을 순서대로 완료하세요",
     "status": {
@@ -265,6 +266,20 @@
       "computeType": "연산 타입",
       "usage": "사용",
       "note": "* 음성 준비 시 Faster-Whisper로 긴 오디오를 분할합니다"
+    },
+    "update": {
+      "description": "GitHub에서 최신 버전을 확인합니다.",
+      "checkButton": "업데이트 확인",
+      "checking": "확인 중...",
+      "checkFailed": "업데이트 확인 실패",
+      "upToDate": "최신 버전입니다.",
+      "newVersion": "새 버전 v{{version}}이 있습니다.",
+      "currentVersion": "현재 버전: v{{version}}",
+      "downloadSize": "다운로드 크기: {{size}} MB",
+      "updateButton": "v{{version}}으로 업데이트",
+      "startFailed": "업데이트 시작 실패",
+      "complete": "업데이트 완료! 변경사항을 적용하려면 앱을 재시작하세요.",
+      "restartButton": "앱 재시작"
     },
     "tts": {
       "description": "기본값 권장. 음성 합성 품질에 영향을 주는 파라미터입니다.",

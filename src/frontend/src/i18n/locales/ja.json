@@ -93,13 +93,13 @@
       "dependenciesDesc": "FFmpeg、7-Zip、GPT-SoVITSなど必須ツール",
       "copyAssets": "ゲームアセットのコピー",
       "copyAssetsDesc": "以下のゲームフォルダからAssetsフォルダにコピー：",
-      "voicePath": "音声: .../Bundles/audio/sound_beta_2/{voice_kr, voice, voice_en} → Assets/Voice/",
+      "voicePath": "音声: .../Bundles/audio/sound_beta_2/{voice_kr, voice, voice_en, ...} → Assets/Voice/ (使用する言語のみ)",
       "imagePath": "画像: .../Bundles/avg/characters → Assets/Image/avg/characters",
       "charartPath": ".../Bundles/chararts → Assets/Image/chararts",
       "extractAssets": "アセット抽出",
       "extractAssetsDesc": "設定で「音声抽出」「画像抽出」を実行",
       "storyData": "ストーリーデータ",
-      "storyDataDesc": "設定で「データダウンロード」からストーリーテキストを取得",
+      "storyDataDesc": "設定で使用する言語ごとにストーリーデータをダウンロード",
       "dataMapping": "データマッピング",
       "dataMappingDesc": "「キャラクターマッピングキャッシュ更新」+「実名自動抽出」を実行",
       "howToUse": "使い方",
@@ -135,7 +135,8 @@
       "language": "言語",
       "paths": "パス",
       "whisperPreprocessing": "Whisper前処理",
-      "ttsParams": "TTS推論パラメータ"
+      "ttsParams": "TTS推論パラメータ",
+      "update": "アプリアップデート"
     },
     "initialSetupDesc": "初回使用時は以下の項目を順に完了してください",
     "status": {
@@ -265,6 +266,20 @@
       "computeType": "計算タイプ",
       "usage": "使用",
       "note": "* 音声準備時にFaster-Whisperで長いオーディオを分割します"
+    },
+    "update": {
+      "description": "GitHubで最新バージョンを確認します。",
+      "checkButton": "アップデート確認",
+      "checking": "確認中...",
+      "checkFailed": "アップデート確認に失敗しました",
+      "upToDate": "最新バージョンです。",
+      "newVersion": "新しいバージョン v{{version}} が利用可能です。",
+      "currentVersion": "現在のバージョン: v{{version}}",
+      "downloadSize": "ダウンロードサイズ: {{size}} MB",
+      "updateButton": "v{{version}}にアップデート",
+      "startFailed": "アップデートの開始に失敗しました",
+      "complete": "アップデート完了！変更を適用するにはアプリを再起動してください。",
+      "restartButton": "アプリを再起動"
     },
     "tts": {
       "description": "デフォルト推奨。音声合成品質に影響を与えるパラメータです。",

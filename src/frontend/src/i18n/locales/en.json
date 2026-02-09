@@ -93,13 +93,13 @@
       "dependenciesDesc": "FFmpeg, 7-Zip, GPT-SoVITS and other required tools",
       "copyAssets": "Copy Game Assets",
       "copyAssetsDesc": "Copy from game folders to Assets folder:",
-      "voicePath": "Voice: .../Bundles/audio/sound_beta_2/{voice_kr, voice, voice_en} → Assets/Voice/",
+      "voicePath": "Voice: .../Bundles/audio/sound_beta_2/{voice_kr, voice, voice_en, ...} → Assets/Voice/ (only languages you need)",
       "imagePath": "Image: .../Bundles/avg/characters → Assets/Image/avg/characters",
       "charartPath": ".../Bundles/chararts → Assets/Image/chararts",
       "extractAssets": "Extract Assets",
       "extractAssetsDesc": "Run \"Voice Extraction\" and \"Image Extraction\" in Settings",
       "storyData": "Story Data",
-      "storyDataDesc": "Download story text via \"Download Data\" in Settings",
+      "storyDataDesc": "Download story data per language in Settings",
       "dataMapping": "Data Mapping",
       "dataMappingDesc": "Run \"Refresh Character Mapping Cache\" + \"Auto Extract Real Names\"",
       "howToUse": "How to Use",
@@ -135,7 +135,8 @@
       "language": "Language",
       "paths": "Paths",
       "whisperPreprocessing": "Whisper Preprocessing",
-      "ttsParams": "TTS Inference Parameters"
+      "ttsParams": "TTS Inference Parameters",
+      "update": "App Update"
     },
     "initialSetupDesc": "Complete the items below in order for first-time use",
     "status": {
@@ -265,6 +266,20 @@
       "computeType": "Compute Type",
       "usage": "Usage",
       "note": "* Splits long audio with Faster-Whisper during voice preparation"
+    },
+    "update": {
+      "description": "Check for the latest version on GitHub.",
+      "checkButton": "Check for Updates",
+      "checking": "Checking...",
+      "checkFailed": "Failed to check for updates",
+      "upToDate": "You're up to date.",
+      "newVersion": "New version v{{version}} is available.",
+      "currentVersion": "Current version: v{{version}}",
+      "downloadSize": "Download size: {{size}} MB",
+      "updateButton": "Update to v{{version}}",
+      "startFailed": "Failed to start update",
+      "complete": "Update complete! Restart the app to apply changes.",
+      "restartButton": "Restart App"
     },
     "tts": {
       "description": "Default recommended. Parameters that affect voice synthesis quality.",
