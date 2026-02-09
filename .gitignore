@@ -93,3 +93,4 @@ coverage.xml
 .ipynb_checkpoints/
 data/voice_mapping.json
 .claude/settings.json
+.claude/CLAUDE.md
