@@ -9,8 +9,8 @@ set "PROJECT_ROOT=%~dp0"
 set "FRONTEND_DIR=%PROJECT_ROOT%src\frontend"
 
 :: version.json에서 버전 읽기
-for /f "tokens=2 delims=:, " %%a in ('type "%PROJECT_ROOT%version.json" ^| findstr "version"') do (
-    set "VERSION=%%~a"
+for /f "delims=" %%a in ('powershell -NoProfile -Command "(Get-Content '%PROJECT_ROOT%version.json' | ConvertFrom-Json).version"') do (
+    set "VERSION=%%a"
 )
 if not defined VERSION set "VERSION=0.0.0"
 
@@ -27,6 +27,12 @@ echo.
 :: 1. Electron 빌드
 :: ──────────────────────────────────────────────
 echo [1/6] Electron 앱 빌드 중...
+
+:: package.json 버전 동기화
+powershell -NoProfile -Command ^
+    "$pkg = Get-Content '%FRONTEND_DIR%\package.json' -Raw | ConvertFrom-Json; " ^
+    "$pkg.version = '%VERSION%'; " ^
+    "$pkg | ConvertTo-Json -Depth 10 | Set-Content '%FRONTEND_DIR%\package.json' -Encoding UTF8"
 
 where npm >nul 2>&1
 if %errorlevel% neq 0 (
