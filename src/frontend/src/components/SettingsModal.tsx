@@ -35,7 +35,7 @@ interface SettingsModalProps {
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { t } = useTranslation();
-  const { voiceFolder } = useAppStore();
+  const { voiceFolder, gameLanguage, loadLanguageSettings } = useAppStore();
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [ffmpegGuide, setFFmpegGuide] = useState<FFmpegInstallGuide | null>(
     null,
@@ -104,6 +104,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   useEffect(() => {
     if (isOpen) {
       loadSettings();
+      loadLanguageSettings();
       checkVoiceAssets();
       checkImageAssets();
       checkGamedataStatus();
@@ -278,7 +279,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const checkGamedataStatus = async () => {
     try {
-      const status = await gamedataApi.getStatus("kr");
+      const status = await gamedataApi.getStatus(gameLanguage);
       setGamedataStatus(status);
     } catch (err) {
       console.error(t('settings.gamedata.checkFailed'), err);
@@ -352,7 +353,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setGamedataUpdateError(null);
 
     try {
-      await gamedataApi.startUpdate("kr");
+      await gamedataApi.startUpdate(gameLanguage);
 
       // SSE 스트림 연결
       gamedataStreamRef.current = createGamedataUpdateStream({
@@ -405,7 +406,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       // 추출 시작
       const languages = Object.keys(voiceAssetsStatus.languages || {});
       await extractApi.startExtract(
-        languages.length > 0 ? languages : ["voice", "voice_kr"],
+        languages.length > 0 ? languages : [voiceFolder],
       );
 
       // SSE 스트림 연결
@@ -424,6 +425,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           });
           // 설정 새로고침
           loadSettings();
+          loadLanguageSettings();
         },
         onError: (error) => {
           setIsExtracting(false);
@@ -875,7 +877,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 {t('settings.gamedata.lastUpdated')}{" "}
                                 {new Date(
                                   gamedataStatus.last_updated,
-                                ).toLocaleString("ko-KR")}
+                                ).toLocaleString()}
                               </p>
                             )}
                           </div>
@@ -1109,16 +1111,22 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     {/* 경로 안내 (항상 표시) */}
                     <div className="mt-3 pt-3 border-t border-ark-border space-y-1">
                       <p className="text-[10px] text-ark-gray/60">
-                        <span className="text-ark-gray">{t('settings.gamePath')}</span> {t('settings.voice.gameOriginal', { voiceFolder })}
+                        <span className="text-ark-gray">{t('settings.appDataPath')}</span> {t('settings.appDataNote')}
+                      </p>
+                      <p className="text-[10px] text-ark-gray/60">
+                        <span className="text-ark-gray">{t('settings.voice.bundlePath')}</span> {t('settings.voice.bundlePathValue')}
+                      </p>
+                      <p className="text-[10px] text-ark-gray/60 ml-4">
+                        {t('settings.voice.voiceFolders')}
                       </p>
                       <div className="flex items-center justify-between">
                         <p className="text-[10px] text-ark-gray/60">
-                          <span className="text-ark-gray">{t('settings.copyLocation')}</span> {t('settings.voice.copyLocation', { voiceFolder })}
+                          <span className="text-ark-gray">{t('settings.copyLocation')}</span> {t('settings.voice.copyLocationAll')}
                         </p>
                         <button
                           onClick={async () => {
                             try {
-                              const folderPath = `Assets/Voice/${voiceFolder}`;
+                              const folderPath = 'Assets/Voice';
                               if (voiceAssetsStatus?.exists) {
                                 await settingsApi.openFolder(folderPath);
                               } else {
@@ -1146,8 +1154,11 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <h3 className="text-sm font-medium text-ark-white mb-2">
                     {t('settings.section.imageExtract')}
                   </h3>
-                  <p className="text-[11px] text-ark-gray/70 mb-3">
+                  <p className="text-[11px] text-ark-gray/70 mb-1">
                     {t('settings.image.extractDescription')}
+                  </p>
+                  <p className="text-[10px] text-ark-gray/50 mb-3">
+                    {t('settings.appDataPath')} {t('settings.appDataNote')}
                   </p>
 
                   {imageAssetsStatus === null ? (
@@ -1208,7 +1219,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                         <div className="mt-2 pt-2 border-t border-ark-border space-y-1">
                           <p className="text-[10px] text-ark-gray/60">
-                            <span className="text-ark-gray">{t('settings.gamePath')}</span> {t('settings.image.gameCharactersOriginal')}
+                            <span className="text-ark-gray">{t('settings.gamePath')}</span> {t('settings.image.gameCharactersBundlePath')}
                           </p>
                           <div className="flex items-center justify-between">
                             <p className="text-[10px] text-ark-gray/60">
@@ -1290,7 +1301,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                         <div className="mt-2 pt-2 border-t border-ark-border space-y-1">
                           <p className="text-[10px] text-ark-gray/60">
-                            <span className="text-ark-gray">{t('settings.gamePath')}</span> {t('settings.image.gameCharartsOriginal')}
+                            <span className="text-ark-gray">{t('settings.gamePath')}</span> {t('settings.image.gameCharartsBundlePath')}
                           </p>
                           <div className="flex items-center justify-between">
                             <p className="text-[10px] text-ark-gray/60">

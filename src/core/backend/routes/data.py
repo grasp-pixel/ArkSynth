@@ -258,6 +258,7 @@ async def set_source_setting(request: SourceSettingRequest):
         )
 
     config.gamedata_source = request.source
+    config.save()
     reset_source()
     return {
         "source": config.gamedata_source,
@@ -291,6 +292,7 @@ async def set_repo_setting(request: RepoSettingRequest):
     """게임 데이터 레포지토리 설정 변경"""
     config.gamedata_repo = request.repo
     config.gamedata_branch = request.branch
+    config.save()
     reset_source()
     return {
         "repo": config.gamedata_repo,

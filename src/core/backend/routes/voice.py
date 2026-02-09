@@ -51,7 +51,7 @@ async def list_voice_characters(lang: str | None = None):
     characters = mapper.get_available_characters(lang)
 
     # 대사 통계 로드
-    stats = stats_manager.get_stats(config.game_language)
+    stats = stats_manager.get_stats(config.display_language)
 
     result = []
     for char_id in characters:
@@ -91,7 +91,7 @@ async def search_characters(q: str, lang: str | None = None, limit: int = 30):
 
     loader = get_story_loader()
     mapper = get_voice_mapper()
-    lang = lang or config.game_language
+    lang = lang or config.display_language
     voice_lang = config.voice_language
 
     characters = loader.load_characters(lang)
@@ -171,7 +171,7 @@ async def check_voice_availability(char_id: str, lang: str | None = None):
 async def rebuild_dialogue_stats():
     """대사 통계 재계산 (캐시 갱신)"""
     stats_manager = get_stats_manager()
-    stats = stats_manager.rebuild_stats(config.game_language)
+    stats = stats_manager.rebuild_stats(config.display_language)
 
     return {
         "total_characters": len(stats),
@@ -197,7 +197,7 @@ async def refresh_character_data():
     # 대사 통계 재계산 (항상 rebuild 호출)
     if _stats_manager is None:
         _stats_manager = DialogueStatsManager(config.data_path)
-    _stats_manager.rebuild_stats(config.game_language)
+    _stats_manager.rebuild_stats(config.display_language)
 
     # 새로운 캐릭터 목록 가져오기
     mapper = get_voice_mapper()
@@ -213,7 +213,7 @@ async def refresh_character_data():
 async def get_dialogue_stats():
     """대사 통계 조회"""
     stats_manager = get_stats_manager()
-    stats = stats_manager.get_stats(config.game_language)
+    stats = stats_manager.get_stats(config.display_language)
 
     # 대사 수 기준 상위 20개
     sorted_stats = sorted(

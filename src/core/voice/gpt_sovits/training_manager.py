@@ -207,11 +207,12 @@ class TrainingManager:
         import shutil
 
         # info.json이 없으면 불완전한 준비 → preprocessed 폴더 삭제
-        info_path = self.config.get_model_path(char_id) / "info.json"
+        lang = self.config.default_language
+        info_path = self.config.get_model_path(char_id, lang) / "info.json"
         if info_path.exists():
             return  # 완료된 준비는 건드리지 않음
 
-        preprocessed_dir = self.config.get_preprocessed_audio_path(char_id)
+        preprocessed_dir = self.config.get_preprocessed_audio_path(char_id, lang)
         if preprocessed_dir.exists():
             try:
                 shutil.rmtree(preprocessed_dir)
@@ -288,12 +289,13 @@ class TrainingManager:
             생성된 TrainingJob 목록
         """
         jobs = []
+        lang = self.config.default_language
         for char_id, char_name in characters:
             # 이미 완료된 캐릭터는 건너뛰기
-            if mode == "prepare" and self.model_manager.is_trained(char_id):
+            if mode == "prepare" and self.model_manager.is_trained(char_id, lang):
                 logger.info(f"이미 준비됨, 건너뛰기: {char_id}")
                 continue
-            if mode == "finetune" and self.model_manager.has_trained_model(char_id):
+            if mode == "finetune" and self.model_manager.has_trained_model(char_id, lang):
                 logger.info(f"이미 학습됨, 건너뛰기: {char_id}")
                 continue
 
@@ -340,7 +342,7 @@ class TrainingManager:
 
     def get_status_summary(self) -> dict:
         """전체 상태 요약"""
-        total_trained = len(self.model_manager.get_trained_characters())
+        total_trained = len(self.model_manager.get_trained_characters(self.config.default_language))
         pending_count = len(self.get_pending_jobs())
 
         return {

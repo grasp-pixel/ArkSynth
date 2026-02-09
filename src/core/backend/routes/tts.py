@@ -29,6 +29,7 @@ def get_gpt_synthesizer() -> GPTSoVITSSynthesizer:
         gpt_config = GPTSoVITSConfig(
             models_path=config.models_path / "gpt_sovits",
             extracted_path=config.extracted_path,
+            default_language=config.voice_language_short,
         )
         _gpt_model_manager = GPTSoVITSModelManager(gpt_config)
         _gpt_synthesizer = GPTSoVITSSynthesizer(gpt_config, _gpt_model_manager)
@@ -39,6 +40,13 @@ def get_gpt_model_manager() -> GPTSoVITSModelManager:
     # ensure synthesizer is initialized
     get_gpt_synthesizer()
     return _gpt_model_manager
+
+
+def reset_tts_singletons():
+    """TTS 싱글톤 리셋 (언어 변경 시)"""
+    global _gpt_synthesizer, _gpt_model_manager
+    _gpt_synthesizer = None
+    _gpt_model_manager = None
 
 
 class SynthesizeRequest(BaseModel):
@@ -144,7 +152,7 @@ async def synthesize(request: SynthesizeRequest):
             logger.info(f"GPU 세마포어 통과: {request.char_id}")
 
             # 모델 로드
-            if not await synthesizer.load_model(request.char_id):
+            if not await synthesizer.load_model(request.char_id, language):
                 raise HTTPException(
                     status_code=500,
                     detail=f"GPT-SoVITS 모델 로드 실패: {request.char_id}"
@@ -201,8 +209,8 @@ async def gpt_sovits_status():
         else:
             api_running = await synthesizer.api_client.is_api_running()
 
-        # 준비된 캐릭터
-        ready_chars = model_manager.get_trained_characters()
+        # 준비된 캐릭터 (현재 음성 언어 기준)
+        ready_chars = model_manager.get_trained_characters(config.voice_language_short)
 
         return {
             "installed": synthesizer.config.is_gpt_sovits_installed,

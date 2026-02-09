@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/appStore'
 
@@ -15,7 +16,12 @@ export default function LanguageSettingsModal({ isOpen, onClose }: Props) {
     availableVoiceLanguages,
     setDisplayLanguage,
     setVoiceLanguage,
+    loadLanguageSettings,
   } = useAppStore()
+
+  useEffect(() => {
+    if (isOpen) loadLanguageSettings()
+  }, [isOpen, loadLanguageSettings])
 
   if (!isOpen) return null
 
@@ -61,19 +67,16 @@ export default function LanguageSettingsModal({ isOpen, onClose }: Props) {
               {availableDisplayLanguages.map((lang) => (
                 <button
                   key={lang.locale}
-                  onClick={() => lang.available && lang.locale && setDisplayLanguage(lang.locale)}
-                  disabled={!lang.available}
+                  onClick={() => lang.locale && setDisplayLanguage(lang.locale)}
                   className={`px-3 py-2.5 rounded-md text-sm font-medium transition-all border ${
                     lang.locale === displayLanguage
                       ? 'bg-ark-orange/20 text-ark-orange border-ark-orange'
-                      : lang.available
-                        ? 'bg-ark-panel text-ark-white border-ark-border hover:border-ark-cyan/50'
-                        : 'bg-ark-panel/50 text-ark-gray/50 border-ark-border/50 cursor-not-allowed'
+                      : 'bg-ark-panel text-ark-white border-ark-border hover:border-ark-cyan/50'
                   }`}
                 >
                   <div>{lang.label}</div>
                   {!lang.available && (
-                    <div className="text-[10px] mt-0.5 opacity-70">{t('languageSettings.notAvailable')}</div>
+                    <div className="text-[10px] mt-0.5 text-ark-gray/60">{t('languageSettings.noStoryData')}</div>
                   )}
                 </button>
               ))}

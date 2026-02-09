@@ -93,7 +93,7 @@
       "dependenciesDesc": "FFmpeg, 7-Zip, GPT-SoVITS 등 필수 도구",
       "copyAssets": "게임 에셋 복사",
       "copyAssetsDesc": "아래 게임 폴더에서 Assets 폴더로 복사:",
-      "voicePath": "음성: .../Bundles/audio/sound_beta_2/{{voiceFolder}} → Assets/Voice/{{voiceFolder}}",
+      "voicePath": "음성: .../Bundles/audio/sound_beta_2/{voice_kr, voice, voice_en} → Assets/Voice/",
       "imagePath": "이미지: .../Bundles/avg/characters → Assets/Image/avg/characters",
       "charartPath": ".../Bundles/chararts → Assets/Image/chararts",
       "extractAssets": "에셋 추출",
@@ -154,6 +154,8 @@
     "extractResult": "추출 결과:",
     "gamePath": "게임 원본:",
     "copyLocation": "복사 위치:",
+    "appDataPath": "앱 데이터:",
+    "appDataNote": "Android/Data/com.YoStarKR.Arknights/files/ (한국 기준)",
     "ffmpeg": {
       "installing": "설치 시작 중...",
       "installed": "FFmpeg 설치 완료! 새로고침하세요.",
@@ -192,9 +194,11 @@
       "assetsReady": "Assets/Voice 준비됨",
       "bundleCount": "{{lang}}: {{count}}개 번들",
       "extractProgress": "{{processed}} / {{total}} 파일 처리됨 • {{extracted}}개 추출됨",
-      "gameOriginal": "Android/Data/.../Bundles/audio/sound_beta_2/{{voiceFolder}}",
-      "extractResultDetail": "extracted/ 폴더에 캐릭터별 MP3 생성",
-      "copyLocation": "Assets/Voice/{{voiceFolder}}"
+      "bundlePath": "번들 경로:",
+      "bundlePathValue": ".../Bundles/audio/sound_beta_2/",
+      "voiceFolders": "voice_kr (한국어) · voice (日本語) · voice_en (English)",
+      "copyLocationAll": "Assets/Voice/ 아래에 각 언어 폴더를 복사",
+      "extractResultDetail": "extracted/ 폴더에 캐릭터별 MP3 생성"
     },
     "image": {
       "checkFailed": "ImageAssets 확인 실패:",
@@ -208,12 +212,10 @@
       "characterPortrait": "캐릭터 초상화",
       "characterPortraitDesc": "캐릭터 얼굴 아이콘 (프로필, 매핑 표시용)",
       "folderMissingChararts": "폴더 없음 — 게임 번들의 chararts를 복사해주세요",
-      "gameCharactersPath": "Android/Data/com.YoStarKR.Arknights/files/Bundles/Assets/Image/avg/characters",
-      "gameCharartsPath": "Android/Data/com.YoStarKR.Arknights/files/Bundles/Assets/Image/chararts",
       "extractResultDetail": "extracted/images/ 폴더에 PNG 생성",
       "extractProgress": "{{processed}} / {{total}} 처리됨 • {{extracted}}개 추출",
-      "gameCharactersOriginal": "Android/Data/com.YoStarKR.Arknights/files/Bundles/avg/characters",
-      "gameCharartsOriginal": "Android/Data/com.YoStarKR.Arknights/files/Bundles/chararts",
+      "gameCharactersBundlePath": "Bundles/avg/characters",
+      "gameCharartsBundlePath": "Bundles/chararts",
       "copyCharactersLocation": "Assets/Image/avg/characters",
       "copyCharartsLocation": "Assets/Image/chararts"
     },
@@ -772,6 +774,7 @@
     "voiceLanguage": "음성 언어",
     "voiceDescription": "TTS 음성 합성에 사용되는 언어",
     "notAvailable": "데이터 없음",
+    "noStoryData": "스토리 데이터 없음",
     "currentCombo": "스토리: {{display}} / 음성: {{voice}}"
   }
 }

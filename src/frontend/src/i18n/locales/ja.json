@@ -93,7 +93,7 @@
       "dependenciesDesc": "FFmpeg、7-Zip、GPT-SoVITSなど必須ツール",
       "copyAssets": "ゲームアセットのコピー",
       "copyAssetsDesc": "以下のゲームフォルダからAssetsフォルダにコピー：",
-      "voicePath": "音声: .../Bundles/audio/sound_beta_2/{{voiceFolder}} → Assets/Voice/{{voiceFolder}}",
+      "voicePath": "音声: .../Bundles/audio/sound_beta_2/{voice_kr, voice, voice_en} → Assets/Voice/",
       "imagePath": "画像: .../Bundles/avg/characters → Assets/Image/avg/characters",
       "charartPath": ".../Bundles/chararts → Assets/Image/chararts",
       "extractAssets": "アセット抽出",
@@ -154,6 +154,8 @@
     "extractResult": "抽出結果：",
     "gamePath": "ゲーム原本：",
     "copyLocation": "コピー先：",
+    "appDataPath": "アプリデータ：",
+    "appDataNote": "Android/Data/com.YoStarKR.Arknights/files/（韓国基準）",
     "ffmpeg": {
       "installing": "インストール開始中...",
       "installed": "FFmpegインストール完了！更新してください。",
@@ -192,9 +194,11 @@
       "assetsReady": "Assets/Voice準備完了",
       "bundleCount": "{{lang}}：{{count}}個のバンドル",
       "extractProgress": "{{processed}} / {{total}} ファイル処理済み • {{extracted}}個抽出",
-      "gameOriginal": "Android/Data/.../Bundles/audio/sound_beta_2/{{voiceFolder}}",
-      "extractResultDetail": "extracted/フォルダにキャラクター別MP3を生成",
-      "copyLocation": "Assets/Voice/{{voiceFolder}}"
+      "bundlePath": "バンドルパス：",
+      "bundlePathValue": ".../Bundles/audio/sound_beta_2/",
+      "voiceFolders": "voice_kr (韓国語) · voice (日本語) · voice_en (English)",
+      "copyLocationAll": "各言語フォルダをAssets/Voice/にコピー",
+      "extractResultDetail": "extracted/フォルダにキャラクター別MP3を生成"
     },
     "image": {
       "checkFailed": "ImageAssets確認に失敗：",
@@ -208,12 +212,10 @@
       "characterPortrait": "キャラクター肖像画",
       "characterPortraitDesc": "キャラクター顔アイコン（プロフィール、マッピング表示用）",
       "folderMissingChararts": "フォルダが見つかりません — ゲームバンドルのcharartsをコピーしてください",
-      "gameCharactersPath": "Android/Data/com.YoStarKR.Arknights/files/Bundles/Assets/Image/avg/characters",
-      "gameCharartsPath": "Android/Data/com.YoStarKR.Arknights/files/Bundles/Assets/Image/chararts",
       "extractResultDetail": "extracted/images/フォルダにPNGを生成",
       "extractProgress": "{{processed}} / {{total}} 処理済み • {{extracted}}個抽出",
-      "gameCharactersOriginal": "Android/Data/com.YoStarKR.Arknights/files/Bundles/avg/characters",
-      "gameCharartsOriginal": "Android/Data/com.YoStarKR.Arknights/files/Bundles/chararts",
+      "gameCharactersBundlePath": "Bundles/avg/characters",
+      "gameCharartsBundlePath": "Bundles/chararts",
       "copyCharactersLocation": "Assets/Image/avg/characters",
       "copyCharartsLocation": "Assets/Image/chararts"
     },
@@ -278,7 +280,7 @@
     "management": {
       "title": "キャラクター音声管理"
     },
-    "testText": "変わりゆく世界の最前線へ、アークナイツ。",
+    "testText": "辺境を越えて前線に至る、アークナイツ。",
     "training": {
       "progress": "{{mode}}：{{name}}",
       "modePrepare": "準備",
@@ -772,6 +774,7 @@
     "voiceLanguage": "音声言語",
     "voiceDescription": "TTS音声合成に使用される言語",
     "notAvailable": "データなし",
+    "noStoryData": "ストーリーデータなし",
     "currentCombo": "ストーリー: {{display}} / 音声: {{voice}}"
   }
 }

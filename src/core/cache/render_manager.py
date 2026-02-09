@@ -218,6 +218,9 @@ class RenderManager:
             from ..backend.config import config as app_config
             gpt_language = app_config.gpt_sovits_language
 
+            # 합성기의 default_language를 현재 음성 언어로 동기화
+            synthesizer.config.default_language = app_config.voice_language_short
+
             # 메타데이터 생성 또는 로드
             meta = self.cache.get_meta(episode_id)
             if meta is None:
@@ -237,7 +240,7 @@ class RenderManager:
 
             async def ensure_char_ready(cid: str) -> bool:
                 """캐릭터 음성 준비 확인 및 자동 준비"""
-                if await synthesizer.is_available(cid):
+                if await synthesizer.is_available(cid, gpt_language):
                     return True
                 audio_dir = config.extracted_path / config.voice_language / cid
                 if audio_dir.exists():
@@ -249,9 +252,9 @@ class RenderManager:
                         audio_dir=audio_dir,
                         output_dir=output_dir,
                         gamedata_path=gamedata_path,
-                        language=config.gpt_sovits_language,
+                        language=gpt_language,
                     )
-                    if success and await synthesizer.is_available(cid):
+                    if success and await synthesizer.is_available(cid, gpt_language):
                         logger.info(f"[RenderManager] 캐릭터 자동 준비 완료: {cid}")
                         return True
                 return False

@@ -1250,11 +1250,10 @@ def finetune_character(
     emit_progress("starting", 0.0, f"학습 시작: {char_name} ({version})")
 
     # 전처리된 파일 확인 (음성 준비 단계에서 생성됨)
-    from core.voice.gpt_sovits.config import GPTSoVITSConfig
     from core.voice.gpt_sovits.audio_preprocessor import AudioSegment
-    config = GPTSoVITSConfig()
 
-    preprocessed_dir = config.get_preprocessed_audio_path(char_id)
+    # output_dir은 이미 언어별 경로 (models/gpt_sovits/{lang}/{char_id}/)
+    preprocessed_dir = output_dir / "preprocessed"
 
     if not preprocessed_dir.exists():
         emit_error(

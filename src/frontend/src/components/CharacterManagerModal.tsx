@@ -11,6 +11,13 @@ import {
 
 type SortBy = "dialogues" | "files" | "name" | "id";
 
+/** 음성 언어별 테스트 대사 기본값 */
+const VOICE_TEST_TEXTS: Record<string, string> = {
+  ko: "변경을 넘어 최전방으로, 명일방주.",
+  ja: "辺境を越えて前線に至る、アークナイツ。",
+  en: "Over the frontier, into the front. Arknights.",
+};
+
 interface CharacterManagerModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -50,6 +57,8 @@ export default function CharacterManagerModal({
     checkGptSovitsStatus,
     trainingQueue,
     startFullBatchTraining,
+    displayLanguage,
+    voiceLanguage,
   } = useAppStore();
 
   // 로컬 상태
@@ -175,8 +184,10 @@ export default function CharacterManagerModal({
       loadImageStatus();
       loadCharacterAliases();
 
-      // 테스트 텍스트 기본값 설정
-      if (!testText) setTestText(t('character.testText'));
+      // 테스트 텍스트 기본값 설정 (음성 언어에 맞춰)
+      if (!testText) {
+        setTestText(VOICE_TEST_TEXTS[voiceLanguage] ?? VOICE_TEST_TEXTS.ko);
+      }
 
       // 성별 데이터 로드
       voiceApi
@@ -197,6 +208,11 @@ export default function CharacterManagerModal({
       }
     };
   }, [isOpen, loadVoiceCharacters, loadTrainedModels]);
+
+  // 음성 언어 변경 시 테스트 텍스트 갱신
+  useEffect(() => {
+    setTestText(VOICE_TEST_TEXTS[voiceLanguage] ?? VOICE_TEST_TEXTS.ko);
+  }, [voiceLanguage]);
 
   // 정렬 옵션 변경 시 스냅샷 업데이트
   useEffect(() => {
@@ -240,7 +256,7 @@ export default function CharacterManagerModal({
         case "files":
           return b.file_count - a.file_count;
         case "name":
-          return a.name.localeCompare(b.name, "ko");
+          return a.name.localeCompare(b.name, displayLanguage);
         case "id":
           // char_XXX_name 형식에서 숫자 추출하여 정렬 (출시순에 가까움)
           const aNum = parseInt(a.char_id.match(/char_(\d+)/)?.[1] || "0");

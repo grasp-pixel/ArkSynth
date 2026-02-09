@@ -93,7 +93,7 @@
       "dependenciesDesc": "FFmpeg, 7-Zip, GPT-SoVITS and other required tools",
       "copyAssets": "Copy Game Assets",
       "copyAssetsDesc": "Copy from game folders to Assets folder:",
-      "voicePath": "Voice: .../Bundles/audio/sound_beta_2/{{voiceFolder}} → Assets/Voice/{{voiceFolder}}",
+      "voicePath": "Voice: .../Bundles/audio/sound_beta_2/{voice_kr, voice, voice_en} → Assets/Voice/",
       "imagePath": "Image: .../Bundles/avg/characters → Assets/Image/avg/characters",
       "charartPath": ".../Bundles/chararts → Assets/Image/chararts",
       "extractAssets": "Extract Assets",
@@ -154,6 +154,8 @@
     "extractResult": "Extraction Result:",
     "gamePath": "Game Source:",
     "copyLocation": "Copy Location:",
+    "appDataPath": "App Data:",
+    "appDataNote": "Android/Data/com.YoStarKR.Arknights/files/ (Korea)",
     "ffmpeg": {
       "installing": "Starting installation...",
       "installed": "FFmpeg installed! Please refresh.",
@@ -192,9 +194,11 @@
       "assetsReady": "Assets/Voice Ready",
       "bundleCount": "{{lang}}: {{count}} bundles",
       "extractProgress": "{{processed}} / {{total}} files processed • {{extracted}} extracted",
-      "gameOriginal": "Android/Data/.../Bundles/audio/sound_beta_2/{{voiceFolder}}",
-      "extractResultDetail": "Per-character MP3 generated in extracted/ folder",
-      "copyLocation": "Assets/Voice/{{voiceFolder}}"
+      "bundlePath": "Bundle path:",
+      "bundlePathValue": ".../Bundles/audio/sound_beta_2/",
+      "voiceFolders": "voice_kr (Korean) · voice (Japanese) · voice_en (English)",
+      "copyLocationAll": "Copy each language folder to Assets/Voice/",
+      "extractResultDetail": "Per-character MP3 generated in extracted/ folder"
     },
     "image": {
       "checkFailed": "Failed to check ImageAssets:",
@@ -208,12 +212,10 @@
       "characterPortrait": "Character Portrait",
       "characterPortraitDesc": "Character face icons (for profile and mapping display)",
       "folderMissingChararts": "Folder not found — Please copy chararts from game bundle",
-      "gameCharactersPath": "Android/Data/com.YoStarKR.Arknights/files/Bundles/Assets/Image/avg/characters",
-      "gameCharartsPath": "Android/Data/com.YoStarKR.Arknights/files/Bundles/Assets/Image/chararts",
       "extractResultDetail": "Generate PNG in extracted/images/ folder",
       "extractProgress": "{{processed}} / {{total}} processed • {{extracted}} extracted",
-      "gameCharactersOriginal": "Android/Data/com.YoStarKR.Arknights/files/Bundles/avg/characters",
-      "gameCharartsOriginal": "Android/Data/com.YoStarKR.Arknights/files/Bundles/chararts",
+      "gameCharactersBundlePath": "Bundles/avg/characters",
+      "gameCharartsBundlePath": "Bundles/chararts",
       "copyCharactersLocation": "Assets/Image/avg/characters",
       "copyCharartsLocation": "Assets/Image/chararts"
     },
@@ -278,7 +280,7 @@
     "management": {
       "title": "Character Voice Management"
     },
-    "testText": "Beyond change to the frontline, Arknights.",
+    "testText": "Over the frontier, into the front. Arknights.",
     "training": {
       "progress": "{{mode}}: {{name}}",
       "modePrepare": "Preparing",
@@ -772,6 +774,7 @@
     "voiceLanguage": "Voice Language",
     "voiceDescription": "Language used for TTS voice synthesis",
     "notAvailable": "No data",
+    "noStoryData": "No story data",
     "currentCombo": "Story: {{display}} / Voice: {{voice}}"
   }
 }

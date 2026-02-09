@@ -293,9 +293,8 @@ def prepare_reference_audio(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # 전처리된 오디오 경로 (학습에서도 재사용)
-    from core.voice.gpt_sovits.config import GPTSoVITSConfig
-    config = GPTSoVITSConfig()
-    preprocessed_dir = config.get_preprocessed_audio_path(char_id)
+    # output_dir은 이미 언어별 경로 (models/gpt_sovits/{lang}/{char_id}/)
+    preprocessed_dir = output_dir / "preprocessed"
     preprocessed_dir.mkdir(parents=True, exist_ok=True)
 
     # charword 데이터 없으면 Whisper 전사 전용 모드

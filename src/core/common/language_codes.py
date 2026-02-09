@@ -28,12 +28,37 @@ SHORT_TO_VOICE_FOLDER: dict[str, str] = {
     "en": "voice_en",
 }
 
+# 음성 폴더명 → 단축 코드 (별칭 포함: voice_jp, voice_ja → ja)
+VOICE_FOLDER_TO_SHORT: dict[str, str] = {
+    "voice_kr": "ko",
+    "voice": "ja",
+    "voice_jp": "ja",
+    "voice_ja": "ja",
+    "voice_cn": "zh",
+    "voice_en": "en",
+}
+
 # 지원 언어 목록 (UI 표시용)
 SUPPORTED_LANGUAGES: list[dict[str, str]] = [
     {"short": "ko", "locale": "ko_KR", "label": "한국어", "native": "한국어"},
     {"short": "ja", "locale": "ja_JP", "label": "日本語", "native": "日本語"},
     {"short": "en", "locale": "en_US", "label": "English", "native": "English"},
 ]
+
+
+def normalize_voice_folder(folder_name: str) -> str:
+    """음성 폴더명을 정규화 (voice_jp/voice_ja → voice)
+
+    Examples:
+        >>> normalize_voice_folder("voice_jp")
+        'voice'
+        >>> normalize_voice_folder("voice_kr")
+        'voice_kr'
+    """
+    short = VOICE_FOLDER_TO_SHORT.get(folder_name)
+    if short:
+        return SHORT_TO_VOICE_FOLDER[short]
+    return folder_name
 
 
 def short_to_voice_folder(short: str) -> str:

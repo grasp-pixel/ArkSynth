@@ -139,7 +139,7 @@ async def start_render(
     # 에피소드 대사 로드
     logger.info(f"[Render] 렌더링 요청 - episode_id: {episode_id}")
     try:
-        episode = loader.load_episode(episode_id)
+        episode = loader.load_episode(episode_id, lang=config.display_language)
         if not episode:
             raise HTTPException(
                 status_code=404,

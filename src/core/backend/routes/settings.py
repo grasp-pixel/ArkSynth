@@ -233,6 +233,7 @@ class LanguageSettingsRequest(BaseModel):
 class LanguageSettingsResponse(BaseModel):
     """언어 설정 응답"""
     display_language: str
+    game_language: str            # 서버 코드 (kr, jp, en)
     voice_language: str           # 단축 코드
     voice_folder: str             # 음성 폴더명
     gpt_sovits_language: str
@@ -277,6 +278,7 @@ async def get_language_settings():
 
     return LanguageSettingsResponse(
         display_language=config.display_language,
+        game_language=config.game_language,
         voice_language=config.voice_language_short,
         voice_folder=config.voice_language,
         gpt_sovits_language=config.gpt_sovits_language,
@@ -297,14 +299,14 @@ async def update_language_settings(request: LanguageSettingsRequest):
 
     if request.voice_language is not None:
         config.apply_voice_language(request.voice_language)
-        # 음성 언어 변경 → 음성 매퍼 리셋
-        from ..shared_loaders import reset_voice_mapper
-        reset_voice_mapper()
+        # 음성 언어 변경 → 음성 매퍼/TTS/학습/렌더 캐시 전체 리셋
+        reset_all()
 
     display_langs, voice_langs = _check_available_languages()
 
     return LanguageSettingsResponse(
         display_language=config.display_language,
+        game_language=config.game_language,
         voice_language=config.voice_language_short,
         voice_folder=config.voice_language,
         gpt_sovits_language=config.gpt_sovits_language,
@@ -815,6 +817,7 @@ async def start_voice_extraction(request: ExtractRequest):
 
     async def extract_task():
         from src.tools.extractor.core import extract_audio_from_bundle
+        from ...common.language_codes import normalize_voice_folder
 
         all_stats = {}
         total_extracted = 0
@@ -828,7 +831,9 @@ async def start_voice_extraction(request: ExtractRequest):
                 if not lang_source.exists():
                     continue
 
-                lang_output = config.extracted_path / lang
+                # voice_jp/voice_ja → voice (일본어 정규화)
+                output_folder = normalize_voice_folder(lang)
+                lang_output = config.extracted_path / output_folder
 
                 # 스캔 단계
                 await _extract_progress_queue.put(ExtractProgress(
@@ -965,12 +970,16 @@ async def check_voice_assets():
             "hint": "게임 클라이언트의 files/bundles/audio/sound_beta_2/voice_kr 등을 Assets/Voice/voice_kr 등으로 복사해주세요"
         }
 
+    from ...common.language_codes import normalize_voice_folder
+
     languages = {}
     for lang_dir in voice_assets_dir.iterdir():
         if lang_dir.is_dir():
             ab_count = len(list(lang_dir.glob("*.ab")))
             if ab_count > 0:
-                languages[lang_dir.name] = ab_count
+                # voice_jp/voice_ja → voice (일본어 정규화)
+                canonical = normalize_voice_folder(lang_dir.name)
+                languages[canonical] = languages.get(canonical, 0) + ab_count
 
     return {
         "exists": True,
@@ -1309,6 +1318,7 @@ async def set_tts_engine_setting(request: SetTTSEngineRequest):
 
     # 설정 변경
     config.default_tts_engine = request.engine
+    config.save()
 
     return {
         "engine": request.engine,

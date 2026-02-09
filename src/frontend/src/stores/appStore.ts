@@ -166,6 +166,7 @@ interface AppState {
 
   // 언어 설정
   displayLanguage: string
+  gameLanguage: string
   voiceLanguage: string
   voiceFolder: string
   availableDisplayLanguages: LanguageOption[]
@@ -621,6 +622,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // 언어 설정 초기 상태
   displayLanguage: 'ko_KR',
+  gameLanguage: 'kr',
   voiceLanguage: 'ko',
   voiceFolder: 'voice_kr',
   availableDisplayLanguages: [],
@@ -2151,7 +2153,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       const progress = await renderApi.startRender(
         episodeId,
-        'ko',
+        get().voiceLanguage,
         Object.keys(voiceAssignments).length > 0 ? voiceAssignments : undefined,
         defaultCharId || undefined,
         force,
@@ -2414,7 +2416,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           // 렌더링 시작
           await renderApi.startRender(
             ep.episodeId,
-            'ko',
+            get().voiceLanguage,
             Object.keys(voiceAssignments).length > 0 ? voiceAssignments : undefined,
             defaultCharId || undefined,
             force,
@@ -2656,6 +2658,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const data = await settingsApi.getLanguageSettings()
       set({
         displayLanguage: data.display_language,
+        gameLanguage: data.game_language,
         voiceLanguage: data.voice_language,
         voiceFolder: data.voice_folder,
         availableDisplayLanguages: data.available_display_languages,
@@ -2672,6 +2675,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const data = await settingsApi.updateLanguage({ display_language: locale })
       set({
         displayLanguage: data.display_language,
+        gameLanguage: data.game_language,
         availableDisplayLanguages: data.available_display_languages,
         availableVoiceLanguages: data.available_voice_languages,
       })
@@ -2693,6 +2697,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         voiceLanguage: data.voice_language,
         voiceFolder: data.voice_folder,
+        gameLanguage: data.game_language,
         availableDisplayLanguages: data.available_display_languages,
         availableVoiceLanguages: data.available_voice_languages,
       })

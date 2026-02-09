@@ -41,6 +41,7 @@ class GPTSoVITSSynthesizer:
 
         # 현재 로드된 모델 캐시
         self._loaded_model_id: str | None = None
+        self._loaded_model_lang: str | None = None
         self._model_loaded = False
         self._api_started = False
         self._synthesizing = False  # 합성 진행 중 플래그
@@ -69,9 +70,9 @@ class GPTSoVITSSynthesizer:
         )
         return False
 
-    async def is_available(self, char_id: str) -> bool:
+    async def is_available(self, char_id: str, lang: str | None = None) -> bool:
         """해당 캐릭터 모델 사용 가능 여부"""
-        return self.model_manager.is_trained(char_id)
+        return self.model_manager.is_trained(char_id, lang)
 
     @property
     def is_synthesizing(self) -> bool:
@@ -93,20 +94,21 @@ class GPTSoVITSSynthesizer:
             self._force_zero_shot = enabled
             # 모드 변경 시 현재 로드된 모델 해제 (다음 합성 시 재로드)
             self._loaded_model_id = None
+            self._loaded_model_lang = None
             self._model_loaded = False
             logger.info(f"제로샷 강제 모드: {'활성화' if enabled else '비활성화'}")
 
-    async def load_model(self, char_id: str) -> bool:
+    async def load_model(self, char_id: str, lang: str | None = None) -> bool:
         """모델 로드
 
         이미 로드된 모델이면 스킵합니다.
         Zero-shot 모드에서는 사전 학습된 모델을 사용합니다.
         """
-        if self._loaded_model_id == char_id and self._model_loaded:
+        if self._loaded_model_id == char_id and self._loaded_model_lang == lang and self._model_loaded:
             return True
 
-        if not await self.is_available(char_id):
-            logger.error(f"모델이 존재하지 않음: {char_id}")
+        if not await self.is_available(char_id, lang):
+            logger.error(f"모델이 존재하지 않음: {char_id} (lang={lang})")
             return False
 
         try:
@@ -117,31 +119,33 @@ class GPTSoVITSSynthesizer:
 
             # Zero-shot 모드인지 확인
             # force_zero_shot이 활성화되면 학습 모델이 있어도 제로샷 사용
-            has_trained = self.model_manager.has_trained_model(char_id)
-            is_zero_shot = self.model_manager.is_zero_shot_ready(char_id) and \
+            has_trained = self.model_manager.has_trained_model(char_id, lang)
+            is_zero_shot = self.model_manager.is_zero_shot_ready(char_id, lang) and \
                            (not has_trained or self._force_zero_shot)
 
             if is_zero_shot:
                 # Zero-shot: 사전 학습된 모델 사용 (모델 로드 불필요)
                 mode_reason = "강제 제로샷" if (has_trained and self._force_zero_shot) else "사전 학습 모델"
-                logger.info(f"Zero-shot 모드: {char_id} ({mode_reason} 사용)")
+                logger.info(f"Zero-shot 모드: {char_id} ({mode_reason} 사용, lang={lang})")
                 self._loaded_model_id = char_id
+                self._loaded_model_lang = lang
                 self._model_loaded = True
                 return True
             else:
                 # 학습된 모델 로드
-                sovits_path = self.model_manager.get_sovits_path(char_id)
-                gpt_path = self.model_manager.get_gpt_path(char_id)
+                sovits_path = self.model_manager.get_sovits_path(char_id, lang)
+                gpt_path = self.model_manager.get_gpt_path(char_id, lang)
 
                 if not sovits_path or not gpt_path:
-                    logger.error(f"모델 파일 없음: {char_id}")
+                    logger.error(f"모델 파일 없음: {char_id} (lang={lang})")
                     return False
 
-                logger.info(f"학습된 모델 로드 중: {char_id}")
-                if await self.api_client.set_model(char_id):
+                logger.info(f"학습된 모델 로드 중: {char_id} (lang={lang})")
+                if await self.api_client.set_model(char_id, lang):
                     self._loaded_model_id = char_id
+                    self._loaded_model_lang = lang
                     self._model_loaded = True
-                    logger.info(f"모델 로드 완료: {char_id}")
+                    logger.info(f"모델 로드 완료: {char_id} (lang={lang})")
                     return True
                 else:
                     logger.error(f"API를 통한 모델 로드 실패: {char_id}")
@@ -150,6 +154,7 @@ class GPTSoVITSSynthesizer:
         except Exception as e:
             logger.error(f"모델 로드 실패 ({char_id}): {e}")
             self._loaded_model_id = None
+            self._loaded_model_lang = None
             self._model_loaded = False
             return False
 
@@ -158,6 +163,7 @@ class GPTSoVITSSynthesizer:
         if self._model_loaded:
             logger.info(f"모델 언로드: {self._loaded_model_id}")
             self._loaded_model_id = None
+            self._loaded_model_lang = None
             self._model_loaded = False
 
     async def synthesize(
@@ -186,9 +192,9 @@ class GPTSoVITSSynthesizer:
         Returns:
             SynthesisResult 또는 실패 시 None
         """
-        # 모델 로드 확인
-        if self._loaded_model_id != char_id:
-            if not await self.load_model(char_id):
+        # 모델 로드 확인 (캐릭터 또는 언어가 다르면 재로드)
+        if self._loaded_model_id != char_id or self._loaded_model_lang != language:
+            if not await self.load_model(char_id, language):
                 return None
 
         # 출력 경로 설정
@@ -269,7 +275,7 @@ class GPTSoVITSSynthesizer:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # 모델 미리 로드
-        if not await self.load_model(char_id):
+        if not await self.load_model(char_id, language):
             return
 
         for i, text in enumerate(texts):
@@ -279,9 +285,9 @@ class GPTSoVITSSynthesizer:
             )
             yield i, result
 
-    def get_reference_audio(self, char_id: str) -> Path | None:
+    def get_reference_audio(self, char_id: str, lang: str | None = None) -> Path | None:
         """참조 오디오 경로 조회"""
-        ref_dir = self.config.get_model_path(char_id) / "ref_audio"
+        ref_dir = self.config.get_model_path(char_id, lang or self._loaded_model_lang) / "ref_audio"
         if not ref_dir.exists():
             return None
 
@@ -310,6 +316,7 @@ class GPTSoVITSSynthesizer:
         await self.api_client.close()
         self._api_started = False
         self._loaded_model_id = None
+        self._loaded_model_lang = None
         self._model_loaded = False
 
 
@@ -323,3 +330,9 @@ def get_synthesizer() -> GPTSoVITSSynthesizer:
     if _synthesizer is None:
         _synthesizer = GPTSoVITSSynthesizer()
     return _synthesizer
+
+
+def reset_synthesizer() -> None:
+    """합성기 싱글톤 리셋 (언어 변경 시)"""
+    global _synthesizer
+    _synthesizer = None

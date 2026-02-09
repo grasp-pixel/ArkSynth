@@ -52,6 +52,14 @@ def reset_all() -> None:
     # 렌더 캐시도 리셋
     from .routes.render import reset_render_cache
     reset_render_cache()
+    # TTS/학습 싱글톤도 리셋
+    from .routes.tts import reset_tts_singletons
+    from .routes.training import reset_training_singletons
+    reset_tts_singletons()
+    reset_training_singletons()
+    # 코어 합성기 싱글톤도 리셋
+    from ..voice.gpt_sovits.synthesizer import reset_synthesizer
+    reset_synthesizer()
 
 
 def find_operator_id_by_name(

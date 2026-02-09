@@ -54,7 +54,7 @@ async def list_main_episodes(lang: str | None = None):
         lang: 언어 코드 (기본값: ko_KR)
     """
     loader = get_story_loader()
-    lang = lang or config.game_language
+    lang = lang or config.display_language
 
     episodes = loader.list_main_episodes(lang=lang)
 
@@ -97,7 +97,7 @@ async def list_main_episodes(lang: str | None = None):
 async def get_episode(episode_id: str, lang: str | None = None):
     """에피소드 상세 정보 조회"""
     loader = get_story_loader()
-    lang = lang or config.game_language
+    lang = lang or config.display_language
 
     episode = loader.load_episode(episode_id, lang=lang)
 
@@ -131,7 +131,7 @@ async def get_episode_dialogues(
 ):
     """에피소드 대사 목록 (페이지네이션)"""
     loader = get_story_loader()
-    lang = lang or config.game_language
+    lang = lang or config.display_language
 
     episode = loader.load_episode(episode_id, lang=lang)
 
@@ -188,7 +188,7 @@ async def get_episode_characters(episode_id: str, lang: str | None = None):
     """
     loader = get_story_loader()
     voice_mapper = get_voice_mapper()
-    lang = lang or config.game_language
+    lang = lang or config.display_language
 
     episode = loader.load_episode(episode_id, lang=lang)
 

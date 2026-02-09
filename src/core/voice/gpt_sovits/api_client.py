@@ -247,17 +247,18 @@ class GPTSoVITSAPIClient:
         logger.error(f"API 서버 준비 시간 초과 ({timeout}초)")
         return False
 
-    async def set_model(self, char_id: str) -> bool:
+    async def set_model(self, char_id: str, lang: str | None = None) -> bool:
         """캐릭터 모델 로드
 
         Args:
             char_id: 캐릭터 ID
+            lang: 언어 코드 (None이면 default_language 사용)
 
         Returns:
             bool: 모델 로드 성공 여부
         """
-        sovits_path = self.config.get_sovits_model_path(char_id)
-        gpt_path = self.config.get_gpt_model_path(char_id)
+        sovits_path = self.config.get_sovits_model_path(char_id, lang)
+        gpt_path = self.config.get_gpt_model_path(char_id, lang)
 
         if not sovits_path.exists() or not gpt_path.exists():
             logger.error(f"모델 파일이 없습니다: {char_id}")
@@ -292,7 +293,7 @@ class GPTSoVITSAPIClient:
             return False
 
     def _select_reference_audio(
-        self, char_id: str, input_text_len: int
+        self, char_id: str, input_text_len: int, lang: str | None = None
     ) -> tuple[Path, str]:
         """하이브리드 방식으로 최적의 참조 오디오 선택
 
@@ -303,11 +304,12 @@ class GPTSoVITSAPIClient:
         Args:
             char_id: 캐릭터 ID
             input_text_len: 텍스트 길이 기준 (분할 시 평균 세그먼트 길이)
+            lang: 언어 코드 (None이면 default_language 사용)
 
         Returns:
             (참조 오디오 경로, 참조 텍스트) 튜플
         """
-        model_dir = self.config.get_model_path(char_id)
+        model_dir = self.config.get_model_path(char_id, lang)
 
         # 하이브리드 선택 (점수 + 텍스트 길이 + 랜덤)
         ref_audio, ref_text, score = select_reference_hybrid(
@@ -323,9 +325,9 @@ class GPTSoVITSAPIClient:
             return ref_audio, ref_text
 
         # 폴백: 기본 경로 반환
-        return self.config.get_ref_audio_path(char_id), ""
+        return self.config.get_ref_audio_path(char_id, lang), ""
 
-    def _get_aux_reference_audios(self, char_id: str, primary_ref: Path) -> list[str]:
+    def _get_aux_reference_audios(self, char_id: str, primary_ref: Path, lang: str | None = None) -> list[str]:
         """추가 참조 오디오 경로 목록 (GPT-SoVITS v2 aux_ref_audio_paths용)
 
         점수 순으로 정렬된 참조 오디오 목록을 반환합니다.
@@ -334,11 +336,12 @@ class GPTSoVITSAPIClient:
         Args:
             char_id: 캐릭터 ID
             primary_ref: 기본 참조 오디오 (제외됨)
+            lang: 언어 코드 (None이면 default_language 사용)
 
         Returns:
             추가 참조 오디오 경로 목록 (점수 내림차순)
         """
-        model_dir = self.config.get_model_path(char_id)
+        model_dir = self.config.get_model_path(char_id, lang)
 
         # 공통 함수로 점수 기반 참조 오디오 목록 조회
         refs = get_all_references_by_score(
@@ -398,7 +401,7 @@ class GPTSoVITSAPIClient:
         # 참조 오디오 선택 (분할 후 평균 세그먼트 길이 기준)
         # 실제 합성되는 세그먼트와 참조 텍스트 길이가 비슷해야 품질 좋음
         avg_segment_len = sum(len(s) for s in segments) // len(segments)
-        ref_audio_path, ref_text = self._select_reference_audio(char_id, avg_segment_len)
+        ref_audio_path, ref_text = self._select_reference_audio(char_id, avg_segment_len, language)
 
         if len(segments) == 1:
             # 단일 세그먼트: 직접 합성
@@ -482,14 +485,14 @@ class GPTSoVITSAPIClient:
 
         # 참조 오디오가 전달되지 않으면 자동 선택
         if ref_audio_path is None or ref_text is None:
-            ref_audio_path, ref_text = self._select_reference_audio(char_id, len(text))
+            ref_audio_path, ref_text = self._select_reference_audio(char_id, len(text), language)
 
         if not ref_audio_path.exists():
             logger.error(f"참조 오디오가 없습니다: {char_id}")
             return None
 
         # 추가 참조 오디오
-        aux_refs = self._get_aux_reference_audios(char_id, ref_audio_path)
+        aux_refs = self._get_aux_reference_audios(char_id, ref_audio_path, language)
 
         # prompt_text: 참조 텍스트 사용 (품질 유지)
         prompt_text = ref_text

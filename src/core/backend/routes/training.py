@@ -34,6 +34,7 @@ def get_training_manager() -> TrainingManager:
         gpt_config = GPTSoVITSConfig(
             models_path=config.models_path / "gpt_sovits",
             extracted_path=config.extracted_path,  # 언어별 폴더는 _get_audio_files에서 처리
+            default_language=config.voice_language_short,
         )
         _model_manager = GPTSoVITSModelManager(gpt_config)
         _training_manager = TrainingManager(gpt_config, _model_manager)
@@ -96,7 +97,7 @@ async def get_training_status():
     mapper = get_character_mapper()
 
     # 음성 있는 캐릭터 수
-    available_chars = mapper.get_available_characters("voice")
+    available_chars = mapper.get_available_characters(config.voice_language)
 
     return {
         **manager.get_status_summary(),
@@ -143,15 +144,17 @@ async def start_training(char_id: str, request: StartTrainingRequest = StartTrai
     model_manager = get_model_manager()
     mapper = get_character_mapper()
 
+    lang = config.voice_language_short
+
     # 캐릭터 확인
-    if not mapper.has_voice(char_id, "voice"):
+    if not mapper.has_voice(char_id, config.voice_language):
         raise HTTPException(
             status_code=404,
             detail=f"캐릭터 음성 파일이 없습니다: {char_id}",
         )
 
     # 이미 학습된 경우 (finetune 모드는 기존 준비된 것도 다시 학습 가능)
-    if request.mode == "prepare" and model_manager.is_trained(char_id):
+    if request.mode == "prepare" and model_manager.is_trained(char_id, lang):
         raise HTTPException(
             status_code=400,
             detail=f"이미 준비된 캐릭터입니다: {char_id}",
@@ -163,7 +166,7 @@ async def start_training(char_id: str, request: StartTrainingRequest = StartTrai
             models_path=config.models_path / "gpt_sovits",
             extracted_path=config.extracted_path,
         )
-        preprocessed_dir = gpt_config.get_preprocessed_audio_path(char_id)
+        preprocessed_dir = gpt_config.get_preprocessed_audio_path(char_id, lang)
         has_preprocessed = preprocessed_dir.exists() and any(preprocessed_dir.glob("*.wav"))
         if not has_preprocessed:
             raise HTTPException(
@@ -199,6 +202,8 @@ async def start_batch_training(request: BatchTrainingRequest):
     model_manager = get_model_manager()
     mapper = get_character_mapper()
 
+    lang = config.voice_language_short
+
     # 대상 캐릭터 결정
     if request.char_ids:
         char_ids = request.char_ids
@@ -220,13 +225,13 @@ async def start_batch_training(request: BatchTrainingRequest):
         # prepare 모드: 미준비 캐릭터만
         # finetune 모드: 미학습(finetuned가 아닌) + 전처리된 캐릭터만
         if request.mode == "prepare":
-            if model_manager.is_trained(char_id):
+            if model_manager.is_trained(char_id, lang):
                 continue
         else:  # finetune
-            if model_manager.has_trained_model(char_id):
+            if model_manager.has_trained_model(char_id, lang):
                 continue
             # 전처리 완료 확인 (preprocessed 폴더에 WAV 파일 있는지)
-            preprocessed_dir = gpt_config.get_preprocessed_audio_path(char_id)
+            preprocessed_dir = gpt_config.get_preprocessed_audio_path(char_id, lang)
             has_preprocessed = preprocessed_dir.exists() and any(preprocessed_dir.glob("*.wav"))
             if not has_preprocessed:
                 logger.warning(f"전처리 미완료, 스킵: {char_id}")
@@ -280,7 +285,8 @@ async def list_trained_models():
     (prepared 상태이고 전처리가 완료된 경우에만 finetune 가능)
     """
     model_manager = get_model_manager()
-    models = model_manager.list_all_models()
+    lang = config.voice_language_short
+    models = model_manager.list_all_models(lang)
 
     # 전처리 상태 확인을 위한 config
     gpt_config = GPTSoVITSConfig(
@@ -290,9 +296,9 @@ async def list_trained_models():
 
     result_models = []
     for m in models:
-        model_type = model_manager.get_model_type(m.char_id)
+        model_type = model_manager.get_model_type(m.char_id, lang)
         # 전처리 상태 확인 (preprocessed 폴더에 WAV + TXT 파일 있는지)
-        preprocessed_dir = gpt_config.get_preprocessed_audio_path(m.char_id)
+        preprocessed_dir = gpt_config.get_preprocessed_audio_path(m.char_id, lang)
         segment_count = 0
         txt_count = 0
         is_preprocessed = False
@@ -334,14 +340,15 @@ async def get_model_type(char_id: str):
         can_finetune: bool - finetune 가능 여부 (prepared이고 전처리 완료됨)
     """
     model_manager = get_model_manager()
-    model_type = model_manager.get_model_type(char_id)
+    lang = config.voice_language_short
+    model_type = model_manager.get_model_type(char_id, lang)
 
     # 전처리 상태 확인 (preprocessed 폴더에 WAV + TXT 파일 있는지)
     gpt_config = GPTSoVITSConfig(
         models_path=config.models_path / "gpt_sovits",
         extracted_path=config.extracted_path,
     )
-    preprocessed_dir = gpt_config.get_preprocessed_audio_path(char_id)
+    preprocessed_dir = gpt_config.get_preprocessed_audio_path(char_id, lang)
     segment_count = 0
     txt_count = 0
     is_preprocessed = False
@@ -377,12 +384,13 @@ async def check_preprocessing_status(char_id: str):
         segment_count: int - 전처리된 세그먼트 수 (0이면 미완료)
         preprocessed_path: str - 전처리된 파일 경로
     """
+    lang = config.voice_language_short
     gpt_config = GPTSoVITSConfig(
         models_path=config.models_path / "gpt_sovits",
         extracted_path=config.extracted_path,
     )
 
-    preprocessed_dir = gpt_config.get_preprocessed_audio_path(char_id)
+    preprocessed_dir = gpt_config.get_preprocessed_audio_path(char_id, lang)
 
     is_preprocessed = False
     segment_count = 0
@@ -420,13 +428,14 @@ async def get_engine_specific_model_status(char_id: str):
     """
     # GPT-SoVITS 상태
     model_manager = get_model_manager()
-    gpt_model_type = model_manager.get_model_type(char_id)
+    lang = config.voice_language_short
+    gpt_model_type = model_manager.get_model_type(char_id, lang)
 
     gpt_config = GPTSoVITSConfig(
         models_path=config.models_path / "gpt_sovits",
         extracted_path=config.extracted_path,
     )
-    preprocessed_dir = gpt_config.get_preprocessed_audio_path(char_id)
+    preprocessed_dir = gpt_config.get_preprocessed_audio_path(char_id, lang)
     segment_count = 0
     txt_count = 0
     is_preprocessed = False
@@ -455,7 +464,7 @@ async def get_engine_specific_model_status(char_id: str):
 async def delete_model(char_id: str):
     """모델 삭제"""
     model_manager = get_model_manager()
-    success = model_manager.delete_model(char_id)
+    success = model_manager.delete_model(char_id, config.voice_language_short)
 
     if not success:
         raise HTTPException(
@@ -470,11 +479,12 @@ async def delete_model(char_id: str):
 async def delete_all_models():
     """모든 모델 삭제"""
     model_manager = get_model_manager()
-    models = model_manager.list_all_models()
+    lang = config.voice_language_short
+    models = model_manager.list_all_models(lang)
 
     deleted_count = 0
     for model in models:
-        if model_manager.delete_model(model.char_id):
+        if model_manager.delete_model(model.char_id, lang):
             deleted_count += 1
 
     return {
@@ -539,6 +549,14 @@ async def training_progress_stream():
             "Connection": "keep-alive",
         },
     )
+
+
+def reset_training_singletons():
+    """학습 싱글톤 리셋 (언어 변경 시)"""
+    global _training_manager, _model_manager, _character_mapper
+    _training_manager = None
+    _model_manager = None
+    _character_mapper = None
 
 
 async def ensure_manager_running():

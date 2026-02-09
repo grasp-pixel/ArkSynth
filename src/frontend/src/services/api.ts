@@ -1116,6 +1116,7 @@ export interface LanguageOption {
 
 export interface LanguageSettingsResponse {
   display_language: string
+  game_language: string
   voice_language: string
   voice_folder: string
   gpt_sovits_language: string
@@ -1375,7 +1376,7 @@ export const extractApi = {
   },
 
   // 추출 시작
-  startExtract: async (languages: string[] = ['voice', 'voice_kr']) => {
+  startExtract: async (languages: string[]) => {
     const res = await api.post<{ status: string; message: string; languages: string[] }>(
       '/api/settings/extract/start',
       { languages }

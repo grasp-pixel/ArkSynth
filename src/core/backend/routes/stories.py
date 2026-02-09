@@ -63,7 +63,7 @@ async def list_categories(lang: str | None = None):
     각 카테고리별 그룹 수와 에피소드 수를 반환
     """
     loader = get_story_loader()
-    lang = lang or config.game_language
+    lang = lang or config.display_language
 
     stats = loader.get_category_stats(lang)
 
@@ -102,7 +102,7 @@ async def list_categories(lang: str | None = None):
 async def list_category_groups(category_id: str, lang: str | None = None):
     """카테고리별 스토리 그룹 목록"""
     loader = get_story_loader()
-    lang = lang or config.game_language
+    lang = lang or config.display_language
 
     # 카테고리 ID -> StoryCategory enum
     try:
@@ -132,7 +132,7 @@ async def list_category_groups(category_id: str, lang: str | None = None):
 async def list_group_episodes(group_id: str, lang: str | None = None):
     """스토리 그룹의 에피소드 목록"""
     loader = get_story_loader()
-    lang = lang or config.game_language
+    lang = lang or config.display_language
 
     # 그룹 존재 확인
     all_groups = loader.load_all_story_groups(lang)
@@ -169,7 +169,7 @@ async def list_group_characters(group_id: str, lang: str | None = None):
     """
     loader = get_story_loader()
     voice_mapper = get_voice_mapper()
-    lang = lang or config.game_language
+    lang = lang or config.display_language
 
     # 그룹 존재 확인
     all_groups = loader.load_all_story_groups(lang)

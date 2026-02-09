@@ -1,9 +1,25 @@
 """서버 설정"""
 
+import json
+import logging
 from pathlib import Path
 from pydantic import BaseModel
 
-from ..common.language_codes import short_to_voice_folder, short_to_locale
+from ..common.language_codes import short_to_voice_folder, short_to_locale, locale_to_server
+
+logger = logging.getLogger(__name__)
+
+# 저장 대상 필드 (사용자가 변경하는 설정만)
+_PERSIST_FIELDS = {
+    "display_language",
+    "voice_language_short",
+    "gamedata_source",
+    "gamedata_repo",
+    "gamedata_branch",
+    "default_tts_engine",
+}
+
+CONFIG_FILE = Path("data/config.json")
 
 
 class ServerConfig(BaseModel):
@@ -27,7 +43,7 @@ class ServerConfig(BaseModel):
     voice_language_short: str = "ko"  # 단축 코드 (ko, ja, en)
 
     # 하위 호환 필드 (apply_* 메서드로 동기화)
-    game_language: str = "ko_KR"  # display_language와 동기
+    game_language: str = "kr"  # 서버 코드 (kr, jp, en)
     voice_language: str = "voice_kr"  # voice_language_short에서 파생
     gpt_sovits_language: str = "ko"  # voice_language_short와 동기
 
@@ -44,14 +60,46 @@ class ServerConfig(BaseModel):
     def apply_display_language(self, locale: str) -> None:
         """표시 언어 변경 시 관련 필드 일괄 갱신"""
         self.display_language = locale
-        self.game_language = locale
+        self.game_language = locale_to_server(locale)
+        self.save()
 
     def apply_voice_language(self, short: str) -> None:
         """음성 언어 변경 시 관련 필드 일괄 갱신"""
         self.voice_language_short = short
         self.voice_language = short_to_voice_folder(short)
         self.gpt_sovits_language = short
+        self.save()
+
+    def _sync_derived_fields(self) -> None:
+        """저장된 기본 필드에서 파생 필드 재계산"""
+        self.game_language = locale_to_server(self.display_language)
+        self.voice_language = short_to_voice_folder(self.voice_language_short)
+        self.gpt_sovits_language = self.voice_language_short
+
+    def save(self) -> None:
+        """설정을 JSON 파일로 저장"""
+        try:
+            data = {k: getattr(self, k) for k in _PERSIST_FIELDS}
+            CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+            CONFIG_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"설정 저장 실패: {e}")
+
+    def load(self) -> None:
+        """JSON 파일에서 설정 로드"""
+        if not CONFIG_FILE.exists():
+            return
+        try:
+            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+            for key, value in data.items():
+                if key in _PERSIST_FIELDS and hasattr(self, key):
+                    setattr(self, key, value)
+            self._sync_derived_fields()
+            logger.info(f"설정 로드: display={self.display_language}, voice={self.voice_language_short}")
+        except Exception as e:
+            logger.warning(f"설정 로드 실패: {e}")
 
 
 # 전역 설정 인스턴스
 config = ServerConfig()
+config.load()
