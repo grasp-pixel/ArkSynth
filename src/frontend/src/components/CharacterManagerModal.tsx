@@ -197,8 +197,6 @@ export default function CharacterManagerModal({
           setGenders(res.genders);
         });
 
-      // 스냅샷 업데이트
-      updateSortSnapshot();
     }
     return () => {
       // 모달 닫힐 때 테스트 오디오 정리
@@ -214,12 +212,12 @@ export default function CharacterManagerModal({
     setTestText(VOICE_TEST_TEXTS[voiceLanguage] ?? VOICE_TEST_TEXTS.ko);
   }, [voiceLanguage]);
 
-  // 정렬 옵션 변경 시 스냅샷 업데이트
+  // 정렬 옵션 또는 관련 데이터 변경 시 스냅샷 업데이트
   useEffect(() => {
     if (isOpen) {
       updateSortSnapshot();
     }
-  }, [sortBy, readyFirst, defaultFirst, trainedFirst]);
+  }, [sortBy, readyFirst, defaultFirst, trainedFirst, trainedCharIds]);
 
   // 스크롤 위치 복원 (정렬 스냅샷 변경 시에만)
   useLayoutEffect(() => {
