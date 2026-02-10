@@ -7,8 +7,9 @@ import asyncio
 import logging
 import subprocess
 import sys
+import time
 from pathlib import Path
-from typing import Optional
+from typing import IO, Optional
 
 import aiohttp
 
@@ -26,6 +27,25 @@ from ..common.reference_manager import (
 
 logger = logging.getLogger(__name__)
 
+LOG_DIR = Path("logs")
+_GPT_SOVITS_LOG = LOG_DIR / "gpt_sovits.log"
+_GPT_SOVITS_BACKUP_COUNT = 2  # 최대 3개 파일 보존
+
+
+def _rotate_log_file(log_path: Path, backup_count: int = 2) -> None:
+    """로그 파일 수동 로테이션 (프로세스 시작 시 호출)"""
+    if not log_path.exists():
+        return
+    # 가장 오래된 백업 삭제 후 shift
+    for i in range(backup_count, 0, -1):
+        backup = log_path.parent / f"{log_path.stem}.{i}{log_path.suffix}"
+        if i == backup_count and backup.exists():
+            backup.unlink()
+        elif backup.exists():
+            backup.rename(log_path.parent / f"{log_path.stem}.{i + 1}{log_path.suffix}")
+    # 현재 → .1
+    log_path.rename(log_path.parent / f"{log_path.stem}.1{log_path.suffix}")
+
 
 class GPTSoVITSAPIClient:
     """GPT-SoVITS API 클라이언트
@@ -37,6 +57,7 @@ class GPTSoVITSAPIClient:
         self.config = config or GPTSoVITSConfig()
         self._api_process: Optional[subprocess.Popen] = None
         self._session: Optional[aiohttp.ClientSession] = None
+        self._log_file_handle: Optional[IO] = None
 
     @property
     def api_url(self) -> str:
@@ -138,27 +159,29 @@ class GPTSoVITSAPIClient:
             logger.info(f"GPT-SoVITS API 서버 시작: {' '.join(cmd)}")
             logger.info(f"  작업 디렉토리: {cwd_abs}")
 
-            # 별도 콘솔 창에서 실행 (파이프 버퍼 문제 방지)
-            # CREATE_NEW_CONSOLE: 새 콘솔 창에서 실행되어 로그 확인 가능
+            # 로그 파일 준비
+            LOG_DIR.mkdir(exist_ok=True)
+            _rotate_log_file(_GPT_SOVITS_LOG, _GPT_SOVITS_BACKUP_COUNT)
+            self._log_file_handle = open(_GPT_SOVITS_LOG, "w", encoding="utf-8")
+
+            # 별도 콘솔 창에서 실행 + stdout/stderr를 로그 파일로 캡처
             self._api_process = subprocess.Popen(
                 cmd,
                 cwd=str(cwd_abs),
-                stdout=None,  # 콘솔로 직접 출력
-                stderr=None,
+                stdout=self._log_file_handle,
+                stderr=subprocess.STDOUT,
                 creationflags=subprocess.CREATE_NEW_CONSOLE
                 if sys.platform == "win32"
                 else 0,
             )
 
             # 프로세스가 즉시 종료되었는지 확인 (0.5초 대기)
-            import time
-
             time.sleep(0.5)
             exit_code = self._api_process.poll()
             if exit_code is not None:
-                # 프로세스가 종료됨 - 별도 콘솔 창에서 에러 확인 필요
                 logger.error(f"API 서버가 즉시 종료됨 (exit code: {exit_code})")
-                logger.error("별도 콘솔 창에서 에러 메시지를 확인하세요")
+                logger.error(f"로그 확인: {_GPT_SOVITS_LOG}")
+                self._close_log_file()
                 self._api_process = None
                 return False
 
@@ -202,19 +225,25 @@ class GPTSoVITSAPIClient:
         return status
 
     def get_process_output(self, max_lines: int = 50) -> str:
-        """프로세스 출력 읽기 (비차단)
+        """프로세스 로그 파일에서 마지막 N줄 읽기"""
+        if not _GPT_SOVITS_LOG.exists():
+            return "[로그 파일 없음]"
 
-        Note: 별도 콘솔 창에서 실행되므로 출력을 직접 읽을 수 없습니다.
-        콘솔 창에서 로그를 확인하세요.
-        """
-        if not self._api_process:
-            return "[프로세스 없음]"
+        try:
+            lines = _GPT_SOVITS_LOG.read_text(encoding="utf-8", errors="replace").splitlines()
+            tail = lines[-max_lines:] if len(lines) > max_lines else lines
+            return "\n".join(tail)
+        except Exception as e:
+            return f"[로그 읽기 실패: {e}]"
 
-        exit_code = self._api_process.poll()
-        if exit_code is not None:
-            return f"[프로세스 종료됨 (exit code: {exit_code})]"
-
-        return "[별도 콘솔 창에서 로그 확인]"
+    def _close_log_file(self) -> None:
+        """로그 파일 핸들 닫기"""
+        if self._log_file_handle and not self._log_file_handle.closed:
+            try:
+                self._log_file_handle.close()
+            except Exception:
+                pass
+        self._log_file_handle = None
 
     def stop_api_server(self):
         """API 서버 종료"""
@@ -226,6 +255,7 @@ class GPTSoVITSAPIClient:
                 self._api_process.kill()
             logger.info("GPT-SoVITS API 서버 종료")
         self._api_process = None
+        self._close_log_file()
 
     async def wait_for_api_ready(self, timeout: float = 60.0) -> bool:
         """API 서버가 준비될 때까지 대기
@@ -533,8 +563,6 @@ class GPTSoVITSAPIClient:
             "speed_factor": speed_factor,
             "batch_size": 1,  # 안정적인 출력을 위해 배치 크기 1
         }
-
-        import time
 
         start_time = time.time()
 

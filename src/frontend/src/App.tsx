@@ -548,6 +548,21 @@ function App() {
                       <p>{t('app.home.gpuNote')}</p>
                     </div>
 
+                    {/* 오류 신고 안내 */}
+                    <div className="p-3 bg-ark-panel/50 rounded border border-ark-border text-[11px] text-ark-gray space-y-1.5">
+                      <p className="text-ark-white font-medium">{t('app.home.troubleshooting')}</p>
+                      <p>{t('app.home.troubleshootingDesc')}</p>
+                      <p className="text-ark-gray/60">{t('app.home.logsLocation')}</p>
+                      <a
+                        href="https://github.com/grasp-pixel/ArkSynth/issues"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block text-ark-cyan hover:underline"
+                      >
+                        GitHub Issues
+                      </a>
+                    </div>
+
                   </div>
                 </div>
               )}

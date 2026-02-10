@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import logging
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -11,6 +12,8 @@ from PIL import Image
 from ..interfaces.ocr import BoundingBox, OCRResult
 from .easyocr_provider import EasyOCRProvider
 from .screen_capture import ScreenCapture, get_dialogue_region
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -122,7 +125,7 @@ class DialogueDetector:
             if current_hash == self._last_stable_hash:
                 return False
             self._last_stable_hash = current_hash
-            print(f"[DialogueDetector] 화면 안정화됨 (count={self._stability_count})")
+            logger.debug("화면 안정화됨 (count=%d)", self._stability_count)
             return True
 
         return False
@@ -161,7 +164,7 @@ class DialogueDetector:
 
             return await self._capture.capture_region_async(abs_region)
         except Exception as e:
-            print(f"[DialogueDetector] Capture error: {e}")
+            logger.error("Capture error: %s", e)
             return None
 
     def on_dialogue(self, callback: Callable[[DialogueDetection], None]) -> None:
@@ -178,7 +181,7 @@ class DialogueDetector:
             try:
                 callback(detection)
             except Exception as e:
-                print(f"Callback error: {e}")
+                logger.error("Callback error: %s", e)
 
     def _is_text_changed(self, new_text: str) -> bool:
         """텍스트 변경 여부 확인"""
@@ -213,17 +216,17 @@ class DialogueDetector:
         try:
             # 모니터 정보 가져오기
             monitors = self._capture.get_monitors()
-            print(f"[DialogueDetector] Found {len(monitors)} monitors, requested id={self.config.monitor_id}")
+            logger.debug("Found %d monitors, requested id=%d", len(monitors), self.config.monitor_id)
 
             if self.config.monitor_id >= len(monitors):
-                print(f"[DialogueDetector] Monitor ID {self.config.monitor_id} out of range")
+                logger.warning("Monitor ID %d out of range", self.config.monitor_id)
                 return None
 
             monitor = monitors[self.config.monitor_id]
-            print(f"[DialogueDetector] Using monitor: {monitor.name} ({monitor.width}x{monitor.height}) at ({monitor.left}, {monitor.top})")
+            logger.debug("Using monitor: %s (%dx%d) at (%d, %d)", monitor.name, monitor.width, monitor.height, monitor.left, monitor.top)
 
             rel_region = self._get_dialogue_region()
-            print(f"[DialogueDetector] Dialogue region: x={rel_region.x}, y={rel_region.y}, w={rel_region.width}, h={rel_region.height}")
+            logger.debug("Dialogue region: x=%d, y=%d, w=%d, h=%d", rel_region.x, rel_region.y, rel_region.width, rel_region.height)
 
             # 절대 좌표로 변환 (모니터 오프셋 적용)
             abs_region = BoundingBox(
@@ -232,18 +235,18 @@ class DialogueDetector:
                 width=rel_region.width,
                 height=rel_region.height,
             )
-            print(f"[DialogueDetector] Absolute region: x={abs_region.x}, y={abs_region.y}")
+            logger.debug("Absolute region: x=%d, y=%d", abs_region.x, abs_region.y)
 
             image = await self._capture.capture_region_async(abs_region)
-            print(f"[DialogueDetector] Captured image: {image.width}x{image.height}")
+            logger.debug("Captured image: %dx%d", image.width, image.height)
 
             result = await self._ocr.recognize_region(image, BoundingBox(
                 x=0, y=0, width=image.width, height=image.height
             ))
-            print(f"[DialogueDetector] OCR result: {result}")
+            logger.debug("OCR result: %s", result)
 
             if not result or result.confidence < self.config.min_confidence:
-                print(f"[DialogueDetector] No result or low confidence")
+                logger.debug("No result or low confidence")
                 return None
 
             return DialogueDetection(
@@ -254,9 +257,7 @@ class DialogueDetector:
             )
 
         except Exception as e:
-            print(f"[DialogueDetector] Error in detect_once: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Error in detect_once: %s", e)
             raise
 
     async def detect_from_image(self, image: Image.Image) -> DialogueDetection | None:
@@ -314,7 +315,7 @@ class DialogueDetector:
         3. 안정화되면 OCR 실행
         """
         self._running = True
-        print(f"[DialogueDetector] Monitoring started (interval: {self.config.poll_interval}s, stability: {self.config.stability_threshold})")
+        logger.info("Monitoring started (interval: %.1fs, stability: %d)", self.config.poll_interval, self.config.stability_threshold)
 
         while self._running:
             try:
@@ -337,14 +338,14 @@ class DialogueDetector:
                     self._notify_callbacks(detection)
 
             except Exception as e:
-                print(f"[DialogueDetector] Error: {e}")
+                logger.error("Monitoring error: %s", e)
 
             await asyncio.sleep(self.config.poll_interval)
 
     def stop_monitoring(self) -> None:
         """모니터링 중지"""
         self._running = False
-        print("[DialogueDetector] Monitoring stopped")
+        logger.info("Monitoring stopped")
 
     def set_language(self, language: str) -> None:
         """OCR 언어 변경"""

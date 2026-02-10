@@ -117,7 +117,10 @@
       "realtimeDubbing": "실시간 더빙",
       "realtimeDubbingDesc": "OCR 윈도우 설정 → 게임 텍스트 실시간 인식 → 매칭된 대사 자동 재생",
       "zeroShotNote": "학습되지 않은 캐릭터는 제로샷 모드로 합성됩니다.",
-      "gpuNote": "헤더의 GPU 버튼으로 OCR/TTS 동시 실행을 제어합니다."
+      "gpuNote": "헤더의 GPU 버튼으로 OCR/TTS 동시 실행을 제어합니다.",
+      "troubleshooting": "오류 발생 시",
+      "troubleshootingDesc": "logs 폴더를 압축하여 GitHub Issues에 첨부해 주세요.",
+      "logsLocation": "로그 위치: 앱 실행 폴더/logs/"
     }
   },
   "settings": {

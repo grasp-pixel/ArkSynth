@@ -117,7 +117,10 @@
       "realtimeDubbing": "リアルタイム吹き替え",
       "realtimeDubbingDesc": "OCRウィンドウ設定 → ゲームテキストリアルタイム認識 → マッチした台詞を自動再生",
       "zeroShotNote": "未トレーニングのキャラクターはゼロショットモードで合成されます。",
-      "gpuNote": "ヘッダーのGPUボタンでOCR/TTSの同時実行を制御します。"
+      "gpuNote": "ヘッダーのGPUボタンでOCR/TTSの同時実行を制御します。",
+      "troubleshooting": "エラー発生時",
+      "troubleshootingDesc": "logsフォルダを圧縮してGitHub Issueに添付してください。",
+      "logsLocation": "ログの場所: アプリ実行フォルダ/logs/"
     }
   },
   "settings": {

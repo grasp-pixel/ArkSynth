@@ -4,6 +4,7 @@
 하단 대사 영역 실패 시 화면 중앙 자막 영역으로 폴백.
 """
 
+import logging
 from dataclasses import dataclass
 
 from PIL import Image
@@ -15,6 +16,8 @@ from .screen_capture import (
     get_subtitle_region,
 )
 from ..interfaces.ocr import BoundingBox
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -119,7 +122,7 @@ class OCRFallbackChain:
                 )
 
         except Exception as e:
-            print(f"[OCRChain] {config.type.value} 영역 OCR 실패: {e}")
+            logger.error("%s 영역 OCR 실패: %s", config.type.value, e)
 
         return OCRRegionResult(
             success=False,
@@ -139,21 +142,20 @@ class OCRFallbackChain:
             OCR 결과 (성공/실패 포함)
         """
         for config in self._regions:
-            print(f"[OCRChain] {config.type.value} 영역 시도 중...", flush=True)
+            logger.debug("%s 영역 시도 중...", config.type.value)
             result = await self._try_region(image, config)
 
             if result.success:
-                print(
-                    f"[OCRChain] {config.type.value} 영역에서 인식 성공: "
-                    f"'{result.text[:30]}...' (신뢰도: {result.confidence:.2f})",
-                    flush=True,
+                logger.debug(
+                    "%s 영역에서 인식 성공: '%s...' (신뢰도: %.2f)",
+                    config.type.value, result.text[:30], result.confidence,
                 )
                 return result
 
-            print(f"[OCRChain] {config.type.value} 영역 실패, 다음 영역 시도", flush=True)
+            logger.debug("%s 영역 실패, 다음 영역 시도", config.type.value)
 
         # 모든 영역 실패
-        print("[OCRChain] 모든 영역에서 인식 실패", flush=True)
+        logger.debug("모든 영역에서 인식 실패")
         return OCRRegionResult(
             success=False,
             region_type=self._regions[0].type if self._regions else OCRRegionType.DIALOGUE,

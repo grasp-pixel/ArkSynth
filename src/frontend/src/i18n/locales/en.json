@@ -117,7 +117,10 @@
       "realtimeDubbing": "Real-time Dubbing",
       "realtimeDubbingDesc": "OCR window setup → Real-time game text recognition → Auto-play matched dialogues",
       "zeroShotNote": "Untrained characters are synthesized in zero-shot mode.",
-      "gpuNote": "Control OCR/TTS concurrent execution with the GPU button in the header."
+      "gpuNote": "Control OCR/TTS concurrent execution with the GPU button in the header.",
+      "troubleshooting": "Troubleshooting",
+      "troubleshootingDesc": "Compress the logs folder and attach it to a GitHub Issue.",
+      "logsLocation": "Log location: app directory/logs/"
     }
   },
   "settings": {
