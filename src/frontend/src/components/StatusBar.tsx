@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/appStore'
-import { updateApi } from '../services/api'
+import { updateApi, type UpdateCheckResponse } from '../services/api'
 
-export default function StatusBar() {
+export default function StatusBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const { t } = useTranslation()
   const {
     backendStatus,
@@ -17,10 +17,12 @@ export default function StatusBar() {
   } = useAppStore()
 
   const [appVersion, setAppVersion] = useState('0.0.0')
+  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResponse | null>(null)
 
   useEffect(() => {
     if (backendStatus === 'connected') {
       updateApi.getVersion().then(res => setAppVersion(res.version)).catch(() => {})
+      updateApi.checkUpdate().then(res => { if (res.available) setUpdateInfo(res) }).catch(() => {})
     }
   }, [backendStatus])
 
@@ -117,9 +119,18 @@ export default function StatusBar() {
           </span>
         </div>
 
-        {/* 버전 */}
-        <div className="text-ark-gray/50 tracking-wider">
-          ArkSynth v{appVersion}
+        {/* 버전 + 업데이트 알림 */}
+        <div className="flex items-center gap-2 tracking-wider">
+          <span className="text-ark-gray/50">ArkSynth v{appVersion}</span>
+          {updateInfo && (
+            <button
+              onClick={onOpenSettings}
+              className="flex items-center gap-1 text-ark-orange hover:text-ark-orange/80 transition-colors"
+              title={t('settings.update.newVersion', { version: updateInfo.latest_version })}
+            >
+              <span>↑ v{updateInfo.latest_version}</span>
+            </button>
+          )}
         </div>
       </div>
     </footer>

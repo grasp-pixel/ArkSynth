@@ -578,7 +578,7 @@ function App() {
       <DubbingControlBar />
 
       {/* 상태 바 */}
-      <StatusBar />
+      <StatusBar onOpenSettings={() => setIsSettingsOpen(true)} />
 
       {/* 설정 모달 */}
       <SettingsModal
