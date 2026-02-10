@@ -424,6 +424,7 @@ class GPTSoVITSAPIClient:
         top_k: int = 12,  # 안정성 (5~15 권장)
         top_p: float = 1.0,
         temperature: float = 0.9,  # 약간만 높임 (0.8→0.9)
+        nickname: str | None = None,
     ) -> Optional[bytes]:
         """텍스트를 음성으로 합성
 
@@ -443,7 +444,7 @@ class GPTSoVITSAPIClient:
         """
         # 텍스트 전처리 (GPT-SoVITS 호환성, 언어별 처리)
         original_text = text
-        text = preprocess_text_for_tts(text, language=language)
+        text = preprocess_text_for_tts(text, language=language, nickname=nickname)
 
         # 전처리 후 합성 불가능한 텍스트 (말줄임표만 있는 경우 등)
         if text is None:
@@ -647,6 +648,7 @@ class GPTSoVITSAPIClient:
         top_k: int = 12,  # 안정성 (5~15 권장)
         top_p: float = 1.0,
         temperature: float = 0.9,  # 약간만 높임 (0.8→0.9)
+        nickname: str | None = None,
     ) -> bool:
         """텍스트를 음성으로 합성하여 파일로 저장
 
@@ -671,6 +673,7 @@ class GPTSoVITSAPIClient:
             top_k=top_k,
             top_p=top_p,
             temperature=temperature,
+            nickname=nickname,
         )
         if audio_data is None:
             return False

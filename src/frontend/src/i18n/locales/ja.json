@@ -250,6 +250,14 @@
       "source": "データソース",
       "arkprtsDesc": "ゲームサーバーから直接最新データをダウンロードします。"
     },
+    "nickname": {
+      "label": "ドクターニックネーム",
+      "description": "ストーリーの{@nickname}テンプレートを言語別ニックネームに置換します。",
+      "placeholder_ko": "오라클",
+      "placeholder_ja": "オラクル",
+      "placeholder_en": "Oracle",
+      "saved": "ニックネームを保存しました"
+    },
     "aliases": {
       "loadFailed": "エイリアス情報の読み込みに失敗：",
       "extractFailed": "実名抽出に失敗：",

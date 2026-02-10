@@ -250,6 +250,14 @@
       "source": "데이터 소스",
       "arkprtsDesc": "게임 서버에서 직접 최신 데이터를 다운로드합니다."
     },
+    "nickname": {
+      "label": "박사 닉네임",
+      "description": "스토리의 {@nickname} 템플릿을 언어별 닉네임으로 치환합니다.",
+      "placeholder_ko": "오라클",
+      "placeholder_ja": "オラクル",
+      "placeholder_en": "Oracle",
+      "saved": "닉네임 저장됨"
+    },
     "aliases": {
       "loadFailed": "별칭 정보 로드 실패:",
       "extractFailed": "본명 추출 실패:",

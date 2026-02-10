@@ -194,6 +194,7 @@ async def start_render(
         voice_assignments=voice_assignments,
         default_char_id=request.default_char_id,
         force=request.force,
+        nickname=config.get_nickname(config.voice_language_short),
     )
 
     return {

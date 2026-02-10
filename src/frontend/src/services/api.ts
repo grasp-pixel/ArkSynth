@@ -1102,6 +1102,7 @@ export interface SettingsResponse {
   gpt_sovits_language: string
   // TTS 설정
   default_tts_engine: TTSEngine
+  nickname: Record<string, string>
   // Whisper 전처리 설정
   whisper_model_size: string
   whisper_compute_type: string
@@ -1337,6 +1338,18 @@ export const settingsApi = {
   // 언어 설정 변경
   updateLanguage: async (params: { display_language?: string; voice_language?: string }) => {
     const res = await api.put<LanguageSettingsResponse>('/api/settings/language', params)
+    return res.data
+  },
+
+  // 닉네임 조회 (언어별)
+  getNickname: async () => {
+    const res = await api.get<{ nickname: Record<string, string> }>('/api/settings/nickname')
+    return res.data
+  },
+
+  // 닉네임 변경 (언어별)
+  setNickname: async (nickname: Record<string, string>) => {
+    const res = await api.put<{ nickname: Record<string, string> }>('/api/settings/nickname', { nickname })
     return res.data
   },
 }

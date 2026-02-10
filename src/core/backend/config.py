@@ -17,6 +17,7 @@ _PERSIST_FIELDS = {
     "gamedata_repo",
     "gamedata_branch",
     "default_tts_engine",
+    "nickname",
 }
 
 CONFIG_FILE = Path("data/config.json")
@@ -52,6 +53,9 @@ class ServerConfig(BaseModel):
     gamedata_repo: str = "ArknightsAssets/ArknightsGamedata"  # GitHub owner/repo
     gamedata_branch: str = "master"
 
+    # 닉네임 ({@nickname} 템플릿 치환용, 언어별)
+    nickname: dict[str, str] = {"ko": "오라클", "ja": "オラクル", "en": "Oracle"}
+
     # TTS 설정
     default_voice: str = "ko-KR-SunHiNeural"
     default_tts_language: str = "ko-KR"  # Edge TTS 언어
@@ -59,6 +63,10 @@ class ServerConfig(BaseModel):
 
     # 업데이트 설정
     update_repo: str = "grasp-pixel/ArkSynth"  # GitHub owner/repo
+
+    def get_nickname(self, lang_short: str) -> str:
+        """언어별 닉네임 반환 (빈 문자열이면 빈 문자열 반환)"""
+        return self.nickname.get(lang_short, "")
 
     def apply_display_language(self, locale: str) -> None:
         """표시 언어 변경 시 관련 필드 일괄 갱신"""
@@ -94,6 +102,10 @@ class ServerConfig(BaseModel):
             return
         try:
             data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+            # 하위 호환: nickname이 str이면 dict로 마이그레이션
+            if isinstance(data.get("nickname"), str):
+                old = data["nickname"]
+                data["nickname"] = {"ko": old, "ja": "", "en": ""}
             for key, value in data.items():
                 if key in _PERSIST_FIELDS and hasattr(self, key):
                     setattr(self, key, value)

@@ -7,6 +7,8 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+import re
+
 from ..config import config
 from ..shared_loaders import get_story_loader, get_voice_mapper, find_operator_id_by_name
 from ...voice.alias_resolver import resolve_voice_char_id
@@ -14,6 +16,27 @@ from ...common.language_codes import short_to_locale
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+# HTML/스타일 태그 패턴 (text_processor.py와 동일)
+_TAG_RE = re.compile(r"</?(?:[a-zA-Z@][^>]*)?>")
+_TEMPLATE_RE = re.compile(r"\{@[^}]*\}")
+
+
+def _clean_display_text(text: str, lang: str = "") -> str:
+    """표시용 텍스트 전처리 (HTML 태그, 템플릿 변수 정리)
+
+    Args:
+        text: 원본 텍스트
+        lang: 로케일 코드 (ko_KR 등) — 언어별 닉네임 해석용
+    """
+    text = _TAG_RE.sub("", text)
+    text = text.replace("{@nbs}", " ")
+    nickname = config.get_nickname(lang[:2] if lang else "ko")
+    if nickname:
+        text = re.sub(r"\{@[Nn]ickname\}", nickname, text)
+    text = _TEMPLATE_RE.sub("", text)
+    return text.strip()
 
 
 class EpisodeSummary(BaseModel):
@@ -130,7 +153,7 @@ async def get_episode(episode_id: str, lang: str | None = None):
                 id=d.id,
                 speaker_id=d.speaker_id,
                 speaker_name=d.speaker_name,
-                text=d.text,
+                text=_clean_display_text(d.text, lang),
                 voice_text=voice_texts.get(i),
                 line_number=d.line_number,
                 dialogue_type=d.dialogue_type.value,
@@ -169,7 +192,7 @@ async def get_episode_dialogues(
                 id=d.id,
                 speaker_id=d.speaker_id,
                 speaker_name=d.speaker_name,
-                text=d.text,
+                text=_clean_display_text(d.text, lang),
                 voice_text=voice_texts.get(offset + i),
                 line_number=d.line_number,
                 dialogue_type=d.dialogue_type.value,

@@ -1,8 +1,13 @@
 {
+  "voice_language_short": "ja",
   "display_language": "ko_KR",
-  "gamedata_source": "arkprts",
-  "voice_language_short": "ko",
   "gamedata_repo": "ArknightsAssets/ArknightsGamedata",
+  "default_tts_engine": "gpt_sovits",
+  "nickname": {
+    "ko": "",
+    "ja": "",
+    "en": ""
+  },
   "gamedata_branch": "master",
-  "default_tts_engine": "gpt_sovits"
+  "gamedata_source": "arkprts"
 }

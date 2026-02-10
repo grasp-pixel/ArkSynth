@@ -86,6 +86,14 @@ _UNIT_MAP_SHORT: dict[str, str] = {
     "L": "리터",
 }
 
+# ============ TTS 약어 확장 (언어별) ============
+
+_ABBREVIATION_MAP: dict[str, dict[str, str]] = {
+    "ko": {"Dr.": "닥터", "No.": "넘버"},
+    "ja": {"Dr.": "ドクター", "No.": "ナンバー"},
+    "en": {"Dr.": "Doctor", "No.": "Number"},
+}
+
 # 접미사 regex (긴 것부터 매칭)
 _ALL_SUFFIXES_SORTED = sorted(_SINO_SUFFIXES | _NATIVE_SUFFIXES, key=len, reverse=True)
 _SUFFIX_RE = "|".join(re.escape(s) for s in _ALL_SUFFIXES_SORTED)
@@ -282,8 +290,12 @@ def normalize_numbers_for_tts(text: str) -> str:
     return text
 
 
-def _preprocess_common(text: str) -> str | None:
+def _preprocess_common(text: str, nickname: str | None = None) -> str | None:
     """언어 공통 텍스트 전처리 (특수문자 정리 등)
+
+    Args:
+        text: 원본 텍스트
+        nickname: 플레이어 닉네임 ({@nickname} 치환용, None이면 제거)
 
     Returns:
         정리된 텍스트, 또는 None (합성 불가능한 텍스트)
@@ -291,6 +303,11 @@ def _preprocess_common(text: str) -> str | None:
     # HTML/스타일 태그 제거 (<i>, </i>, <@tu.kw>, </> 등)
     # 꺽쇠 인용(<프로젝트 도급 의향서> 등)은 보존
     text = re.sub(r"</?(?:[a-zA-Z@][^>]*)?>", "", text)
+    # 게임 템플릿 변수 처리
+    text = text.replace("{@nbs}", " ")
+    if nickname:
+        text = re.sub(r"\{@[Nn]ickname\}", nickname, text)
+    text = re.sub(r"\{@[^}]*\}", "", text)
     # 전각 특수문자 → 반각 정규화 (。→. 、→, ！→! ？→? 등)
     text = text.translate(_PUNCT_NORMALIZE)
 
@@ -316,19 +333,28 @@ def _preprocess_common(text: str) -> str | None:
     return text
 
 
-def preprocess_text_for_tts(text: str, language: str = "ko") -> str | None:
+def preprocess_text_for_tts(
+    text: str, language: str = "ko", nickname: str | None = None,
+) -> str | None:
     """TTS 합성을 위한 텍스트 전처리
 
     Args:
         text: 원본 텍스트
         language: 언어 코드 (ko, ja, en, zh)
+        nickname: 플레이어 닉네임 ({@nickname} 치환용)
 
     Returns:
         전처리된 텍스트, 또는 None (합성 불가능한 텍스트)
     """
-    text = _preprocess_common(text)
+    text = _preprocess_common(text, nickname=nickname)
     if text is None:
         return None
+
+    # 약어 확장 (언어별)
+    abbrevs = _ABBREVIATION_MAP.get(language)
+    if abbrevs:
+        for abbr, expansion in abbrevs.items():
+            text = text.replace(abbr, expansion + " ")
 
     # 한국어 전용 변환
     if language == "ko":

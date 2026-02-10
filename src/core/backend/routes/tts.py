@@ -168,6 +168,7 @@ async def synthesize(request: SynthesizeRequest):
                 top_k=gpt_config.top_k,
                 top_p=gpt_config.top_p,
                 temperature=gpt_config.temperature,
+                nickname=config.get_nickname(config.voice_language_short),
             )
 
         if not result:

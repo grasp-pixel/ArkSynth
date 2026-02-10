@@ -54,6 +54,7 @@ class RenderJob:
     language: str = "ko"
     voice_assignments: dict[int, str] = field(default_factory=dict)  # {대사인덱스: char_id} 프론트엔드 결정
     default_char_id: str | None = None  # 모델 준비 실패 시 폴백
+    nickname: str | None = None  # {@nickname} 템플릿 치환용
 
 
 class RenderManager:
@@ -129,6 +130,7 @@ class RenderManager:
         voice_assignments: dict[int, str] | None = None,
         default_char_id: str | None = None,
         force: bool = False,
+        nickname: str | None = None,
     ) -> RenderProgress:
         """렌더링 시작
 
@@ -171,6 +173,7 @@ class RenderManager:
             language=language,
             voice_assignments=voice_assignments or {},
             default_char_id=default_char_id,
+            nickname=nickname,
         )
 
         # 진행 상태 초기화
@@ -309,6 +312,7 @@ class RenderManager:
                         top_k=gpt_config.top_k,
                         top_p=gpt_config.top_p,
                         temperature=gpt_config.temperature,
+                        nickname=job.nickname,
                     )
                 duration = result.duration if result else 0.0
 

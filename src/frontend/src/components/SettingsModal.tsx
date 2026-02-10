@@ -66,6 +66,10 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const ffmpegInstallStreamRef = useRef<{ close: () => void } | null>(null);
   const [isRefreshingCharacters, setIsRefreshingCharacters] = useState(false);
 
+  // 닉네임 관련 상태 (언어별)
+  const [nicknameInputs, setNicknameInputs] = useState<Record<string, string>>({ ko: "", ja: "", en: "" });
+  const [nicknameSaved, setNicknameSaved] = useState(false);
+
   // 음성 추출 관련 상태
   const [voiceAssetsStatus, setVoiceAssetsStatus] =
     useState<VoiceAssetsStatus | null>(null);
@@ -181,11 +185,29 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     try {
       const data = await settingsApi.getSettings();
       setSettings(data);
+      setNicknameInputs(data.nickname || { ko: "", ja: "", en: "" });
     } catch (err) {
       setError(t('settings.loadFailed'));
       console.error(err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleNicknameSave = async () => {
+    const trimmed = Object.fromEntries(
+      Object.entries(nicknameInputs).map(([k, v]) => [k, v.trim()])
+    );
+    // 변경 없으면 스킵
+    if (settings?.nickname && Object.entries(trimmed).every(([k, v]) => v === (settings.nickname[k] || ""))) return;
+    try {
+      const data = await settingsApi.setNickname(trimmed);
+      setNicknameInputs(data.nickname);
+      if (settings) setSettings({ ...settings, nickname: data.nickname });
+      setNicknameSaved(true);
+      setTimeout(() => setNicknameSaved(false), 2000);
+    } catch (err) {
+      console.error("닉네임 저장 실패:", err);
     }
   };
 
@@ -1393,6 +1415,37 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <div className="ark-divider mt-2">
                   <span>{t('settings.section.voiceSettings')}</span>
                 </div>
+
+                {/* 박사 닉네임 (언어별) */}
+                <section>
+                  <h3 className="text-sm font-medium text-ark-white mb-2">
+                    {t('settings.nickname.label')}
+                  </h3>
+                  <p className="text-[11px] text-ark-gray/70 mb-2">
+                    {t('settings.nickname.description')}
+                  </p>
+                  <div className="space-y-1.5">
+                    {(['ko', 'ja', 'en'] as const).map((lang) => (
+                      <div key={lang} className="flex items-center gap-2">
+                        <span className="text-xs text-ark-gray w-6 shrink-0 uppercase">{lang}</span>
+                        <input
+                          type="text"
+                          value={nicknameInputs[lang] || ""}
+                          onChange={(e) => setNicknameInputs(prev => ({ ...prev, [lang]: e.target.value }))}
+                          onBlur={handleNicknameSave}
+                          onKeyDown={(e) => e.key === 'Enter' && handleNicknameSave()}
+                          placeholder={t(`settings.nickname.placeholder_${lang}`)}
+                          className="flex-1 px-3 py-1.5 bg-ark-black/50 border border-ark-border rounded text-sm text-ark-white placeholder-ark-gray/50 focus:outline-none focus:border-ark-orange"
+                        />
+                      </div>
+                    ))}
+                    {nicknameSaved && (
+                      <span className="text-xs text-green-400">
+                        {t('settings.nickname.saved')}
+                      </span>
+                    )}
+                  </div>
+                </section>
 
                 {/* 캐릭터 별칭 */}
                 <section>

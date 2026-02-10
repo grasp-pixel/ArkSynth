@@ -250,6 +250,14 @@
       "source": "Data Source",
       "arkprtsDesc": "Download latest data directly from game server."
     },
+    "nickname": {
+      "label": "Doctor Nickname",
+      "description": "Replaces {@nickname} template in stories with per-language nickname.",
+      "placeholder_ko": "오라클",
+      "placeholder_ja": "オラクル",
+      "placeholder_en": "Oracle",
+      "saved": "Nickname saved"
+    },
     "aliases": {
       "loadFailed": "Failed to load alias info:",
       "extractFailed": "Failed to extract real names:",

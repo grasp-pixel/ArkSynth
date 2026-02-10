@@ -53,6 +53,7 @@ class SettingsResponse(BaseModel):
 
     # TTS 설정
     default_tts_engine: str
+    nickname: dict[str, str]
 
     # Whisper 전처리 설정
     whisper_model_size: str
@@ -212,6 +213,7 @@ async def get_settings():
         voice_language=config.voice_language,
         gpt_sovits_language=config.gpt_sovits_language,
         default_tts_engine=config.default_tts_engine,
+        nickname=config.nickname,
         whisper_model_size=gpt_config.whisper_model_size,
         whisper_compute_type=gpt_config.whisper_compute_type,
         use_whisper_preprocessing=gpt_config.use_whisper_preprocessing,
@@ -313,6 +315,30 @@ async def update_language_settings(request: LanguageSettingsRequest):
         available_display_languages=display_langs,
         available_voice_languages=voice_langs,
     )
+
+
+# ============================================================================
+# 닉네임 설정 엔드포인트
+# ============================================================================
+
+
+@router.get("/nickname")
+async def get_nickname():
+    """닉네임 조회 (언어별)"""
+    return {"nickname": config.nickname}
+
+
+class NicknameRequest(BaseModel):
+    """닉네임 변경 요청 (언어별)"""
+    nickname: dict[str, str]
+
+
+@router.put("/nickname")
+async def set_nickname(request: NicknameRequest):
+    """닉네임 변경 (언어별)"""
+    config.nickname = {k: v.strip() for k, v in request.nickname.items()}
+    config.save()
+    return {"nickname": config.nickname}
 
 
 @router.get("/dependencies")
