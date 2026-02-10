@@ -234,6 +234,11 @@ async def get_render_progress(episode_id: str):
     manager = get_render_manager()
     cache = get_render_cache()
 
+    # 캐시에서 실제 렌더링된 인덱스 목록 조회
+    def _get_rendered_indices() -> list[int]:
+        meta = cache.get_meta(episode_id)
+        return sorted(a.index for a in meta.audios) if meta else []
+
     # 현재 렌더링 중인 경우
     progress = manager.get_progress(episode_id)
     if progress:
@@ -246,6 +251,7 @@ async def get_render_progress(episode_id: str):
             "current_index": progress.current_index,
             "current_text": progress.current_text,
             "error": progress.error,
+            "rendered_indices": _get_rendered_indices(),
         }
 
     # 캐시 확인
@@ -261,6 +267,7 @@ async def get_render_progress(episode_id: str):
             "current_index": None,
             "current_text": None,
             "error": None,
+            "rendered_indices": _get_rendered_indices(),
         }
 
     # 캐시 없음
@@ -273,6 +280,7 @@ async def get_render_progress(episode_id: str):
         "current_index": None,
         "current_text": None,
         "error": None,
+        "rendered_indices": [],
     }
 
 
@@ -366,8 +374,10 @@ async def delete_audio(episode_id: str, index: int):
             detail=f"오디오 삭제 실패: {episode_id}[{index}]",
         )
 
+    meta = cache.get_meta(episode_id)
+    rendered_indices = sorted(a.index for a in meta.audios) if meta else []
     completed, total = cache.get_progress(episode_id)
-    return {"deleted": True, "rendered_count": completed}
+    return {"deleted": True, "rendered_count": completed, "rendered_indices": rendered_indices}
 
 
 @router.get("/stream/{episode_id:path}")

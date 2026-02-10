@@ -818,6 +818,7 @@ export interface RenderProgress {
   current_index: number | null
   current_text: string | null
   error: string | null
+  rendered_indices?: number[]  // 실제 렌더링된 대사 인덱스 목록 (progress 엔드포인트에서만 제공)
 }
 
 export interface RenderStatusResponse {
@@ -911,7 +912,7 @@ export const renderApi = {
 
   // 개별 오디오 삭제
   deleteAudio: async (episodeId: string, index: number) => {
-    const res = await api.delete<{ deleted: boolean; rendered_count: number }>(
+    const res = await api.delete<{ deleted: boolean; rendered_count: number; rendered_indices: number[] }>(
       `/api/render/audio/${encodeURIComponent(episodeId)}/${index}`
     )
     return res.data

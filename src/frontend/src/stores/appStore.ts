@@ -139,6 +139,7 @@ interface AppState {
   renderProgress: RenderProgress | null  // 현재 렌더링 진행률
   cachedEpisodes: string[]  // 완료된 에피소드 목록
   partialEpisodes: string[]  // 부분 완료된 에피소드 목록
+  renderedIndices: number[]  // 현재 에피소드의 실제 렌더링된 대사 인덱스 (백엔드 기준)
   renderError: string | null  // 렌더링 오류
 
   // 그룹 렌더링 관련
@@ -595,6 +596,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   renderProgress: null,
   cachedEpisodes: [],
   partialEpisodes: [],
+  renderedIndices: [],
   renderError: null,
 
   // 그룹 렌더링 초기 상태
@@ -788,7 +790,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       try {
         const progress = await renderApi.getProgress(episodeId)
         if (progress.status !== 'not_started') {
-          set({ renderProgress: progress })
+          set({
+            renderProgress: progress,
+            renderedIndices: progress.rendered_indices ?? [],
+          })
           // 캐시 완료된 에피소드면 cachedEpisodes에 추가
           const safeId = episodeId.replace(/\//g, '_').replace(/\\/g, '_')
           if (progress.status === 'completed' && !get().cachedEpisodes.includes(safeId)) {
@@ -796,11 +801,11 @@ export const useAppStore = create<AppState>((set, get) => ({
           }
         } else {
           // 캐시 없으면 초기화
-          set({ renderProgress: null })
+          set({ renderProgress: null, renderedIndices: [] })
         }
       } catch {
         // 렌더링 상태 조회 실패 (캐시 없음)
-        set({ renderProgress: null })
+        set({ renderProgress: null, renderedIndices: [] })
       }
     } catch (error) {
       console.error('Failed to load episode:', error)
@@ -882,12 +887,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { selectedEpisode } = get()
     const dialogueIndex = selectedEpisode?.dialogues.findIndex(d => d.id === dialogue.id) ?? -1
     const safeEpisodeId = selectedEpisodeId?.replace(/\//g, '_').replace(/\\/g, '_')
-    const safeProgressEpisodeId = renderProgress?.episode_id?.replace(/\//g, '_').replace(/\\/g, '_')
-    const isCached = safeEpisodeId && cachedEpisodes.includes(safeEpisodeId)
-    // 렌더링 진행 중인 에피소드에서 이미 완료된 대사 확인
-    const isRendered = dialogueIndex >= 0 && renderProgress &&
-      safeProgressEpisodeId === safeEpisodeId &&
-      dialogueIndex < renderProgress.completed
+    const { renderedIndices } = get()
+    // 실제 렌더링된 인덱스 목록으로 판정
+    const isRendered = dialogueIndex >= 0 && renderedIndices.includes(dialogueIndex)
+    const isCached = safeEpisodeId && cachedEpisodes.includes(safeEpisodeId) && isRendered
 
     // 캐시된 오디오 사용 시도
     console.log('[playDialogue] 캐시 확인:', { dialogueIndex, isCached, isRendered, completed: renderProgress?.completed, isRendering })
@@ -2169,6 +2172,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         isRendering: progress.status === 'rendering',
         renderProgress: progress,
+        renderedIndices: progress.rendered_indices ?? [],
       })
 
       // 렌더링 진행 중이면 구독 시작
@@ -2207,6 +2211,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         renderProgress: null,
         cachedEpisodes: get().cachedEpisodes.filter(id => id !== episodeId),
+        renderedIndices: [],
       })
       // 캐시 목록 갱신
       await get().loadRenderStatus()
@@ -2220,13 +2225,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteDialogueAudio: async (episodeId: string, index: number) => {
     try {
       const result = await renderApi.deleteAudio(episodeId, index)
-      // renderProgress 갱신
+      // 백엔드가 반환한 실제 렌더링 인덱스로 즉시 갱신
       const { renderProgress } = get()
+      set({ renderedIndices: result.rendered_indices ?? [] })
       if (renderProgress) {
         set({
           renderProgress: {
             ...renderProgress,
             completed: result.rendered_count,
+            rendered_indices: result.rendered_indices ?? [],
             progress_percent: renderProgress.total > 0
               ? (result.rendered_count / renderProgress.total) * 100
               : 0,
@@ -2252,6 +2259,15 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     renderStream = createRenderStream(episodeId, {
       onProgress: (progress) => {
+        const prev = get().renderProgress
+        const { renderedIndices } = get()
+        // completed가 증가하고 current_index가 있으면 해당 인덱스가 렌더링 완료된 것
+        if (prev && progress.completed > prev.completed && progress.current_index != null) {
+          const newIndices = renderedIndices.includes(progress.current_index)
+            ? renderedIndices
+            : [...renderedIndices, progress.current_index]
+          set({ renderedIndices: newIndices })
+        }
         set({
           renderProgress: progress,
           isRendering: progress.status === 'rendering',
@@ -2261,6 +2277,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({
           renderProgress: progress,
           isRendering: false,
+          renderedIndices: progress.rendered_indices ?? get().renderedIndices,
         })
         // 캐시 목록 갱신
         get().loadRenderStatus()
@@ -2282,21 +2299,16 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // 렌더링된 오디오 URL 반환
   getRenderedAudioUrl: (index: number) => {
-    const { selectedEpisodeId, cachedEpisodes } = get()
+    const { selectedEpisodeId, renderedIndices } = get()
     if (!selectedEpisodeId) return null
-
-    // 에피소드가 캐시되어 있는지 확인
-    const safeId = selectedEpisodeId.replace(/\//g, '_').replace(/\\/g, '_')
-    if (!cachedEpisodes.includes(safeId)) return null
+    if (!renderedIndices.includes(index)) return null
 
     return renderApi.getAudioUrl(selectedEpisodeId, index)
   },
 
   // 대사가 렌더링되었는지 확인
   isDialogueRendered: (index: number) => {
-    const { renderProgress } = get()
-    if (!renderProgress) return false
-    return index < renderProgress.completed
+    return get().renderedIndices.includes(index)
   },
 
   // === 그룹 렌더링 ===

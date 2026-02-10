@@ -121,7 +121,7 @@ export default function DialogueViewer() {
     getModelType,
     voiceCharacters,
     deleteDialogueAudio,
-    cachedEpisodes,
+    renderedIndices,
   } = useAppStore()
 
   // 디버그: 캐릭터 ID 표시 토글
@@ -233,10 +233,8 @@ export default function DialogueViewer() {
             ? getColorFromName(dialogue.speaker_name)
             : undefined
 
-          // 렌더링 상태 확인 (renderProgress 또는 cachedEpisodes 기반)
-          const safeEpisodeId = selectedEpisodeId?.replace(/\//g, '_').replace(/\\/g, '_')
-          const isCachedEpisode = safeEpisodeId ? cachedEpisodes.includes(safeEpisodeId) : false
-          const isRendered = isCachedEpisode || (renderProgress ? index < renderProgress.completed : false)
+          // 렌더링 상태 확인 (백엔드 기준 실제 렌더링된 인덱스)
+          const isRendered = renderedIndices.includes(index)
 
           // 캐릭터 이름 조회 (디버그용)
           const resolvedCharName = resolvedCharId
