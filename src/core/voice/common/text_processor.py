@@ -288,6 +288,9 @@ def _preprocess_common(text: str) -> str | None:
     Returns:
         정리된 텍스트, 또는 None (합성 불가능한 텍스트)
     """
+    # HTML/스타일 태그 제거 (<i>, </i>, <@tu.kw>, </> 등)
+    # 꺽쇠 인용(<프로젝트 도급 의향서> 등)은 보존
+    text = re.sub(r"</?(?:[a-zA-Z@][^>]*)?>", "", text)
     # 전각 특수문자 → 반각 정규화 (。→. 、→, ！→! ？→? 등)
     text = text.translate(_PUNCT_NORMALIZE)
 
