@@ -2,7 +2,7 @@
 
 GitHub Releases에서 최신 버전을 확인하고 제자리 업데이트합니다.
 - Python 소스: 바로 교체 (실행 중 잠기지 않음)
-- ArkSynth.exe: rename 트릭 (실행 중 rename 가능, 덮어쓰기 불가)
+- ArkSynth.exe: rename 시도 후 실패 시 배치 스크립트로 종료 후 교체
 """
 
 import asyncio
@@ -11,6 +11,8 @@ import json
 import logging
 import os
 import shutil
+import subprocess
+import textwrap
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -67,6 +69,8 @@ class AppUpdater:
 
     GITHUB_API = "https://api.github.com/repos/{repo}/releases/latest"
     MANIFEST_FILENAME = "update-manifest.json"
+
+    EXE_UPDATE_SCRIPT = "_apply_exe_update.cmd"
 
     def __init__(self, app_root: Optional[Path] = None, repo: str = "grasp-pixel/ArkSynth"):
         self.app_root = app_root or self._detect_app_root()
@@ -364,17 +368,25 @@ class AppUpdater:
                         shutil.rmtree(target)
                     shutil.copytree(new_src, target)
 
-            # ArkSynth.exe: rename 트릭
+            # ArkSynth.exe 교체: rename 시도 → 실패 시 배치 스크립트 폴백
             new_exe = extracted_root / "ArkSynth.exe"
             if new_exe.exists():
                 current_exe = self.app_root / "ArkSynth.exe"
                 if current_exe.exists():
                     old_exe = self.app_root / "ArkSynth.exe.old"
-                    if old_exe.exists():
-                        old_exe.unlink()
-                    # 실행 중인 exe를 rename (Windows에서 가능)
-                    os.rename(current_exe, old_exe)
-                shutil.copy2(new_exe, current_exe)
+                    try:
+                        if old_exe.exists():
+                            old_exe.unlink()
+                        os.rename(current_exe, old_exe)
+                        shutil.copy2(new_exe, current_exe)
+                    except PermissionError:
+                        # 실행 중이라 rename 불가 → 종료 후 교체할 배치 스크립트 생성
+                        logger.warning("exe rename 실패, 배치 스크립트로 지연 교체 예약")
+                        staged = self.app_root / "ArkSynth.exe.new"
+                        shutil.copy2(new_exe, staged)
+                        self._write_exe_update_script(current_exe, staged)
+                else:
+                    shutil.copy2(new_exe, current_exe)
 
             # version.json 교체
             new_version = extracted_root / "version.json"
@@ -394,6 +406,45 @@ class AppUpdater:
             stage="applying", progress=0.95, message="파일 교체 완료",
         ))
         logger.info("파일 교체 완료")
+
+    def _write_exe_update_script(self, current_exe: Path, staged_exe: Path):
+        """종료 후 exe를 교체하는 배치 스크립트 작성"""
+        script = self.app_root / self.EXE_UPDATE_SCRIPT
+        pid = os.getpid()
+        script.write_text(textwrap.dedent(f"""\
+            @echo off
+            chcp 65001 >nul
+            :wait
+            tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul
+            if not errorlevel 1 (
+                timeout /t 1 /nobreak >nul
+                goto wait
+            )
+            timeout /t 1 /nobreak >nul
+            if exist "{current_exe}.old" del /F "{current_exe}.old"
+            move /Y "{current_exe}" "{current_exe}.old"
+            move /Y "{staged_exe}" "{current_exe}"
+            del /F "{current_exe}.old" 2>nul
+            del "%~f0"
+        """), encoding="utf-8")
+        logger.info("exe 업데이트 스크립트 작성: %s", script)
+
+    @property
+    def has_pending_exe_update(self) -> bool:
+        """종료 후 적용할 exe 업데이트가 있는지 확인"""
+        return (self.app_root / self.EXE_UPDATE_SCRIPT).exists()
+
+    def spawn_exe_update_script(self):
+        """exe 업데이트 배치 스크립트를 detached 프로세스로 실행"""
+        script = self.app_root / self.EXE_UPDATE_SCRIPT
+        if not script.exists():
+            return
+        logger.info("exe 업데이트 스크립트 실행: %s", script)
+        subprocess.Popen(
+            ["cmd", "/C", str(script)],
+            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
+            close_fds=True,
+        )
 
 
 # 전역 인스턴스
