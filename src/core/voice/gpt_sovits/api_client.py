@@ -5,6 +5,7 @@ GPT-SoVITS API 서버와 통신하여 음성 합성을 수행합니다.
 
 import asyncio
 import logging
+import os
 import subprocess
 import sys
 import threading
@@ -171,12 +172,16 @@ class GPTSoVITSAPIClient:
                     f"'{c}'" for c in cmd
                 )
                 ps_command = (
+                    "chcp 65001 | Out-Null; "
+                    "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
                     f"& {cmd_escaped} 2>&1"
                     f" | Tee-Object -FilePath '{log_path}'"
                 )
+                env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
                 self._api_process = subprocess.Popen(
                     ["powershell", "-NoProfile", "-Command", ps_command],
                     cwd=str(cwd_abs),
+                    env=env,
                     creationflags=subprocess.CREATE_NEW_CONSOLE,
                 )
             else:
