@@ -424,6 +424,54 @@ export default function VoiceSetupPanel() {
           )}
         </div>
 
+        {/* 음성 매핑 (간소화) */}
+        <div className="p-4 border-b border-ark-border">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-medium text-ark-gray">{t('dubbing.section.voiceMapping')}</h4>
+            <span className="text-xs text-ark-gray">
+              {voicelessCharacters.length > 0
+                ? t('dubbing.mapping.count', { mapped: mappedCount, total: voicelessCharacters.length })
+                : t('dubbing.status.allHaveVoice')}
+            </span>
+          </div>
+          {isLoadingEpisodeCharacters ? (
+            <div className="text-center text-ark-gray py-4 ark-pulse">{t('common.loading')}</div>
+          ) : voicelessCharacters.length === 0 ? (
+            <div className="flex items-center gap-2 text-green-400">
+              <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+              </svg>
+              <span className="text-sm">{t('dubbing.status.allHaveVoiceFull')}</span>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-ark-gray/70">
+                {t('dubbing.mapping.description')}
+              </p>
+              <button
+                onClick={() => setIsVoiceMappingModalOpen(true)}
+                className="w-full ark-btn ark-btn-secondary text-sm flex items-center justify-center gap-2"
+              >
+                <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+                  <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                </svg>
+                {t('dubbing.button.voiceMappingSetup')}
+              </button>
+              {defaultFemaleVoices.length === 0 && defaultMaleVoices.length === 0 && (
+                <p className="text-xs text-ark-yellow">
+                  {t('dubbing.warning.noDefaultVoices')}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* 음성 매핑 모달 */}
+        <VoiceMappingModal
+          isOpen={isVoiceMappingModalOpen}
+          onClose={() => setIsVoiceMappingModalOpen(false)}
+        />
+
         {/* 음성 준비 섹션 */}
         <div className="p-4 border-b border-ark-border">
           <div className="flex items-center justify-between mb-3">
@@ -560,54 +608,6 @@ export default function VoiceSetupPanel() {
             </p>
           )}
         </div>
-
-        {/* 음성 매핑 (간소화) */}
-        <div className="p-4 border-b border-ark-border">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-medium text-ark-gray">{t('dubbing.section.voiceMapping')}</h4>
-            <span className="text-xs text-ark-gray">
-              {voicelessCharacters.length > 0
-                ? t('dubbing.mapping.count', { mapped: mappedCount, total: voicelessCharacters.length })
-                : t('dubbing.status.allHaveVoice')}
-            </span>
-          </div>
-          {isLoadingEpisodeCharacters ? (
-            <div className="text-center text-ark-gray py-4 ark-pulse">{t('common.loading')}</div>
-          ) : voicelessCharacters.length === 0 ? (
-            <div className="flex items-center gap-2 text-green-400">
-              <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
-                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-              </svg>
-              <span className="text-sm">{t('dubbing.status.allHaveVoiceFull')}</span>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <p className="text-xs text-ark-gray/70">
-                {t('dubbing.mapping.description')}
-              </p>
-              <button
-                onClick={() => setIsVoiceMappingModalOpen(true)}
-                className="w-full ark-btn ark-btn-secondary text-sm flex items-center justify-center gap-2"
-              >
-                <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
-                  <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
-                </svg>
-                {t('dubbing.button.voiceMappingSetup')}
-              </button>
-              {defaultFemaleVoices.length === 0 && defaultMaleVoices.length === 0 && (
-                <p className="text-xs text-ark-yellow">
-                  {t('dubbing.warning.noDefaultVoices')}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* 음성 매핑 모달 */}
-        <VoiceMappingModal
-          isOpen={isVoiceMappingModalOpen}
-          onClose={() => setIsVoiceMappingModalOpen(false)}
-        />
 
         {/* 재생 설정 */}
         <div className="p-4 border-b border-ark-border">
