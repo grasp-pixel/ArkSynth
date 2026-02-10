@@ -442,7 +442,7 @@ class AppUpdater:
         logger.info("exe 업데이트 스크립트 실행: %s", script)
         subprocess.Popen(
             ["cmd", "/C", str(script)],
-            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
+            creationflags=subprocess.CREATE_NO_WINDOW,
             close_fds=True,
         )
 
