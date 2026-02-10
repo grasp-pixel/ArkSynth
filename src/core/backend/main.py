@@ -2,15 +2,11 @@
 
 import logging
 import sys
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
 
 import uvicorn
 
 from .config import config
 from .server import create_app
-
-LOG_DIR = Path("logs")
 
 
 class _ImageLogFilter(logging.Filter):
@@ -36,28 +32,10 @@ def _setup_console_encoding():
             pass  # 콘솔이 없는 환경에서는 무시
 
 
-def _setup_file_logging():
-    """파일 로깅 설정 (RotatingFileHandler)"""
-    LOG_DIR.mkdir(exist_ok=True)
-    handler = RotatingFileHandler(
-        LOG_DIR / "backend.log",
-        maxBytes=5 * 1024 * 1024,  # 5MB
-        backupCount=2,  # 최대 3개 파일 보존
-        encoding="utf-8",
-    )
-    handler.setFormatter(logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-    ))
-    root = logging.getLogger()
-    root.addHandler(handler)
-    root.setLevel(logging.INFO)
-
-
 def main():
     """서버 실행"""
     _setup_console_encoding()
-    _setup_file_logging()
-    app = create_app()
+    app = create_app()  # create_app() 내부에서 setup_file_logging() 호출
     logging.getLogger("uvicorn.access").addFilter(_ImageLogFilter())
     uvicorn.run(
         app,

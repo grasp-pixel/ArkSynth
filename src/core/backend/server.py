@@ -1,6 +1,8 @@
 """FastAPI 서버 정의"""
 
 import logging
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,9 +13,40 @@ from .routes import episodes, stories, tts, voice, health, ocr, training, render
 
 logger = logging.getLogger(__name__)
 
+LOG_DIR = Path("logs")
+
+_file_logging_initialized = False
+
+
+def setup_file_logging() -> None:
+    """파일 로깅 설정 (RotatingFileHandler)
+
+    여러 진입점(main.py, uvicorn --factory)에서 호출되어도
+    한 번만 초기화됩니다.
+    """
+    global _file_logging_initialized
+    if _file_logging_initialized:
+        return
+    _file_logging_initialized = True
+
+    LOG_DIR.mkdir(exist_ok=True)
+    handler = RotatingFileHandler(
+        LOG_DIR / "backend.log",
+        maxBytes=5 * 1024 * 1024,  # 5MB
+        backupCount=2,  # 최대 3개 파일 보존
+        encoding="utf-8",
+    )
+    handler.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    ))
+    root = logging.getLogger()
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+
 
 def create_app() -> FastAPI:
     """FastAPI 앱 생성"""
+    setup_file_logging()
     app = FastAPI(
         title="ArkSynth API",
         description="ArkSynth API - 명일방주 스토리 음성 더빙",

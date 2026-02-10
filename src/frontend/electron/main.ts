@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session, Menu, globalShortcut } from 'electron'
+import { app, BrowserWindow, ipcMain, session, shell, Menu, globalShortcut } from 'electron'
 import path from 'path'
 
 // 개발 모드 확인
@@ -49,6 +49,12 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
+
+  // 외부 링크를 시스템 브라우저로 열기
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url)
+    return { action: 'deny' }
+  })
 
   mainWindow.on('closed', () => {
     mainWindow = null

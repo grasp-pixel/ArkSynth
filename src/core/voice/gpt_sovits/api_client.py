@@ -7,9 +7,10 @@ import asyncio
 import logging
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
-from typing import IO, Optional
+from typing import Optional
 
 import aiohttp
 
@@ -57,7 +58,7 @@ class GPTSoVITSAPIClient:
         self.config = config or GPTSoVITSConfig()
         self._api_process: Optional[subprocess.Popen] = None
         self._session: Optional[aiohttp.ClientSession] = None
-        self._log_file_handle: Optional[IO] = None
+        self._log_thread: Optional[threading.Thread] = None
 
     @property
     def api_url(self) -> str:
@@ -162,18 +163,31 @@ class GPTSoVITSAPIClient:
             # 로그 파일 준비
             LOG_DIR.mkdir(exist_ok=True)
             _rotate_log_file(_GPT_SOVITS_LOG, _GPT_SOVITS_BACKUP_COUNT)
-            self._log_file_handle = open(_GPT_SOVITS_LOG, "w", encoding="utf-8")
 
-            # 별도 콘솔 창에서 실행 + stdout/stderr를 로그 파일로 캡처
-            self._api_process = subprocess.Popen(
-                cmd,
-                cwd=str(cwd_abs),
-                stdout=self._log_file_handle,
-                stderr=subprocess.STDOUT,
-                creationflags=subprocess.CREATE_NEW_CONSOLE
-                if sys.platform == "win32"
-                else 0,
-            )
+            if sys.platform == "win32":
+                # PowerShell Tee-Object: 콘솔 출력 + 로그 파일 동시 기록
+                log_path = str(_GPT_SOVITS_LOG.absolute()).replace("'", "''")
+                cmd_escaped = " ".join(
+                    f"'{c}'" for c in cmd
+                )
+                ps_command = (
+                    f"& {cmd_escaped} 2>&1"
+                    f" | Tee-Object -FilePath '{log_path}'"
+                )
+                self._api_process = subprocess.Popen(
+                    ["powershell", "-NoProfile", "-Command", ps_command],
+                    cwd=str(cwd_abs),
+                    creationflags=subprocess.CREATE_NEW_CONSOLE,
+                )
+            else:
+                # Linux/Mac: PIPE + 데몬 스레드로 로그 파일 기록
+                self._api_process = subprocess.Popen(
+                    cmd,
+                    cwd=str(cwd_abs),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                )
+                self._start_log_writer()
 
             # 프로세스가 즉시 종료되었는지 확인 (0.5초 대기)
             time.sleep(0.5)
@@ -181,7 +195,6 @@ class GPTSoVITSAPIClient:
             if exit_code is not None:
                 logger.error(f"API 서버가 즉시 종료됨 (exit code: {exit_code})")
                 logger.error(f"로그 확인: {_GPT_SOVITS_LOG}")
-                self._close_log_file()
                 self._api_process = None
                 return False
 
@@ -236,26 +249,39 @@ class GPTSoVITSAPIClient:
         except Exception as e:
             return f"[로그 읽기 실패: {e}]"
 
-    def _close_log_file(self) -> None:
-        """로그 파일 핸들 닫기"""
-        if self._log_file_handle and not self._log_file_handle.closed:
+    def _start_log_writer(self) -> None:
+        """데몬 스레드로 프로세스 stdout을 로그 파일에 기록"""
+        def _writer():
             try:
-                self._log_file_handle.close()
+                with open(_GPT_SOVITS_LOG, "w", encoding="utf-8") as f:
+                    for line in iter(self._api_process.stdout.readline, b""):
+                        f.write(line.decode("utf-8", errors="replace"))
+                        f.flush()
             except Exception:
                 pass
-        self._log_file_handle = None
+
+        self._log_thread = threading.Thread(
+            target=_writer, daemon=True, name="gpt-sovits-log",
+        )
+        self._log_thread.start()
 
     def stop_api_server(self):
         """API 서버 종료"""
         if self._api_process and self._api_process.poll() is None:
-            self._api_process.terminate()
+            if sys.platform == "win32":
+                # 프로세스 트리 전체 종료 (PowerShell + GPT-SoVITS)
+                subprocess.run(
+                    ["taskkill", "/T", "/F", "/PID", str(self._api_process.pid)],
+                    capture_output=True,
+                )
+            else:
+                self._api_process.terminate()
             try:
                 self._api_process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self._api_process.kill()
             logger.info("GPT-SoVITS API 서버 종료")
         self._api_process = None
-        self._close_log_file()
 
     async def wait_for_api_ready(self, timeout: float = 60.0) -> bool:
         """API 서버가 준비될 때까지 대기
