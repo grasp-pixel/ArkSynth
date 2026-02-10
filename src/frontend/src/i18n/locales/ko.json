@@ -199,7 +199,17 @@
       "bundlePathValue": ".../Bundles/audio/sound_beta_2/",
       "voiceFolders": "voice_kr (한국어) · voice (日本語) · voice_en (English)",
       "copyLocationAll": "Assets/Voice/ 아래에 각 언어 폴더를 복사",
-      "extractResultDetail": "extracted/ 폴더에 캐릭터별 MP3 생성"
+      "extractResultDetail": "extracted/ 폴더에 캐릭터별 MP3 생성",
+      "lang": {
+        "voice_kr": "한국어",
+        "voice": "日本語",
+        "voice_en": "English"
+      },
+      "langDesc": {
+        "voice_kr": "한국어 음성 (voice_kr)",
+        "voice": "일본어 음성 (voice)",
+        "voice_en": "영어 음성 (voice_en)"
+      }
     },
     "image": {
       "checkFailed": "ImageAssets 확인 실패:",

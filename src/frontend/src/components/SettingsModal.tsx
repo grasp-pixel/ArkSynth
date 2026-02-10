@@ -46,7 +46,7 @@ interface SettingsModalProps {
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { t } = useTranslation();
-  const { voiceFolder, loadLanguageSettings } = useAppStore();
+  const { loadLanguageSettings } = useAppStore();
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [ffmpegGuide, setFFmpegGuide] = useState<FFmpegInstallGuide | null>(
     null,
@@ -70,6 +70,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [voiceAssetsStatus, setVoiceAssetsStatus] =
     useState<VoiceAssetsStatus | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [extractingVoiceLang, setExtractingVoiceLang] = useState<string | null>(null);
   const [extractProgress, setExtractProgress] =
     useState<ExtractProgress | null>(null);
   const [extractError, setExtractError] = useState<string | null>(null);
@@ -457,19 +458,17 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
-  const startExtraction = async () => {
+  const startExtraction = async (lang: string) => {
     if (!voiceAssetsStatus?.exists) return;
 
     setIsExtracting(true);
+    setExtractingVoiceLang(lang);
     setExtractProgress(null);
     setExtractError(null);
 
     try {
-      // 추출 시작
-      const languages = Object.keys(voiceAssetsStatus.languages || {});
-      await extractApi.startExtract(
-        languages.length > 0 ? languages : [voiceFolder],
-      );
+      // 단일 언어 추출 시작
+      await extractApi.startExtract([lang]);
 
       // SSE 스트림 연결
       extractStreamRef.current = createExtractStream({
@@ -1084,134 +1083,117 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     {t('settings.voice.extractDescription')}
                     <br /><span className="text-ark-yellow/70">{t('settings.voice.extractWarning')}</span>
                   </p>
-                  <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
-                    {voiceAssetsStatus === null ? (
+
+                  {voiceAssetsStatus === null ? (
+                    <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
                       <p className="text-sm text-ark-gray">{t('common.checking')}</p>
-                    ) : !voiceAssetsStatus.exists ? (
-                      <div>
-                        <p className="text-sm text-red-400 mb-2">
-                          {voiceAssetsStatus.message}
-                        </p>
-                        <p className="text-xs text-ark-gray">
-                          {voiceAssetsStatus.hint}
-                        </p>
-                      </div>
-                    ) : (
-                      <div>
-                        <div className="flex items-center justify-between mb-3">
-                          <div>
-                            <p className="text-sm text-ark-white">
-                              {t('settings.voice.assetsReady')}
-                            </p>
-                            <p className="text-xs text-ark-gray mt-1">
-                              {Object.entries(
-                                voiceAssetsStatus.languages || {},
-                              ).map(([lang, count]) => (
-                                <span key={lang} className="mr-3">
-                                  {t('settings.voice.bundleCount', { lang, count })}
-                                </span>
-                              ))}
-                            </p>
-                          </div>
-                          {!isExtracting &&
-                            extractProgress?.stage !== "complete" && (
-                              <button
-                                onClick={startExtraction}
-                                className="ark-btn ark-btn-primary text-sm"
-                              >
-                                {t('settings.voice.extract')}
-                              </button>
-                            )}
-                        </div>
-
-                        {/* 추출 진행률 */}
-                        {isExtracting && extractProgress && (
-                          <div className="mt-3">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs text-ark-gray">
-                                {extractProgress.message}
-                              </span>
-                              <button
-                                onClick={cancelExtraction}
-                                className="text-xs text-red-400 hover:text-red-300"
-                              >
-                                {t('common.cancel')}
-                              </button>
-                            </div>
-                            {extractProgress.total > 0 && (
-                              <div className="relative h-2 bg-ark-panel rounded overflow-hidden">
-                                <div
-                                  className="absolute inset-y-0 left-0 bg-ark-orange transition-all duration-300"
-                                  style={{
-                                    width: `${(extractProgress.processed / extractProgress.total) * 100}%`,
-                                  }}
-                                />
-                              </div>
-                            )}
-                            <p className="text-xs text-ark-gray mt-1">
-                              {t('settings.voice.extractProgress', { processed: extractProgress.processed, total: extractProgress.total, extracted: extractProgress.extracted })}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* 완료 메시지 */}
-                        {extractProgress?.stage === "complete" &&
-                          !isExtracting && (
-                            <div className="mt-3 p-2 bg-green-500/10 border border-green-500/30 rounded">
-                              <p className="text-xs text-green-400">
-                                {extractProgress.message}
-                              </p>
-                            </div>
-                          )}
-
-                        {/* 에러 메시지 */}
-                        {extractError && (
-                          <div className="mt-3 p-2 bg-red-500/10 border border-red-500/30 rounded">
-                            <p className="text-xs text-red-400">
-                              {extractError}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {/* 경로 안내 (항상 표시) */}
-                    <div className="mt-3 pt-3 border-t border-ark-border space-y-1">
-                      <p className="text-[10px] text-ark-gray/60">
-                        <span className="text-ark-gray">{t('settings.appDataPath')}</span> {t('settings.appDataNote')}
+                    </div>
+                  ) : !voiceAssetsStatus.exists ? (
+                    <div className="p-4 bg-ark-black/50 rounded border border-ark-border">
+                      <p className="text-sm text-red-400 mb-2">
+                        {voiceAssetsStatus.message}
                       </p>
-                      <p className="text-[10px] text-ark-gray/60">
-                        <span className="text-ark-gray">{t('settings.voice.bundlePath')}</span> {t('settings.voice.bundlePathValue')}
-                      </p>
-                      <p className="text-[10px] text-ark-gray/60 ml-4">
-                        {t('settings.voice.voiceFolders')}
-                      </p>
-                      <div className="flex items-center justify-between">
-                        <p className="text-[10px] text-ark-gray/60">
-                          <span className="text-ark-gray">{t('settings.copyLocation')}</span> {t('settings.voice.copyLocationAll')}
-                        </p>
-                        <button
-                          onClick={async () => {
-                            try {
-                              const folderPath = 'Assets/Voice';
-                              if (voiceAssetsStatus?.exists) {
-                                await settingsApi.openFolder(folderPath);
-                              } else {
-                                await settingsApi.createFolder(folderPath);
-                                checkVoiceAssets();
-                              }
-                            } catch (err) {
-                              console.error(t('settings.folder.operationFailed'), err);
-                            }
-                          }}
-                          className="text-[10px] text-ark-cyan hover:text-ark-white transition-colors"
-                        >
-                          {voiceAssetsStatus?.exists ? t('common.open') : t('settings.createFolder')}
-                        </button>
-                      </div>
-                      <p className="text-[10px] text-ark-gray/60">
-                        <span className="text-ark-gray">{t('settings.extractResult')}</span> {t('settings.voice.extractResultDetail')}
+                      <p className="text-xs text-ark-gray">
+                        {voiceAssetsStatus.hint}
                       </p>
                     </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {/* 언어별 카드 */}
+                      {Object.entries(voiceAssetsStatus.languages || {}).map(([lang, count]) => (
+                        <div key={lang} className="p-4 bg-ark-black/50 rounded border border-ark-border">
+                          <div className="flex items-center justify-between mb-2">
+                            <div>
+                              <p className="text-sm text-ark-white font-medium">{t(`settings.voice.lang.${lang}`, lang)}</p>
+                              <p className="text-[10px] text-ark-gray mt-0.5">{t(`settings.voice.langDesc.${lang}`, lang)}</p>
+                            </div>
+                            {!isExtracting && extractingVoiceLang !== lang && (
+                              <button
+                                onClick={() => startExtraction(lang)}
+                                className="ark-btn ark-btn-primary text-xs"
+                              >
+                                {t('settings.extract')}
+                              </button>
+                            )}
+                          </div>
+
+                          <p className="text-xs text-green-400/80">{count}{t('settings.bundlesReady')}</p>
+
+                          {/* 진행률/완료 (이 카드 대상일 때만) */}
+                          {extractingVoiceLang === lang && (
+                            <>
+                              {isExtracting && extractProgress && (
+                                <div className="mt-3">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="text-xs text-ark-gray">{extractProgress.message}</span>
+                                    <button onClick={cancelExtraction} className="text-xs text-red-400 hover:text-red-300">{t('common.cancel')}</button>
+                                  </div>
+                                  {extractProgress.total > 0 && (
+                                    <div className="relative h-2 bg-ark-panel rounded overflow-hidden">
+                                      <div className="absolute inset-y-0 left-0 bg-ark-orange transition-all duration-300" style={{ width: `${(extractProgress.processed / extractProgress.total) * 100}%` }} />
+                                    </div>
+                                  )}
+                                  <p className="text-xs text-ark-gray mt-1">
+                                    {t('settings.voice.extractProgress', { processed: extractProgress.processed, total: extractProgress.total, extracted: extractProgress.extracted })}
+                                  </p>
+                                </div>
+                              )}
+                              {extractProgress?.stage === "complete" && !isExtracting && (
+                                <div className="mt-2 p-2 bg-green-500/10 border border-green-500/30 rounded">
+                                  <p className="text-xs text-green-400">{extractProgress.message}</p>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      ))}
+
+                      {/* 에러 메시지 (공통) */}
+                      {extractError && (
+                        <div className="p-2 bg-red-500/10 border border-red-500/30 rounded">
+                          <p className="text-xs text-red-400">{extractError}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 경로 안내 (항상 표시) */}
+                  <div className="mt-3 p-4 bg-ark-black/50 rounded border border-ark-border space-y-1">
+                    <p className="text-[10px] text-ark-gray/60">
+                      <span className="text-ark-gray">{t('settings.appDataPath')}</span> {t('settings.appDataNote')}
+                    </p>
+                    <p className="text-[10px] text-ark-gray/60">
+                      <span className="text-ark-gray">{t('settings.voice.bundlePath')}</span> {t('settings.voice.bundlePathValue')}
+                    </p>
+                    <p className="text-[10px] text-ark-gray/60 ml-4">
+                      {t('settings.voice.voiceFolders')}
+                    </p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] text-ark-gray/60">
+                        <span className="text-ark-gray">{t('settings.copyLocation')}</span> {t('settings.voice.copyLocationAll')}
+                      </p>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const folderPath = 'Assets/Voice';
+                            if (voiceAssetsStatus?.exists) {
+                              await settingsApi.openFolder(folderPath);
+                            } else {
+                              await settingsApi.createFolder(folderPath);
+                              checkVoiceAssets();
+                            }
+                          } catch (err) {
+                            console.error(t('settings.folder.operationFailed'), err);
+                          }
+                        }}
+                        className="text-[10px] text-ark-cyan hover:text-ark-white transition-colors"
+                      >
+                        {voiceAssetsStatus?.exists ? t('common.open') : t('settings.createFolder')}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-ark-gray/60">
+                      <span className="text-ark-gray">{t('settings.extractResult')}</span> {t('settings.voice.extractResultDetail')}
+                    </p>
                   </div>
                 </section>
 
@@ -1638,7 +1620,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         </p>
                         <button
                           onClick={() => {
-                            window.electronAPI?.restartApp();
+                            window.close();
                           }}
                           className="w-full ark-btn ark-btn-primary text-sm"
                         >
