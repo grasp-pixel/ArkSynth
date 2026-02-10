@@ -408,14 +408,15 @@ class AppUpdater:
         logger.info("파일 교체 완료")
 
     def _write_exe_update_script(self, current_exe: Path, staged_exe: Path):
-        """종료 후 exe를 교체하는 배치 스크립트 작성"""
+        """종료 후 exe를 교체하고 앱을 재시작하는 배치 스크립트 작성"""
         script = self.app_root / self.EXE_UPDATE_SCRIPT
-        pid = os.getpid()
+        exe_name = current_exe.name
+        start_bat = self.app_root.parent / "start.bat"
         script.write_text(textwrap.dedent(f"""\
             @echo off
             chcp 65001 >nul
             :wait
-            tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul
+            tasklist /FI "IMAGENAME eq {exe_name}" 2>nul | find /I "{exe_name}" >nul
             if not errorlevel 1 (
                 timeout /t 1 /nobreak >nul
                 goto wait
@@ -425,6 +426,7 @@ class AppUpdater:
             move /Y "{current_exe}" "{current_exe}.old"
             move /Y "{staged_exe}" "{current_exe}"
             del /F "{current_exe}.old" 2>nul
+            if exist "{start_bat}" start "" "{start_bat}"
             del "%~f0"
         """), encoding="utf-8")
         logger.info("exe 업데이트 스크립트 작성: %s", script)
