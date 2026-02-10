@@ -226,7 +226,7 @@ def calculate_reference_score(
     # GPT-SoVITS에서 참조 텍스트가 길면 합성 출력 앞부분에 섞이는 문제 발생
     long_text_penalty = 0
     if text_len > MAX_REF_TEXT_LENGTH:
-        long_text_penalty = (text_len - MAX_REF_TEXT_LENGTH) * 5  # 초과분에 대해 5점씩 감점
+        long_text_penalty = (text_len - MAX_REF_TEXT_LENGTH) * 15  # 초과분에 대해 15점씩 감점
 
     score = title_priority + duration_bonus + text_bonus - short_text_penalty - long_text_penalty
     return score, is_valid_duration
@@ -576,10 +576,11 @@ def select_reference_hybrid(
         # 길이 차이 30자 이상이면 보너스 0
         len_bonus = max(0, 300 - len_diff * 10)
 
-        # 긴 텍스트 페널티: 50자 이상이면 점수 감소 (TTS 품질 저하 방지)
+        # 긴 텍스트 페널티: MAX_REF_TEXT_LENGTH 초과 시 강한 감점
+        # 일본어 등 문자 밀도가 높은 언어에서 prompt_text가 길면 합성 출력에 섞임
         text_penalty = 0
-        if c["text_len"] > 50:
-            text_penalty = (c["text_len"] - 50) * 5  # 50자 초과분에 대해 5점씩 감점
+        if c["text_len"] > MAX_REF_TEXT_LENGTH:
+            text_penalty = (c["text_len"] - MAX_REF_TEXT_LENGTH) * 15
 
         c["final_score"] = c["base_score"] + len_bonus - text_penalty
 
