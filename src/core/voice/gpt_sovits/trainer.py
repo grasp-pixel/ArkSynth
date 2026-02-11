@@ -50,6 +50,7 @@ class GPTSoVITSTrainer:
         self._cancelled = False
         self._process: Optional[subprocess.Popen] = None
         self._last_error: str = ""
+        self._last_error_lines: list[str] = []
 
     @property
     def last_error(self) -> str:
@@ -88,6 +89,7 @@ class GPTSoVITSTrainer:
         """
         self._cancelled = False
         self._last_error = ""
+        self._last_error_lines = []
 
         # 디버그: CWD 로깅
         import os
@@ -264,7 +266,9 @@ class GPTSoVITSTrainer:
                 # 에러/트레이스백 감지
                 if "error" in line.lower() or "traceback" in line.lower() or "exception" in line.lower():
                     logger.warning(f"워커 출력: {line}")
-                    self._last_error = line
+                    self._last_error_lines.append(line)
+                    if len(self._last_error_lines) > 20:
+                        self._last_error_lines.pop(0)
                 # 에포크, 손실 등 중요 정보는 info 레벨로 출력
                 elif "epoch" in line.lower() or "loss" in line.lower() or "step" in line.lower():
                     logger.info(f"워커 출력: {line}")
@@ -275,6 +279,19 @@ class GPTSoVITSTrainer:
         return_code = self._process.wait()
         if return_code != 0:
             logger.error(f"워커 프로세스 종료 코드: {return_code}")
-            if self._last_error:
-                logger.error(f"마지막 에러: {self._last_error}")
+            if self._last_error_lines:
+                error_text = "\n".join(self._last_error_lines[-10:])
+                logger.error(f"마지막 에러:\n{error_text}")
+                # CUDA OOM 감지
+                if any(p in error_text.lower() for p in [
+                    "cuda out of memory", "outofmemoryerror",
+                    "torch.cuda.outofmemoryerror",
+                ]):
+                    self._last_error = (
+                        "GPU 메모리(VRAM) 부족으로 학습이 중단되었습니다. "
+                        "다른 GPU 사용 프로그램을 종료하거나, "
+                        "더 많은 VRAM을 가진 GPU가 필요합니다."
+                    )
+                else:
+                    self._last_error = error_text
         return return_code == 0

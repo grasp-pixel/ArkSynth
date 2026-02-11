@@ -71,6 +71,72 @@ def get_pretrained_paths(gpt_sovits_path: Path, version: str = "v2Pro") -> dict:
     return paths
 
 
+# CUDA OOM 감지 패턴
+_CUDA_OOM_PATTERNS = [
+    "cuda out of memory",
+    "outofmemoryerror",
+    "cuda error: out of memory",
+    "torch.cuda.outofmemoryerror",
+    "cudnn error: cudnn_status_alloc_failed",
+]
+
+
+def check_gpu_vram(min_gb: float = 2.0) -> tuple[bool, str]:
+    """GPU VRAM 여유 공간 확인
+
+    Args:
+        min_gb: 최소 필요 여유 VRAM (GB)
+
+    Returns:
+        (충분 여부, 메시지) 튜플
+    """
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            return False, "CUDA GPU를 사용할 수 없습니다. GPU가 필요합니다."
+
+        device = torch.cuda.current_device()
+        gpu_name = torch.cuda.get_device_name(device)
+        free, total = torch.cuda.mem_get_info(device)
+        total_gb = total / (1024 ** 3)
+        free_gb = free / (1024 ** 3)
+
+        if free_gb < min_gb:
+            return False, (
+                f"GPU VRAM 부족: {gpu_name} "
+                f"(여유 {free_gb:.1f}GB / 전체 {total_gb:.1f}GB, "
+                f"최소 {min_gb:.1f}GB 필요). "
+                f"다른 GPU 사용 프로그램을 종료해 주세요."
+            )
+
+        logger.info(f"GPU VRAM 확인: {gpu_name} (여유 {free_gb:.1f}GB / 전체 {total_gb:.1f}GB)")
+        return True, f"{gpu_name} (여유 {free_gb:.1f}GB / 전체 {total_gb:.1f}GB)"
+
+    except ImportError:
+        return True, "torch 미설치 (VRAM 체크 건너뜀)"
+    except Exception as e:
+        logger.warning(f"VRAM 체크 실패: {e}")
+        return True, f"VRAM 체크 실패 (무시하고 계속)"
+
+
+def detect_cuda_oom(error_text: str) -> bool:
+    """에러 텍스트에서 CUDA OOM 감지"""
+    text_lower = error_text.lower()
+    return any(p in text_lower for p in _CUDA_OOM_PATTERNS)
+
+
+def format_subprocess_error(script_name: str, error_text: str) -> str:
+    """subprocess 에러 텍스트를 사용자 친화적 메시지로 변환"""
+    if detect_cuda_oom(error_text):
+        return (
+            f"{script_name} 실행 중 GPU 메모리(VRAM) 부족으로 중단되었습니다. "
+            f"GPU VRAM이 부족합니다. 다른 GPU 사용 프로그램을 종료하거나, "
+            f"더 많은 VRAM을 가진 GPU가 필요합니다. "
+            f"(학습에는 최소 6GB VRAM 권장)"
+        )
+    return error_text
+
+
 def emit_progress(stage: str, progress: float, message: str = "",
                   current_epoch: int = 0, total_epochs: int = 0,
                   substage: str = ""):
@@ -521,20 +587,32 @@ sys.path.insert(0, r'{eres2net_dir}')
                 error_msg = result.stderr or result.stdout or "알 수 없는 에러"
                 # 마지막 10줄만 로깅
                 error_lines = error_msg.strip().split("\n")[-10:]
-                logger.error(f"{script_name} 실패:\n" + "\n".join(error_lines))
+                error_summary = "\n".join(error_lines)
+                logger.error(f"{script_name} 실패:\n{error_summary}")
+
+                # CUDA OOM 감지 시 사용자 친화적 메시지
+                user_msg = format_subprocess_error(script_name, error_msg)
 
                 # 3-get-semantic.py는 필수 스크립트
                 if script_name == "3-get-semantic.py":
-                    emit_error(f"{script_name} 실패", "\n".join(error_lines))
+                    emit_error(f"{script_name} 실패", user_msg)
                     return False
+                # v2에서 2-get-sv.py도 필수 (7-sv_cn 생성)
+                elif script_name == "2-get-sv.py":
+                    emit_error(f"{script_name} 실패", user_msg)
+                    return False
+                else:
+                    # CUDA OOM이면 다음 스크립트도 실패할 가능성 높음
+                    if detect_cuda_oom(error_msg):
+                        emit_error(f"{script_name} 실패", user_msg)
+                        return False
             else:
                 logger.info(f"{script_name} 완료")
 
         except Exception as e:
             logger.error(f"{script_name} 실행 오류: {e}")
-            if script_name == "3-get-semantic.py":
-                emit_error(f"{script_name} 실행 오류", str(e))
-                return False
+            emit_error(f"{script_name} 실행 오류", str(e))
+            return False
 
     return True
 
@@ -1248,6 +1326,13 @@ def finetune_character(
         version: 모델 버전 (v2Pro 권장)
     """
     emit_progress("starting", 0.0, f"학습 시작: {char_name} ({version})")
+
+    # GPU VRAM 사전 체크 (학습에 최소 4GB 권장)
+    vram_ok, vram_msg = check_gpu_vram(min_gb=4.0)
+    if not vram_ok:
+        emit_error("GPU 요구사항 미충족", vram_msg)
+        return False
+    emit_progress("starting", 0.02, f"GPU 확인: {vram_msg}")
 
     # 전처리된 파일 확인 (음성 준비 단계에서 생성됨)
     from core.voice.gpt_sovits.audio_preprocessor import AudioSegment

@@ -96,6 +96,10 @@ class GPTSoVITSAPIClient:
         except aiohttp.ClientConnectorError as e:
             # 연결 불가 = 서버 미실행
             logger.warning(f"[API 상태] 연결 불가: {e}")
+            # 프로세스가 예기치 않게 종료된 경우 원인 파악
+            if self._api_process and self._api_process.poll() is not None:
+                crash_hint = self._detect_crash_cause()
+                logger.error(f"[API 상태] 서버 프로세스 종료됨: {crash_hint}")
             return False
         except asyncio.TimeoutError:
             logger.warning(f"[API 상태] 타임아웃 (10초)")
@@ -239,6 +243,7 @@ class GPTSoVITSAPIClient:
                 status["process_pid"] = self._api_process.pid
             else:
                 status["process_exit_code"] = exit_code
+                status["crash_cause"] = self._detect_crash_cause()
 
         return status
 
@@ -269,6 +274,34 @@ class GPTSoVITSAPIClient:
             target=_writer, daemon=True, name="gpt-sovits-log",
         )
         self._log_thread.start()
+
+    def _detect_crash_cause(self) -> str:
+        """로그 파일에서 크래시 원인 감지"""
+        if not _GPT_SOVITS_LOG.exists():
+            return "로그 파일 없음"
+
+        try:
+            text = _GPT_SOVITS_LOG.read_text(encoding="utf-8", errors="replace")
+            # 마지막 50줄만 확인
+            lines = text.strip().split("\n")[-50:]
+            tail = "\n".join(lines)
+            tail_lower = tail.lower()
+
+            if any(p in tail_lower for p in [
+                "cuda out of memory", "outofmemoryerror",
+                "torch.cuda.outofmemoryerror",
+                "cudnn_status_alloc_failed",
+            ]):
+                return (
+                    "GPU 메모리(VRAM) 부족으로 API 서버가 종료되었습니다. "
+                    "다른 GPU 사용 프로그램을 종료해 주세요."
+                )
+            if "cuda" in tail_lower and "error" in tail_lower:
+                return f"CUDA 관련 에러로 종료됨. 로그 확인: {_GPT_SOVITS_LOG}"
+
+            return f"원인 미상. 로그 확인: {_GPT_SOVITS_LOG}"
+        except Exception as e:
+            return f"로그 읽기 실패: {e}"
 
     def stop_api_server(self):
         """API 서버 종료"""
@@ -633,6 +666,10 @@ class GPTSoVITSAPIClient:
             return None
         except aiohttp.ClientError as e:
             logger.error(f"[합성] HTTP 오류: {type(e).__name__}: {e}")
+            # API 프로세스가 죽었는지 확인
+            if self._api_process and self._api_process.poll() is not None:
+                crash_hint = self._detect_crash_cause()
+                logger.error(f"[합성] API 서버 프로세스가 종료됨: {crash_hint}")
             return None
         except Exception as e:
             logger.error(f"[합성] 오류: {type(e).__name__}: {e}")
