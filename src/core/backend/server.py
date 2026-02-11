@@ -1,6 +1,9 @@
 """FastAPI 서버 정의"""
 
 import logging
+import os
+import platform
+import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -44,9 +47,61 @@ def setup_file_logging() -> None:
     root.setLevel(logging.INFO)
 
 
+def _log_system_info() -> None:
+    """시스템 사양 로깅"""
+    lines = [f"ArkSynth v{get_app_version()}"]
+
+    # OS
+    lines.append(f"OS: {platform.system()} {platform.release()} ({platform.machine()})")
+
+    # Python
+    lines.append(f"Python: {sys.version.split()[0]}")
+
+    # CPU
+    cpu_name = platform.processor() or "Unknown"
+    try:
+        cpu_count = os.cpu_count() or 0
+        lines.append(f"CPU: {cpu_name} ({cpu_count} cores)")
+    except Exception:
+        lines.append(f"CPU: {cpu_name}")
+
+    # RAM
+    try:
+        import psutil
+        mem = psutil.virtual_memory()
+        lines.append(f"RAM: {mem.total / (1024**3):.1f}GB (available {mem.available / (1024**3):.1f}GB)")
+    except ImportError:
+        pass
+
+    # GPU
+    try:
+        import torch
+        if torch.cuda.is_available():
+            for i in range(torch.cuda.device_count()):
+                props = torch.cuda.get_device_properties(i)
+                vram_gb = props.total_memory / (1024**3)
+                free, _ = torch.cuda.mem_get_info(i)
+                free_gb = free / (1024**3)
+                lines.append(
+                    f"GPU[{i}]: {props.name} "
+                    f"(VRAM {vram_gb:.1f}GB, free {free_gb:.1f}GB, "
+                    f"CUDA {props.major}.{props.minor})"
+                )
+            lines.append(f"PyTorch: {torch.__version__} (CUDA {torch.version.cuda})")
+        else:
+            lines.append("GPU: CUDA not available")
+            lines.append(f"PyTorch: {torch.__version__}")
+    except ImportError:
+        lines.append("GPU: torch not installed")
+
+    header = "=" * 50
+    logger.info(f"\n{header}\n" + "\n".join(lines) + f"\n{header}")
+
+
 def create_app() -> FastAPI:
     """FastAPI 앱 생성"""
     setup_file_logging()
+    _log_system_info()
     app = FastAPI(
         title="ArkSynth API",
         description="ArkSynth API - 명일방주 스토리 음성 더빙",

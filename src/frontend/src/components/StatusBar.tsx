@@ -1,7 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/appStore'
-import { updateApi, type UpdateCheckResponse } from '../services/api'
+import { settingsApi, updateApi, type UpdateCheckResponse } from '../services/api'
+
+interface GpuInfo {
+  available: boolean
+  name: string | null
+  vram_total_gb: number
+  vram_free_gb: number
+}
 
 export default function StatusBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const { t } = useTranslation()
@@ -18,13 +25,34 @@ export default function StatusBar({ onOpenSettings }: { onOpenSettings?: () => v
 
   const [appVersion, setAppVersion] = useState('0.0.0')
   const [updateInfo, setUpdateInfo] = useState<UpdateCheckResponse | null>(null)
+  const [gpuInfo, setGpuInfo] = useState<GpuInfo | null>(null)
+  const gpuIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     if (backendStatus === 'connected') {
       updateApi.getVersion().then(res => setAppVersion(res.version)).catch(() => {})
       updateApi.checkUpdate().then(res => { if (res.available) setUpdateInfo(res) }).catch(() => {})
+
+      // GPU 정보 조회
+      settingsApi.getGpuInfo().then(setGpuInfo).catch(() => {})
+
+      // 60초마다 GPU 정보 갱신
+      gpuIntervalRef.current = setInterval(() => {
+        settingsApi.getGpuInfo().then(setGpuInfo).catch(() => {})
+      }, 60000)
+    } else {
+      setGpuInfo(null)
+    }
+
+    return () => {
+      if (gpuIntervalRef.current) {
+        clearInterval(gpuIntervalRef.current)
+        gpuIntervalRef.current = null
+      }
     }
   }, [backendStatus])
+
+  const vramWarning = gpuInfo?.available && gpuInfo.vram_total_gb < 8
 
   return (
     <footer className="ark-statusbar px-4 py-2 flex items-center justify-between text-xs">
@@ -59,6 +87,40 @@ export default function StatusBar({ onOpenSettings }: { onOpenSettings?: () => v
               <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
             </svg>
             <span>{selectedEpisode.id}</span>
+          </div>
+        )}
+
+        {/* GPU VRAM 정보 */}
+        {gpuInfo && (
+          <div
+            className={`flex items-center gap-1.5 ${
+              !gpuInfo.available
+                ? 'text-red-400'
+                : vramWarning
+                ? 'text-ark-orange'
+                : 'text-ark-gray'
+            }`}
+            title={
+              !gpuInfo.available
+                ? t('status.gpu.noGpu')
+                : vramWarning
+                ? t('status.gpu.vramWarning', { min: 8 })
+                : `${gpuInfo.name} — ${t('status.gpu.free')}: ${gpuInfo.vram_free_gb}GB / ${gpuInfo.vram_total_gb}GB`
+            }
+          >
+            {/* GPU 아이콘 */}
+            <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor">
+              <path d="M2 7h3v2H2v2h3v2H2v2h3v2H2v1a1 1 0 001 1h18a1 1 0 001-1V6a1 1 0 00-1-1H3a1 1 0 00-1 1v1zm5 0h14v10H7V7z"/>
+            </svg>
+            {!gpuInfo.available ? (
+              <span>{t('status.gpu.noGpu')}</span>
+            ) : (
+              <>
+                {vramWarning && <span>!</span>}
+                <span>{gpuInfo.name?.replace(/NVIDIA |GeForce /g, '')}</span>
+                <span className="font-mono">{gpuInfo.vram_total_gb}GB</span>
+              </>
+            )}
           </div>
         )}
       </div>

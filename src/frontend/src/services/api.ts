@@ -1263,6 +1263,12 @@ export const settingsApi = {
     return res.data
   },
 
+  // flatc 자동 설치
+  startFlatcInstall: async () => {
+    const res = await api.post<{ status: string; message: string }>('/api/settings/flatc/install')
+    return res.data
+  },
+
   // GPT-SoVITS 설치 정보 조회
   getGptSovitsInstallInfo: async () => {
     const res = await api.get<GptSovitsInstallInfo>('/api/settings/gpt-sovits/install-info')
@@ -1297,6 +1303,17 @@ export const settingsApi = {
     const res = await api.post<{ status: string; message: string }>(
       '/api/settings/gpt-sovits/cleanup'
     )
+    return res.data
+  },
+
+  // GPU VRAM 정보 조회
+  getGpuInfo: async () => {
+    const res = await api.get<{
+      available: boolean
+      name: string | null
+      vram_total_gb: number
+      vram_free_gb: number
+    }>('/api/settings/gpu-info')
     return res.data
   },
 
@@ -1561,6 +1578,45 @@ export function createFFmpegInstallStream(
     if (event instanceof MessageEvent) {
       const data = JSON.parse(event.data)
       onError?.(data.error || 'FFmpeg 설치 실패')
+    }
+    eventSource.close()
+  })
+
+  eventSource.onerror = () => {
+    // 연결 오류는 무시 (ping 타임아웃일 수 있음)
+  }
+
+  return {
+    close: () => { eventSource.close() }
+  }
+}
+
+// flatc 설치 진행률 SSE 스트림
+export function createFlatcInstallStream(
+  options: {
+    onProgress?: (progress: { stage: string; progress: number; message: string; error?: string }) => void
+    onComplete?: () => void
+    onError?: (error: string) => void
+  } = {}
+): { close: () => void } {
+  const { onProgress, onComplete, onError } = options
+
+  const eventSource = new EventSource(`${API_BASE}/api/settings/flatc/install/stream`)
+
+  eventSource.addEventListener('progress', (event) => {
+    const progress = JSON.parse(event.data)
+    onProgress?.(progress)
+  })
+
+  eventSource.addEventListener('complete', () => {
+    onComplete?.()
+    eventSource.close()
+  })
+
+  eventSource.addEventListener('error', (event) => {
+    if (event instanceof MessageEvent) {
+      const data = JSON.parse(event.data)
+      onError?.(data.error || 'flatc 설치 실패')
     }
     eventSource.close()
   })

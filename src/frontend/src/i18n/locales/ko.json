@@ -175,7 +175,10 @@
     },
     "flatc": {
       "installMethodPrefix": "",
-      "installMethodSuffix": " 설치 방법"
+      "installMethodSuffix": " 설치 방법",
+      "installing": "flatc 설치 중...",
+      "installed": "flatc 설치 완료",
+      "startFailed": "flatc 설치 시작 실패"
     },
     "characters": {
       "refreshFailed": "캐릭터 데이터 새로고침 실패:",
@@ -715,6 +718,11 @@
     "audio": {
       "unmute": "음소거 해제",
       "mute": "음소거"
+    },
+    "gpu": {
+      "noGpu": "GPU 없음",
+      "free": "여유",
+      "vramWarning": "VRAM {{min}}GB 미만 — 학습/합성 시 문제가 발생할 수 있습니다"
     }
   },
   "install": {

@@ -175,7 +175,10 @@
     },
     "flatc": {
       "installMethodPrefix": "",
-      "installMethodSuffix": " Installation Method"
+      "installMethodSuffix": " Installation Method",
+      "installing": "Installing flatc...",
+      "installed": "flatc installed successfully",
+      "startFailed": "Failed to start flatc installation"
     },
     "characters": {
       "refreshFailed": "Failed to refresh character data:",
@@ -715,6 +718,11 @@
     "audio": {
       "unmute": "Unmute",
       "mute": "Mute"
+    },
+    "gpu": {
+      "noGpu": "No GPU",
+      "free": "Free",
+      "vramWarning": "VRAM under {{min}}GB — training/synthesis may fail"
     }
   },
   "install": {

@@ -28,6 +28,10 @@ _install_progress_queue: Optional[asyncio.Queue] = None
 _ffmpeg_install_task: Optional[asyncio.Task] = None
 _ffmpeg_install_queue: Optional[asyncio.Queue] = None
 
+# flatc 설치 작업 상태
+_flatc_install_task: Optional[asyncio.Task] = None
+_flatc_install_queue: Optional[asyncio.Queue] = None
+
 
 class DependencyStatus(BaseModel):
     """의존성 상태"""
@@ -623,6 +627,105 @@ async def flatc_install_guide():
             "4. 터미널 재시작 후 'flatc --version' 으로 확인",
         ],
     }
+
+
+@router.post("/flatc/install")
+async def start_flatc_install():
+    """flatc winget 자동 설치"""
+    global _flatc_install_task, _flatc_install_queue
+
+    if _flatc_install_task and not _flatc_install_task.done():
+        raise HTTPException(status_code=409, detail="이미 flatc 설치가 진행 중입니다")
+
+    try:
+        subprocess.run(["winget", "--version"], capture_output=True, timeout=5)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        raise HTTPException(status_code=400, detail="winget이 설치되어 있지 않습니다. 수동 설치를 진행해주세요.")
+
+    _flatc_install_queue = asyncio.Queue()
+
+    async def install_flatc():
+        try:
+            await _flatc_install_queue.put({
+                "stage": "installing", "progress": 10, "message": "winget install 실행 중..."
+            })
+
+            process = await asyncio.create_subprocess_exec(
+                "winget", "install", "Google.FlatBuffers",
+                "--accept-package-agreements", "--accept-source-agreements",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            await _flatc_install_queue.put({
+                "stage": "installing", "progress": 30, "message": "flatc 다운로드 및 설치 중..."
+            })
+
+            stdout, stderr = await process.communicate()
+            output = (stdout or b"").decode("utf-8", errors="replace")
+            err_output = (stderr or b"").decode("utf-8", errors="replace")
+
+            if process.returncode == 0:
+                _refresh_path_from_registry()
+                await _flatc_install_queue.put({
+                    "stage": "complete", "progress": 100, "message": "flatc 설치 완료"
+                })
+            elif "already installed" in output.lower() or "이미 설치" in output:
+                _refresh_path_from_registry()
+                await _flatc_install_queue.put({
+                    "stage": "complete", "progress": 100, "message": "flatc가 이미 설치되어 있습니다"
+                })
+            else:
+                error_msg = err_output.strip() or output.strip() or "알 수 없는 오류"
+                await _flatc_install_queue.put({
+                    "stage": "error", "progress": 0, "message": "flatc 설치 실패", "error": error_msg
+                })
+        except Exception as e:
+            await _flatc_install_queue.put({
+                "stage": "error", "progress": 0, "message": "flatc 설치 실패", "error": str(e)
+            })
+
+    _flatc_install_task = asyncio.create_task(install_flatc())
+    return {"status": "started", "message": "flatc 설치가 시작되었습니다"}
+
+
+@router.get("/flatc/install/stream")
+async def stream_flatc_install():
+    """flatc 설치 진행률 SSE 스트림"""
+    global _flatc_install_queue
+
+    if _flatc_install_queue is None:
+        raise HTTPException(status_code=404, detail="진행 중인 flatc 설치가 없습니다")
+
+    async def event_generator():
+        try:
+            while True:
+                try:
+                    progress = await asyncio.wait_for(
+                        _flatc_install_queue.get(), timeout=30.0
+                    )
+                    yield f"event: progress\ndata: {json.dumps(progress, ensure_ascii=False)}\n\n"
+
+                    if progress.get("stage") in ("complete", "error"):
+                        if progress.get("stage") == "complete":
+                            yield f"event: complete\ndata: {json.dumps({'success': True})}\n\n"
+                        else:
+                            yield f"event: error\ndata: {json.dumps({'error': progress.get('error', '')})}\n\n"
+                        break
+                except asyncio.TimeoutError:
+                    yield f"event: ping\ndata: {json.dumps({'status': 'alive'})}\n\n"
+        except asyncio.CancelledError:
+            pass
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 
 @router.get("/7zip/install-guide")
@@ -1340,6 +1443,50 @@ async def cancel_image_extraction():
     _image_extract_cancel_flag = True
 
     return {"status": "cancelling", "message": "추출 취소 요청됨"}
+
+
+# ============================================================================
+# GPU 정보
+# ============================================================================
+
+@router.get("/gpu-info")
+async def get_gpu_info():
+    """GPU VRAM 정보 조회"""
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            return {
+                "available": False,
+                "name": None,
+                "vram_total_gb": 0,
+                "vram_free_gb": 0,
+            }
+
+        device = torch.cuda.current_device()
+        name = torch.cuda.get_device_name(device)
+        free, total = torch.cuda.mem_get_info(device)
+
+        return {
+            "available": True,
+            "name": name,
+            "vram_total_gb": round(total / (1024 ** 3), 1),
+            "vram_free_gb": round(free / (1024 ** 3), 1),
+        }
+    except ImportError:
+        return {
+            "available": False,
+            "name": None,
+            "vram_total_gb": 0,
+            "vram_free_gb": 0,
+        }
+    except Exception as e:
+        logger.warning(f"GPU 정보 조회 실패: {e}")
+        return {
+            "available": False,
+            "name": None,
+            "vram_total_gb": 0,
+            "vram_free_gb": 0,
+        }
 
 
 # ============================================================================

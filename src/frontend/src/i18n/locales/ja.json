@@ -175,7 +175,10 @@
     },
     "flatc": {
       "installMethodPrefix": "",
-      "installMethodSuffix": " インストール方法"
+      "installMethodSuffix": " インストール方法",
+      "installing": "flatcインストール中...",
+      "installed": "flatcインストール完了",
+      "startFailed": "flatcインストール開始に失敗"
     },
     "characters": {
       "refreshFailed": "キャラクターデータの更新に失敗：",
@@ -715,6 +718,11 @@
     "audio": {
       "unmute": "ミュート解除",
       "mute": "ミュート"
+    },
+    "gpu": {
+      "noGpu": "GPU なし",
+      "free": "空き",
+      "vramWarning": "VRAM {{min}}GB未満 — 学習・合成で問題が発生する可能性があります"
     }
   },
   "install": {
