@@ -1,13 +1,17 @@
 {
-  "voice_language_short": "ja",
-  "display_language": "ko_KR",
+  "cuda_memory_optimization": false,
   "gamedata_repo": "ArknightsAssets/ArknightsGamedata",
+  "gpu_half_precision": true,
+  "vram_cleanup_after_whisper": false,
+  "display_language": "ko_KR",
+  "whisper_float32": false,
+  "voice_language_short": "ja",
   "default_tts_engine": "gpt_sovits",
+  "gamedata_branch": "master",
   "nickname": {
     "ko": "오라클",
     "ja": "オラクル",
     "en": "Oracle"
   },
-  "gamedata_branch": "master",
   "gamedata_source": "arkprts"
 }

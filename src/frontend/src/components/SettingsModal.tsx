@@ -1653,6 +1653,9 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </p>
                 </section>
 
+                {/* GPU 호환성 설정 */}
+                <GpuCompatibilitySection settings={settings} onSettingsChange={loadSettings} />
+
                 {/* ===== 앱 업데이트 ===== */}
                 <div className="ark-divider mt-2">
                   <span>{t('settings.section.update')}</span>
@@ -1779,6 +1782,152 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 }
 
 // TTS 추론 파라미터 섹션 (접기/펼치기)
+/** GPU 호환성 토글 아이템 */
+function GpuToggle({
+  label,
+  description,
+  enabled,
+  onChange,
+  badge,
+}: {
+  label: string
+  description: string
+  enabled: boolean
+  onChange: (v: boolean) => void
+  badge?: string
+}) {
+  return (
+    <div className="flex items-start justify-between p-3 bg-ark-black/50 rounded border border-ark-border">
+      <div className="flex-1 mr-3">
+        <div className="flex items-center gap-2">
+          <p className="text-sm text-ark-white">{label}</p>
+          {badge && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-ark-orange/20 text-ark-orange">
+              {badge}
+            </span>
+          )}
+        </div>
+        <p className="text-[11px] text-ark-gray/70 mt-1">{description}</p>
+      </div>
+      <button
+        onClick={() => onChange(!enabled)}
+        className={`flex-shrink-0 relative w-10 h-5 rounded-full transition-colors ${
+          enabled ? "bg-ark-orange" : "bg-ark-border"
+        }`}
+      >
+        <span
+          className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+            enabled ? "left-5" : "left-0.5"
+          }`}
+        />
+      </button>
+    </div>
+  )
+}
+
+/** GPU 호환성 설정 섹션 */
+function GpuCompatibilitySection({
+  settings,
+  onSettingsChange,
+}: {
+  settings: SettingsResponse | null
+  onSettingsChange: () => void
+}) {
+  const { t } = useTranslation()
+  if (!settings) return null
+
+  const isMaxCompat =
+    !settings.gpu_half_precision &&
+    settings.vram_cleanup_after_whisper &&
+    settings.whisper_float32 &&
+    settings.cuda_memory_optimization
+
+  const handleMaxCompat = async (enabled: boolean) => {
+    try {
+      await settingsApi.setMaxCompatibility(enabled)
+      onSettingsChange()
+    } catch (e) {
+      console.error("최대호환성 모드 변경 실패:", e)
+    }
+  }
+
+  const handleToggle = async (
+    setter: (enabled: boolean) => Promise<unknown>,
+    enabled: boolean,
+  ) => {
+    try {
+      await setter(enabled)
+      onSettingsChange()
+    } catch (e) {
+      console.error("설정 변경 실패:", e)
+    }
+  }
+
+  return (
+    <section>
+      <h3 className="text-sm font-medium text-ark-white mb-2">
+        {t('settings.gpuCompat.title')}
+      </h3>
+      <p className="text-[11px] text-ark-gray/70 mb-3">
+        {t('settings.gpuCompat.description')}
+      </p>
+      <div className="space-y-2">
+        {/* 최대호환성 모드 (일괄 토글) */}
+        <div className="flex items-start justify-between p-3 bg-ark-panel rounded border-2 border-ark-orange/30">
+          <div className="flex-1 mr-3">
+            <p className="text-sm font-medium text-ark-orange">
+              {t('settings.gpuCompat.maxCompatibility')}
+            </p>
+            <p className="text-[11px] text-ark-gray/70 mt-1">
+              {t('settings.gpuCompat.maxCompatibilityDesc')}
+            </p>
+          </div>
+          <button
+            onClick={() => handleMaxCompat(!isMaxCompat)}
+            className={`flex-shrink-0 relative w-10 h-5 rounded-full transition-colors ${
+              isMaxCompat ? "bg-ark-orange" : "bg-ark-border"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                isMaxCompat ? "left-5" : "left-0.5"
+              }`}
+            />
+          </button>
+        </div>
+
+        {/* 개별 옵션 */}
+        <GpuToggle
+          label={t('settings.gpuCompat.gpuFp32')}
+          description={t('settings.gpuCompat.gpuFp32Desc')}
+          enabled={!settings.gpu_half_precision}
+          onChange={(v) => handleToggle(settingsApi.setGpuHalfPrecision, !v)}
+          badge={t('settings.gpuCompat.restartRequired')}
+        />
+        <GpuToggle
+          label={t('settings.gpuCompat.vramCleanup')}
+          description={t('settings.gpuCompat.vramCleanupDesc')}
+          enabled={settings.vram_cleanup_after_whisper}
+          onChange={(v) => handleToggle(settingsApi.setVramCleanup, v)}
+        />
+        <GpuToggle
+          label={t('settings.gpuCompat.whisperFp32')}
+          description={t('settings.gpuCompat.whisperFp32Desc')}
+          enabled={settings.whisper_float32}
+          onChange={(v) => handleToggle(settingsApi.setWhisperFloat32, v)}
+        />
+        <GpuToggle
+          label={t('settings.gpuCompat.cudaMemory')}
+          description={t('settings.gpuCompat.cudaMemoryDesc')}
+          enabled={settings.cuda_memory_optimization}
+          onChange={(v) => handleToggle(settingsApi.setCudaMemoryOptimization, v)}
+          badge={t('settings.gpuCompat.restartRequired')}
+        />
+      </div>
+    </section>
+  )
+}
+
 function TTSParamsSection() {
   const { t } = useTranslation()
   const { ttsParams, loadTtsParams, updateTtsParams } = useAppStore()

@@ -1107,6 +1107,11 @@ export interface SettingsResponse {
   whisper_model_size: string
   whisper_compute_type: string
   use_whisper_preprocessing: boolean
+  // GPU 호환성 설정
+  gpu_half_precision: boolean
+  vram_cleanup_after_whisper: boolean
+  whisper_float32: boolean
+  cuda_memory_optimization: boolean
   dependencies: DependencyStatus[]
 }
 
@@ -1367,6 +1372,63 @@ export const settingsApi = {
   // 닉네임 변경 (언어별)
   setNickname: async (nickname: Record<string, string>) => {
     const res = await api.put<{ nickname: Record<string, string> }>('/api/settings/nickname', { nickname })
+    return res.data
+  },
+
+  // GPU 호환성 설정
+  getGpuHalfPrecision: async () => {
+    const res = await api.get<{ enabled: boolean }>('/api/settings/gpu-half-precision')
+    return res.data
+  },
+  setGpuHalfPrecision: async (enabled: boolean) => {
+    const res = await api.post<{ enabled: boolean; restart_required: boolean }>(
+      '/api/settings/gpu-half-precision', null, { params: { enabled } }
+    )
+    return res.data
+  },
+
+  getVramCleanup: async () => {
+    const res = await api.get<{ enabled: boolean }>('/api/settings/vram-cleanup')
+    return res.data
+  },
+  setVramCleanup: async (enabled: boolean) => {
+    const res = await api.post<{ enabled: boolean }>(
+      '/api/settings/vram-cleanup', null, { params: { enabled } }
+    )
+    return res.data
+  },
+
+  getWhisperFloat32: async () => {
+    const res = await api.get<{ enabled: boolean }>('/api/settings/whisper-float32')
+    return res.data
+  },
+  setWhisperFloat32: async (enabled: boolean) => {
+    const res = await api.post<{ enabled: boolean }>(
+      '/api/settings/whisper-float32', null, { params: { enabled } }
+    )
+    return res.data
+  },
+
+  getCudaMemoryOptimization: async () => {
+    const res = await api.get<{ enabled: boolean }>('/api/settings/cuda-memory-optimization')
+    return res.data
+  },
+  setCudaMemoryOptimization: async (enabled: boolean) => {
+    const res = await api.post<{ enabled: boolean; restart_required: boolean }>(
+      '/api/settings/cuda-memory-optimization', null, { params: { enabled } }
+    )
+    return res.data
+  },
+
+  setMaxCompatibility: async (enabled: boolean) => {
+    const res = await api.post<{
+      enabled: boolean
+      restart_required: boolean
+      gpu_half_precision: boolean
+      vram_cleanup_after_whisper: boolean
+      whisper_float32: boolean
+      cuda_memory_optimization: boolean
+    }>('/api/settings/max-compatibility', null, { params: { enabled } })
     return res.data
   },
 }

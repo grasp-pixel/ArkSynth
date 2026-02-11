@@ -65,6 +65,12 @@ class SettingsResponse(BaseModel):
     whisper_compute_type: str
     use_whisper_preprocessing: bool
 
+    # GPU 호환성 설정
+    gpu_half_precision: bool
+    vram_cleanup_after_whisper: bool
+    whisper_float32: bool
+    cuda_memory_optimization: bool
+
     # 의존성 상태
     dependencies: list[DependencyStatus]
 
@@ -264,6 +270,10 @@ async def get_settings():
         whisper_model_size=gpt_config.whisper_model_size,
         whisper_compute_type=gpt_config.whisper_compute_type,
         use_whisper_preprocessing=gpt_config.use_whisper_preprocessing,
+        gpu_half_precision=config.gpu_half_precision,
+        vram_cleanup_after_whisper=config.vram_cleanup_after_whisper,
+        whisper_float32=config.whisper_float32,
+        cuda_memory_optimization=config.cuda_memory_optimization,
         dependencies=dependencies,
     )
 
@@ -1572,4 +1582,97 @@ async def set_tts_engine_setting(request: SetTTSEngineRequest):
     return {
         "engine": request.engine,
         "message": f"TTS 엔진이 'GPT-SoVITS'(으)로 변경되었습니다"
+    }
+
+
+# ============================================================================
+# GPU 호환성 설정
+# ============================================================================
+
+@router.get("/gpu-half-precision")
+async def get_gpu_half_precision():
+    """GPU FP16/FP32 모드 조회"""
+    return {"enabled": config.gpu_half_precision}
+
+
+@router.post("/gpu-half-precision")
+async def set_gpu_half_precision(enabled: bool):
+    """GPU FP16/FP32 모드 변경 (GPT-SoVITS 재시작 필요)"""
+    config.gpu_half_precision = enabled
+    config.save()
+    mode = "FP16" if enabled else "FP32"
+    logger.info(f"GPU 정밀도 모드 변경: {mode}")
+    return {
+        "enabled": enabled,
+        "restart_required": True,
+        "message": f"GPU 정밀도가 {mode}(으)로 변경되었습니다. GPT-SoVITS 재시작 필요",
+    }
+
+
+@router.get("/vram-cleanup")
+async def get_vram_cleanup():
+    """Whisper 후 VRAM 정리 설정 조회"""
+    return {"enabled": config.vram_cleanup_after_whisper}
+
+
+@router.post("/vram-cleanup")
+async def set_vram_cleanup(enabled: bool):
+    """Whisper 후 VRAM 정리 설정 변경"""
+    config.vram_cleanup_after_whisper = enabled
+    config.save()
+    logger.info(f"Whisper 후 VRAM 정리: {'활성화' if enabled else '비활성화'}")
+    return {"enabled": enabled}
+
+
+@router.get("/whisper-float32")
+async def get_whisper_float32():
+    """Whisper FP32 모드 조회"""
+    return {"enabled": config.whisper_float32}
+
+
+@router.post("/whisper-float32")
+async def set_whisper_float32(enabled: bool):
+    """Whisper FP32 모드 변경"""
+    config.whisper_float32 = enabled
+    config.save()
+    mode = "FP32" if enabled else "FP16"
+    logger.info(f"Whisper 정밀도 모드 변경: {mode}")
+    return {"enabled": enabled}
+
+
+@router.get("/cuda-memory-optimization")
+async def get_cuda_memory_optimization():
+    """CUDA 메모리 최적화 설정 조회"""
+    return {"enabled": config.cuda_memory_optimization}
+
+
+@router.post("/cuda-memory-optimization")
+async def set_cuda_memory_optimization(enabled: bool):
+    """CUDA 메모리 최적화 설정 변경 (GPT-SoVITS 재시작 필요)"""
+    config.cuda_memory_optimization = enabled
+    config.save()
+    logger.info(f"CUDA 메모리 최적화: {'활성화' if enabled else '비활성화'}")
+    return {
+        "enabled": enabled,
+        "restart_required": True,
+        "message": f"CUDA 메모리 최적화 {'활성화' if enabled else '비활성화'}. GPT-SoVITS 재시작 필요",
+    }
+
+
+@router.post("/max-compatibility")
+async def set_max_compatibility(enabled: bool):
+    """최대호환성 모드 일괄 토글 (4개 옵션 일괄 변경)"""
+    config.gpu_half_precision = not enabled  # 최대호환 시 FP32 = half_precision False
+    config.vram_cleanup_after_whisper = enabled
+    config.whisper_float32 = enabled
+    config.cuda_memory_optimization = enabled
+    config.save()
+    logger.info(f"최대호환성 모드: {'활성화' if enabled else '비활성화'}")
+    return {
+        "enabled": enabled,
+        "restart_required": True,
+        "gpu_half_precision": config.gpu_half_precision,
+        "vram_cleanup_after_whisper": config.vram_cleanup_after_whisper,
+        "whisper_float32": config.whisper_float32,
+        "cuda_memory_optimization": config.cuda_memory_optimization,
     }

@@ -181,7 +181,18 @@ class GPTSoVITSAPIClient:
                     f"& {cmd_escaped} 2>&1"
                     f" | Tee-Object -FilePath '{log_path}'"
                 )
-                env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+                from ...backend.config import config as server_config
+                env = {
+                    **os.environ,
+                    "PYTHONIOENCODING": "utf-8",
+                    "is_half": str(server_config.gpu_half_precision),
+                }
+                if server_config.cuda_memory_optimization:
+                    env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+                logger.info(
+                    f"  is_half={env['is_half']}, "
+                    f"CUDA_ALLOC_CONF={env.get('PYTORCH_CUDA_ALLOC_CONF', 'default')}"
+                )
                 self._api_process = subprocess.Popen(
                     ["powershell", "-NoProfile", "-Command", ps_command],
                     cwd=str(cwd_abs),
@@ -277,16 +288,20 @@ class GPTSoVITSAPIClient:
 
     def _detect_crash_cause(self) -> str:
         """로그 파일에서 크래시 원인 감지"""
+        exit_code = None
+        if self._api_process:
+            exit_code = self._api_process.poll()
+
         if not _GPT_SOVITS_LOG.exists():
-            return "로그 파일 없음"
+            return f"로그 파일 없음 (exit code: {exit_code})"
 
         try:
             text = _GPT_SOVITS_LOG.read_text(encoding="utf-8", errors="replace")
-            # 마지막 50줄만 확인
-            lines = text.strip().split("\n")[-50:]
+            lines = text.strip().split("\n")[-100:]
             tail = "\n".join(lines)
             tail_lower = tail.lower()
 
+            # CUDA OOM 감지
             if any(p in tail_lower for p in [
                 "cuda out of memory", "outofmemoryerror",
                 "torch.cuda.outofmemoryerror",
@@ -294,12 +309,31 @@ class GPTSoVITSAPIClient:
             ]):
                 return (
                     "GPU 메모리(VRAM) 부족으로 API 서버가 종료되었습니다. "
-                    "다른 GPU 사용 프로그램을 종료해 주세요."
+                    "다른 GPU 사용 프로그램을 종료하거나 설정에서 최대호환성 모드를 활성화해 주세요."
                 )
-            if "cuda" in tail_lower and "error" in tail_lower:
-                return f"CUDA 관련 에러로 종료됨. 로그 확인: {_GPT_SOVITS_LOG}"
 
-            return f"원인 미상. 로그 확인: {_GPT_SOVITS_LOG}"
+            # autoregressive 생성 중 크래시 감지 (X/1500 진행 중 멈춤)
+            import re
+            ar_match = re.findall(r"(\d+)/1500", tail)
+            if ar_match and int(ar_match[-1]) < 1500:
+                last_progress = ar_match[-1]
+                return (
+                    f"음성 생성 중 프로세스가 종료됨 ({last_progress}/1500 토큰). "
+                    f"FP16 호환성 문제일 수 있습니다. "
+                    f"설정에서 GPU FP32 모드를 활성화해 보세요. "
+                    f"(exit code: {exit_code})"
+                )
+
+            if "cuda" in tail_lower and "error" in tail_lower:
+                # 마지막 5줄을 힌트로 포함
+                hint_lines = lines[-5:]
+                hint = " | ".join(l.strip() for l in hint_lines if l.strip())
+                return f"CUDA 에러로 종료됨 (exit code: {exit_code}). 로그: {hint}"
+
+            # 마지막 3줄을 힌트로 포함
+            hint_lines = lines[-3:]
+            hint = " | ".join(l.strip() for l in hint_lines if l.strip())
+            return f"원인 미상 (exit code: {exit_code}). 로그 tail: {hint}"
         except Exception as e:
             return f"로그 읽기 실패: {e}"
 

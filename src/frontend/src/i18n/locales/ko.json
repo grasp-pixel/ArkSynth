@@ -291,6 +291,21 @@
       "usage": "사용",
       "note": "* 음성 준비 시 Faster-Whisper로 긴 오디오를 분할합니다"
     },
+    "gpuCompat": {
+      "title": "GPU 호환성",
+      "description": "GPU 관련 안정성 옵션입니다. 음성 합성 중 크래시가 발생하면 활성화해 보세요.",
+      "maxCompatibility": "최대호환성 모드",
+      "maxCompatibilityDesc": "모든 GPU 호환성 옵션을 일괄 활성화합니다. 안정성이 높아지지만 속도가 느려지고 VRAM 사용량이 증가합니다.",
+      "gpuFp32": "GPU FP32 모드",
+      "gpuFp32Desc": "음성 합성을 FP32 정밀도로 실행합니다. 신형 GPU에서 FP16 크래시 발생 시 사용하세요. VRAM 사용량이 약 2배 증가하고 합성 속도가 느려집니다.",
+      "vramCleanup": "Whisper 후 VRAM 정리",
+      "vramCleanupDesc": "Whisper 전처리 후 GPU 메모리를 강제 해제합니다. VRAM이 부족한 환경에서 유용하지만, 정리 과정에서 약간의 지연이 발생합니다.",
+      "whisperFp32": "Whisper FP32 모드",
+      "whisperFp32Desc": "Whisper 전처리를 FP32 정밀도로 실행합니다. 전처리 안정성이 높아지지만, VRAM 사용량이 증가하고 속도가 느려집니다.",
+      "cudaMemory": "CUDA 메모리 최적화",
+      "cudaMemoryDesc": "PyTorch 메모리 할당 방식을 최적화합니다. 신형 GPU에서 메모리 단편화를 줄여주며, 성능 영향은 거의 없습니다.",
+      "restartRequired": "재시작 필요"
+    },
     "update": {
       "description": "GitHub에서 최신 버전을 확인합니다.",
       "checkButton": "업데이트 확인",

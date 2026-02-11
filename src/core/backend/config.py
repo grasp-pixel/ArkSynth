@@ -18,6 +18,10 @@ _PERSIST_FIELDS = {
     "gamedata_branch",
     "default_tts_engine",
     "nickname",
+    "gpu_half_precision",
+    "vram_cleanup_after_whisper",
+    "whisper_float32",
+    "cuda_memory_optimization",
 }
 
 CONFIG_FILE = Path("data/config.json")
@@ -55,6 +59,12 @@ class ServerConfig(BaseModel):
 
     # 닉네임 ({@nickname} 템플릿 치환용, 언어별)
     nickname: dict[str, str] = {"ko": "오라클", "ja": "オラクル", "en": "Oracle"}
+
+    # GPU 호환성 설정
+    gpu_half_precision: bool = True  # True=FP16(기본), False=FP32
+    vram_cleanup_after_whisper: bool = False  # Whisper 언로드 후 VRAM 정리
+    whisper_float32: bool = False  # Whisper compute_type=float32
+    cuda_memory_optimization: bool = False  # PYTORCH_CUDA_ALLOC_CONF 최적화
 
     # TTS 설정
     default_voice: str = "ko-KR-SunHiNeural"

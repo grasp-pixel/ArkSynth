@@ -291,6 +291,21 @@
       "usage": "使用",
       "note": "* 音声準備時にFaster-Whisperで長いオーディオを分割します"
     },
+    "gpuCompat": {
+      "title": "GPU互換性",
+      "description": "GPU関連の安定性オプションです。音声合成中にクラッシュが発生する場合は有効にしてください。",
+      "maxCompatibility": "最大互換モード",
+      "maxCompatibilityDesc": "すべてのGPU互換性オプションを一括で有効にします。安定性は向上しますが、速度が低下しVRAM使用量が増加します。",
+      "gpuFp32": "GPU FP32モード",
+      "gpuFp32Desc": "音声合成をFP32精度で実行します。新型GPUでFP16クラッシュが発生する場合に使用してください。VRAM使用量が約2倍になり、合成速度が低下します。",
+      "vramCleanup": "Whisper後VRAM解放",
+      "vramCleanupDesc": "Whisper前処理後にGPUメモリを強制解放します。VRAM不足の環境で有効ですが、解放処理に若干の遅延が発生します。",
+      "whisperFp32": "Whisper FP32モード",
+      "whisperFp32Desc": "Whisper前処理をFP32精度で実行します。前処理の安定性は向上しますが、VRAM使用量が増加し速度が低下します。",
+      "cudaMemory": "CUDAメモリ最適化",
+      "cudaMemoryDesc": "PyTorchのメモリ割り当て方式を最適化します。新型GPUでのメモリ断片化を軽減し、性能への影響はほぼありません。",
+      "restartRequired": "再起動必要"
+    },
     "update": {
       "description": "GitHubで最新バージョンを確認します。",
       "checkButton": "アップデート確認",

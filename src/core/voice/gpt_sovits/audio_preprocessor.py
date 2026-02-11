@@ -126,13 +126,22 @@ class AudioPreprocessor:
                 "pip install faster-whisper 또는 uv add faster-whisper를 실행하세요."
             ) from e
 
-        logger.info(f"Whisper 모델 로딩: {self.model_size} (device={self.device})")
+        # whisper_float32 설정 시 compute_type 오버라이드
+        compute_type = self.compute_type
+        try:
+            from ...backend.config import config as server_config
+            if server_config.whisper_float32:
+                compute_type = "float32"
+        except Exception:
+            pass
+
+        logger.info(f"Whisper 모델 로딩: {self.model_size} (device={self.device}, compute_type={compute_type})")
 
         try:
             self._model = WhisperModel(
                 self.model_size,
                 device=self.device,
-                compute_type=self.compute_type,
+                compute_type=compute_type,
             )
             logger.info("Whisper 모델 로드 완료")
         except Exception as e:
@@ -158,6 +167,18 @@ class AudioPreprocessor:
             AudioPreprocessor._deferred_models.append(self._model)
             self._model = None
             logger.info("Whisper 모델 언로드 완료 (소멸자 지연)")
+
+            # VRAM 정리 (설정에서 활성화 시)
+            try:
+                from ...backend.config import config as server_config
+                if server_config.vram_cleanup_after_whisper:
+                    gc.collect()
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    logger.info("VRAM 정리 완료 (gc.collect + empty_cache)")
+            except Exception as e:
+                logger.debug(f"VRAM 정리 중 오류 (무시): {e}")
 
     def transcribe_audio(
         self,

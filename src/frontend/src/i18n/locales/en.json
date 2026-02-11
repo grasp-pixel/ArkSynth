@@ -291,6 +291,21 @@
       "usage": "Usage",
       "note": "* Splits long audio with Faster-Whisper during voice preparation"
     },
+    "gpuCompat": {
+      "title": "GPU Compatibility",
+      "description": "GPU stability options. Enable these if crashes occur during voice synthesis.",
+      "maxCompatibility": "Max Compatibility Mode",
+      "maxCompatibilityDesc": "Enable all GPU compatibility options at once. Improves stability but reduces speed and increases VRAM usage.",
+      "gpuFp32": "GPU FP32 Mode",
+      "gpuFp32Desc": "Run voice synthesis in FP32 precision. Use this if FP16 crashes occur on newer GPUs. VRAM usage roughly doubles and synthesis speed decreases.",
+      "vramCleanup": "VRAM Cleanup After Whisper",
+      "vramCleanupDesc": "Force-release GPU memory after Whisper preprocessing. Useful in low-VRAM environments, but adds slight delay.",
+      "whisperFp32": "Whisper FP32 Mode",
+      "whisperFp32Desc": "Run Whisper preprocessing in FP32 precision. Improves preprocessing stability but increases VRAM usage and reduces speed.",
+      "cudaMemory": "CUDA Memory Optimization",
+      "cudaMemoryDesc": "Optimizes PyTorch memory allocation. Reduces memory fragmentation on newer GPUs with minimal performance impact.",
+      "restartRequired": "Restart Required"
+    },
     "update": {
       "description": "Check for the latest version on GitHub.",
       "checkButton": "Check for Updates",
