@@ -1736,7 +1736,11 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         </p>
                         <button
                           onClick={() => {
-                            window.close();
+                            if (window.electronAPI?.restartApp) {
+                              window.electronAPI.restartApp();
+                            } else {
+                              window.close();
+                            }
                           }}
                           className="w-full ark-btn ark-btn-primary text-sm"
                         >

@@ -1,18 +1,14 @@
 """앱 자동 업데이트 관리자
 
-GitHub Releases에서 최신 버전을 확인하고 제자리 업데이트합니다.
-- Python 소스: 바로 교체 (실행 중 잠기지 않음)
-- ArkSynth.exe: rename 시도 후 실패 시 배치 스크립트로 종료 후 교체
+GitHub Releases에서 최신 버전을 확인하고 _pending_update/ 에 스테이징합니다.
+실제 파일 교체는 start.bat가 다음 실행 시 수행합니다.
 """
 
 import asyncio
 import hashlib
 import json
 import logging
-import os
 import shutil
-import subprocess
-import textwrap
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,7 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class UpdateProgress:
     """업데이트 진행 상황"""
-    stage: str  # checking, downloading, verifying, backing_up, applying, complete, error
+    stage: str  # checking, downloading, verifying, staging, complete, error
     progress: float  # 0.0 ~ 1.0
     message: str
     error: Optional[str] = None
@@ -69,8 +65,7 @@ class AppUpdater:
 
     GITHUB_API = "https://api.github.com/repos/{repo}/releases/latest"
     MANIFEST_FILENAME = "update-manifest.json"
-
-    EXE_UPDATE_SCRIPT = "_apply_exe_update.cmd"
+    STAGING_DIR = "_pending_update"
 
     def __init__(self, app_root: Optional[Path] = None, repo: str = "grasp-pixel/ArkSynth"):
         self.app_root = app_root or self._detect_app_root()
@@ -169,8 +164,13 @@ class AppUpdater:
         except aiohttp.ClientError as e:
             raise Exception(f"네트워크 오류: {e}")
 
+    @property
+    def has_pending_update(self) -> bool:
+        """적용 대기 중인 업데이트가 있는지 확인"""
+        return (self.app_root / self.STAGING_DIR).exists()
+
     async def apply_update(self, update_info: UpdateInfo, on_progress: ProgressCallback) -> bool:
-        """업데이트 다운로드 및 적용"""
+        """업데이트를 다운로드하고 _pending_update/에 스테이징 (실제 적용은 start.bat)"""
         self._cancelled = False
 
         if not update_info.download_url:
@@ -180,7 +180,6 @@ class AppUpdater:
             ))
             return False
 
-        temp_dir = self.app_root / "_update_temp"
         archive_path = self.app_root / "_update.zip"
 
         try:
@@ -195,47 +194,36 @@ class AppUpdater:
                 if self._cancelled:
                     return False
 
-            # 3. 기존 파일 백업 (65~70%)
-            await self._backup(on_progress)
+            # 3. 스테이징 (65~95%)
+            await self._extract_to_staging(archive_path, on_progress)
             if self._cancelled:
                 return False
 
-            # 4. 압축 해제 + 파일 교체 (70~95%)
-            await self._extract_and_apply(archive_path, temp_dir, on_progress)
-            if self._cancelled:
-                return False
-
-            # 5. 완료 (95~100%)
+            # 4. 완료
             await self._emit_progress(on_progress, UpdateProgress(
                 stage="complete", progress=1.0,
-                message=f"v{update_info.latest_version} 업데이트 완료. 재시작이 필요합니다.",
+                message=f"v{update_info.latest_version} 업데이트 준비 완료. 재시작하면 적용됩니다.",
             ))
             return True
 
         except asyncio.CancelledError:
-            await self._rollback()
+            self._cleanup_staging()
             await self._emit_progress(on_progress, UpdateProgress(
                 stage="error", progress=0, message="업데이트 취소됨", error="사용자에 의해 취소됨",
             ))
             return False
         except Exception as e:
             logger.exception("업데이트 중 오류 발생")
-            await self._rollback()
+            self._cleanup_staging()
             await self._emit_progress(on_progress, UpdateProgress(
                 stage="error", progress=0, message="업데이트 실패",
                 error=str(e) or "알 수 없는 오류",
             ))
             return False
         finally:
-            # 임시 파일 정리
             if archive_path.exists():
                 try:
                     archive_path.unlink()
-                except Exception:
-                    pass
-            if temp_dir.exists():
-                try:
-                    shutil.rmtree(temp_dir)
                 except Exception:
                     pass
 
@@ -298,155 +286,66 @@ class AppUpdater:
         ))
         logger.info("SHA256 검증 통과")
 
-    async def _backup(self, on_progress: ProgressCallback):
-        """기존 파일 백업"""
+    async def _extract_to_staging(self, archive: Path, on_progress: ProgressCallback):
+        """zip을 _pending_update/에 스테이징 (원본 파일에 손대지 않음)"""
         await self._emit_progress(on_progress, UpdateProgress(
-            stage="backing_up", progress=0.65, message="기존 파일 백업 중...",
+            stage="staging", progress=0.65, message="업데이트 파일 준비 중...",
         ))
 
-        def do_backup():
-            for dir_name in ["src/core", "src/tools"]:
-                src = self.app_root / dir_name
-                bak = self.app_root / f"{dir_name}.bak"
-                if src.exists():
-                    if bak.exists():
-                        shutil.rmtree(bak)
-                    shutil.copytree(src, bak)
+        staging_dir = self.app_root / self.STAGING_DIR
+
+        def do_staging():
+            temp_dir = self.app_root / "_update_temp"
+            try:
+                if temp_dir.exists():
+                    shutil.rmtree(temp_dir)
+                temp_dir.mkdir(parents=True)
+
+                with zipfile.ZipFile(archive, "r") as zf:
+                    zf.extractall(temp_dir)
+
+                # zip 내부에 app/ 폴더가 있으면 그 안의 내용 사용
+                extracted_root = temp_dir
+                app_subdir = temp_dir / "app"
+                if app_subdir.exists() and app_subdir.is_dir():
+                    extracted_root = app_subdir
+
+                # 기존 스테이징 폴더 정리 후 새로 생성
+                if staging_dir.exists():
+                    shutil.rmtree(staging_dir)
+                staging_dir.mkdir(parents=True)
+
+                # 업데이트 대상 파일을 스테이징 폴더로 복사
+                for dir_name in ["src/core", "src/tools"]:
+                    new_src = extracted_root / dir_name
+                    if new_src.exists():
+                        shutil.copytree(new_src, staging_dir / dir_name)
+
+                for fname in ["ArkSynth.exe", "version.json", "pyproject.toml", "uv.lock"]:
+                    new_file = extracted_root / fname
+                    if new_file.exists():
+                        shutil.copy2(new_file, staging_dir / fname)
+
+            finally:
+                if temp_dir.exists():
+                    shutil.rmtree(temp_dir)
 
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, do_backup)
+        await loop.run_in_executor(None, do_staging)
 
         await self._emit_progress(on_progress, UpdateProgress(
-            stage="backing_up", progress=0.70, message="백업 완료",
+            stage="staging", progress=0.95, message="스테이징 완료",
         ))
-        logger.info("백업 완료")
+        logger.info("업데이트 스테이징 완료: %s", staging_dir)
 
-    async def _rollback(self):
-        """백업에서 복원"""
-        logger.info("롤백 시작")
-
-        def do_rollback():
-            for dir_name in ["src/core", "src/tools"]:
-                bak = self.app_root / f"{dir_name}.bak"
-                target = self.app_root / dir_name
-                if bak.exists():
-                    if target.exists():
-                        shutil.rmtree(target)
-                    shutil.move(str(bak), str(target))
-
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, do_rollback)
-        logger.info("롤백 완료")
-
-    async def _extract_and_apply(self, archive: Path, temp_dir: Path, on_progress: ProgressCallback):
-        """zip 압축 해제 및 파일 교체"""
-        await self._emit_progress(on_progress, UpdateProgress(
-            stage="applying", progress=0.70, message="업데이트 적용 중...",
-        ))
-
-        def do_extract_and_apply():
-            # 임시 폴더에 압축 해제
-            if temp_dir.exists():
-                shutil.rmtree(temp_dir)
-            temp_dir.mkdir(parents=True)
-
-            with zipfile.ZipFile(archive, "r") as zf:
-                zf.extractall(temp_dir)
-
-            # zip 내부에 app/ 폴더가 있으면 그 안의 내용 사용
-            extracted_root = temp_dir
-            app_subdir = temp_dir / "app"
-            if app_subdir.exists() and app_subdir.is_dir():
-                extracted_root = app_subdir
-
-            # Python 소스 교체
-            for dir_name in ["src/core", "src/tools"]:
-                new_src = extracted_root / dir_name
-                if new_src.exists():
-                    target = self.app_root / dir_name
-                    if target.exists():
-                        shutil.rmtree(target)
-                    shutil.copytree(new_src, target)
-
-            # ArkSynth.exe 교체: rename 시도 → 실패 시 배치 스크립트 폴백
-            new_exe = extracted_root / "ArkSynth.exe"
-            if new_exe.exists():
-                current_exe = self.app_root / "ArkSynth.exe"
-                if current_exe.exists():
-                    old_exe = self.app_root / "ArkSynth.exe.old"
-                    try:
-                        if old_exe.exists():
-                            old_exe.unlink()
-                        os.rename(current_exe, old_exe)
-                        shutil.copy2(new_exe, current_exe)
-                    except PermissionError:
-                        # 실행 중이라 rename 불가 → 종료 후 교체할 배치 스크립트 생성
-                        logger.warning("exe rename 실패, 배치 스크립트로 지연 교체 예약")
-                        staged = self.app_root / "ArkSynth.exe.new"
-                        shutil.copy2(new_exe, staged)
-                        self._write_exe_update_script(current_exe, staged)
-                else:
-                    shutil.copy2(new_exe, current_exe)
-
-            # version.json 교체
-            new_version = extracted_root / "version.json"
-            if new_version.exists():
-                shutil.copy2(new_version, self.app_root / "version.json")
-
-            # pyproject.toml, uv.lock 교체
-            for fname in ["pyproject.toml", "uv.lock"]:
-                new_file = extracted_root / fname
-                if new_file.exists():
-                    shutil.copy2(new_file, self.app_root / fname)
-
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, do_extract_and_apply)
-
-        await self._emit_progress(on_progress, UpdateProgress(
-            stage="applying", progress=0.95, message="파일 교체 완료",
-        ))
-        logger.info("파일 교체 완료")
-
-    def _write_exe_update_script(self, current_exe: Path, staged_exe: Path):
-        """종료 후 exe를 교체하고 앱을 재시작하는 배치 스크립트 작성"""
-        script = self.app_root / self.EXE_UPDATE_SCRIPT
-        exe_name = current_exe.name
-        start_bat = self.app_root.parent / "start.bat"
-        script.write_text(textwrap.dedent(f"""\
-            @echo off
-            chcp 65001 >nul
-            :wait
-            tasklist /FI "IMAGENAME eq {exe_name}" 2>nul | find /I "{exe_name}" >nul
-            if not errorlevel 1 (
-                timeout /t 1 /nobreak >nul
-                goto wait
-            )
-            timeout /t 1 /nobreak >nul
-            if exist "{current_exe}.old" del /F "{current_exe}.old"
-            move /Y "{current_exe}" "{current_exe}.old"
-            move /Y "{staged_exe}" "{current_exe}"
-            del /F "{current_exe}.old" 2>nul
-            if exist "{start_bat}" start "" "{start_bat}"
-            del "%~f0"
-        """), encoding="utf-8")
-        logger.info("exe 업데이트 스크립트 작성: %s", script)
-
-    @property
-    def has_pending_exe_update(self) -> bool:
-        """종료 후 적용할 exe 업데이트가 있는지 확인"""
-        return (self.app_root / self.EXE_UPDATE_SCRIPT).exists()
-
-    def spawn_exe_update_script(self):
-        """exe 업데이트 배치 스크립트를 detached 프로세스로 실행"""
-        script = self.app_root / self.EXE_UPDATE_SCRIPT
-        if not script.exists():
-            return
-        logger.info("exe 업데이트 스크립트 실행: %s", script)
-        subprocess.Popen(
-            ["cmd", "/C", str(script)],
-            creationflags=subprocess.CREATE_NO_WINDOW,
-            close_fds=True,
-        )
+    def _cleanup_staging(self):
+        """스테이징 폴더 정리 (취소/실패 시)"""
+        staging_dir = self.app_root / self.STAGING_DIR
+        if staging_dir.exists():
+            try:
+                shutil.rmtree(staging_dir)
+            except Exception:
+                pass
 
 
 # 전역 인스턴스

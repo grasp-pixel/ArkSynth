@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, session, shell, Menu, globalShortcut } from 'electron'
 import path from 'path'
+import fs from 'fs'
 
 // 개발 모드 확인
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
@@ -117,6 +118,18 @@ ipcMain.handle('get-version', () => {
 })
 
 ipcMain.handle('restart-app', () => {
-  app.relaunch()
+  // _restart 플래그 파일 생성 (start.bat가 감지하여 재시작)
+  const appRoot = detectAppRoot()
+  fs.writeFileSync(path.join(appRoot, '_restart'), '')
   app.quit()
 })
+
+function detectAppRoot(): string {
+  // 배포 구조: app/ 하위에서 실행됨
+  const exeDir = path.dirname(app.getPath('exe'))
+  if (fs.existsSync(path.join(exeDir, 'pyproject.toml'))) {
+    return exeDir
+  }
+  // 개발 환경: 프로젝트 루트
+  return process.cwd()
+}

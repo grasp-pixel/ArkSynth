@@ -451,15 +451,6 @@ async def shutdown():
 
     logger.info("종료 요청 수신, 서버를 종료합니다...")
 
-    # pending exe 업데이트가 있으면 배치 스크립트 실행 (종료 후 exe 교체)
-    from ...updater import get_updater
-    try:
-        updater = get_updater()
-        if updater.has_pending_exe_update:
-            updater.spawn_exe_update_script()
-    except Exception:
-        logger.exception("exe 업데이트 스크립트 실행 실패")
-
     async def _shutdown():
         await asyncio.sleep(0.5)  # 응답 전송 완료 대기
         os.kill(os.getpid(), signal.SIGTERM)
