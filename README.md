@@ -35,9 +35,9 @@
 - **OS**: Windows 10/11 (64-bit)
 - **Python**: 3.10 ~ 3.12
 - **Node.js**: 18 이상
-- **GPU**: NVIDIA GPU (CUDA 지원) 권장
+- **GPU**: NVIDIA GPU (CUDA 지원) VRAM 8GB 이상 권장
 - **RAM**: 8GB 이상
-- **디스크**: 10GB 이상 여유 공간
+- **디스크**: 30GB 이상 여유 공간
 
 ## 설치
 
