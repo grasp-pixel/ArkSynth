@@ -1311,13 +1311,17 @@ export const settingsApi = {
     return res.data
   },
 
-  // GPU VRAM 정보 조회
+  // GPU VRAM 정보 및 호환성 조회
   getGpuInfo: async () => {
     const res = await api.get<{
       available: boolean
       name: string | null
       vram_total_gb: number
       vram_free_gb: number
+      compute_capability: string | null
+      pytorch_version: string | null
+      cuda_version: string | null
+      compatible: boolean | null
     }>('/api/settings/gpu-info')
     return res.data
   },
@@ -1429,6 +1433,26 @@ export const settingsApi = {
       whisper_float32: boolean
       cuda_memory_optimization: boolean
     }>('/api/settings/max-compatibility', null, { params: { enabled } })
+    return res.data
+  },
+
+  // GPT-SoVITS PyTorch 정보 조회
+  getGptSovitsPytorchInfo: async () => {
+    const res = await api.get<{
+      installed: boolean
+      version: string | null
+      cuda_version: string | null
+      arch_list: string[]
+      compatible: boolean | null
+    }>('/api/settings/gpt-sovits/pytorch-info')
+    return res.data
+  },
+
+  // PyTorch 업그레이드 시작
+  startPytorchUpgrade: async () => {
+    const res = await api.post<{ status: string; message: string }>(
+      '/api/settings/pytorch-upgrade'
+    )
     return res.data
   },
 }
@@ -1609,6 +1633,49 @@ export function createInstallStream(
   return {
     close: () => {
       console.log('[SSE] 설치 스트림 종료')
+      eventSource.close()
+    }
+  }
+}
+
+// PyTorch 업그레이드 진행률 SSE 스트림
+export function createPytorchUpgradeStream(
+  options: {
+    onProgress?: (progress: { stage: string; progress: number; message: string; error?: string }) => void
+    onComplete?: () => void
+    onError?: (error: string) => void
+  } = {}
+): { close: () => void } {
+  const { onProgress, onComplete, onError } = options
+
+  const eventSource = new EventSource(`${API_BASE}/api/settings/pytorch-upgrade/stream`)
+
+  eventSource.addEventListener('progress', (event) => {
+    const progress = JSON.parse(event.data)
+    onProgress?.(progress)
+  })
+
+  eventSource.addEventListener('complete', (event) => {
+    const data = JSON.parse(event.data)
+    onProgress?.(data)
+    onComplete?.()
+    eventSource.close()
+  })
+
+  eventSource.addEventListener('error', (event) => {
+    if (event instanceof MessageEvent) {
+      const data = JSON.parse(event.data)
+      onError?.(data.error || data.message || 'PyTorch 업그레이드 실패')
+    }
+    eventSource.close()
+  })
+
+  eventSource.addEventListener('ping', () => {})
+
+  eventSource.onerror = () => {}
+
+  return {
+    close: () => {
       eventSource.close()
     }
   }

@@ -304,7 +304,14 @@
       "whisperFp32Desc": "Run Whisper preprocessing in FP32 precision. Improves preprocessing stability but increases VRAM usage and reduces speed.",
       "cudaMemory": "CUDA Memory Optimization",
       "cudaMemoryDesc": "Optimizes PyTorch memory allocation. Reduces memory fragmentation on newer GPUs with minimal performance impact.",
-      "restartRequired": "Restart Required"
+      "restartRequired": "Restart Required",
+      "incompatibleWarning": "Current PyTorch ({{version}}) does not support this GPU (sm_{{sm}}).",
+      "upgradeRequired": "PyTorch 2.7.0+cu128 or higher is required for voice synthesis to work properly.",
+      "upgradeButton": "Upgrade PyTorch",
+      "upgradeConfirm": "This will upgrade PyTorch for both ArkSynth and GPT-SoVITS. About 4-6GB will be downloaded. Continue?",
+      "upgradeProgress": "Upgrading PyTorch...",
+      "upgradeComplete": "Upgrade complete! Please restart the app.",
+      "retryUpgrade": "Retry"
     },
     "update": {
       "description": "Check for the latest version on GitHub.",
@@ -737,7 +744,9 @@
     "gpu": {
       "noGpu": "No GPU",
       "free": "Free",
-      "vramWarning": "VRAM under {{min}}GB — training/synthesis may fail"
+      "vramWarning": "VRAM under {{min}}GB — training/synthesis may fail",
+      "incompatible": "GPU sm_{{sm}} is not supported by current PyTorch ({{version}})",
+      "incompatibleShort": "Incompatible"
     }
   },
   "install": {

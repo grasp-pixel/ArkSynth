@@ -444,6 +444,207 @@ class GPTSoVITSInstaller:
 
         return info
 
+    PYTORCH_INDEX_URL = "https://download.pytorch.org/whl/cu128"
+
+    async def get_pytorch_info(self) -> dict:
+        """GPT-SoVITS runtime의 PyTorch 정보 조회"""
+        info: dict = {
+            "version": None,
+            "cuda_version": None,
+            "arch_list": [],
+            "compatible": None,
+        }
+        if not self.python_exe.exists():
+            return info
+
+        script = (
+            "import torch; import json; "
+            "al = []; "
+            "try:\n al = torch.cuda.get_arch_list()\nexcept: pass\n"
+            "cv = getattr(torch.version, 'cuda', None); "
+            "print(json.dumps({'version': torch.__version__, "
+            "'cuda_version': cv, 'arch_list': al}))"
+        )
+        try:
+            result = subprocess.run(
+                [str(self.python_exe), "-c", script],
+                capture_output=True, text=True, timeout=60,
+                encoding="utf-8", errors="replace",
+            )
+            if result.returncode == 0:
+                import json
+                data = json.loads(result.stdout.strip())
+                info.update(data)
+        except Exception as e:
+            logger.warning(f"PyTorch 정보 조회 실패: {e}")
+        return info
+
+    async def upgrade_pytorch(self, on_progress: ProgressCallback) -> bool:
+        """GPT-SoVITS runtime의 PyTorch를 cu128로 업그레이드"""
+        if not self.python_exe.exists():
+            await self._emit_progress(on_progress, InstallProgress(
+                stage="error", progress=0,
+                message="GPT-SoVITS가 설치되어 있지 않습니다.",
+                error="GPT-SoVITS not installed",
+            ))
+            return False
+
+        # 1단계: 현재 버전 확인
+        await self._emit_progress(on_progress, InstallProgress(
+            stage="checking", progress=0.02,
+            message="현재 PyTorch 버전 확인 중...",
+        ))
+        old_info = await self.get_pytorch_info()
+        old_ver = old_info.get("version", "unknown")
+        logger.info(f"PyTorch 업그레이드 시작: 현재 {old_ver}")
+
+        # 2단계: pip install 실행
+        await self._emit_progress(on_progress, InstallProgress(
+            stage="upgrading", progress=0.05,
+            message=f"PyTorch 업그레이드 중... (현재: {old_ver})",
+        ))
+        cmd = [
+            str(self.python_exe), "-m", "pip", "install",
+            "torch", "torchvision", "torchaudio",
+            "--index-url", self.PYTORCH_INDEX_URL,
+            "--force-reinstall",
+        ]
+        logger.info(f"PyTorch 업그레이드 명령: {' '.join(cmd)}")
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                cwd=str(self.gpt_sovits_path),
+            )
+
+            lines_buffer: list[str] = []
+            while True:
+                line_bytes = await process.stdout.readline()  # type: ignore
+                if not line_bytes:
+                    break
+                line = line_bytes.decode("utf-8", errors="replace").strip()
+                if not line:
+                    continue
+                lines_buffer.append(line)
+                logger.debug(f"[pip] {line}")
+
+                # pip 진행률 파싱 (Downloading/Installing 등)
+                progress = 0.05
+                if "Downloading" in line or "downloading" in line:
+                    progress = 0.3
+                elif "Installing" in line or "installing" in line:
+                    progress = 0.7
+                elif "Successfully" in line:
+                    progress = 0.85
+
+                await self._emit_progress(on_progress, InstallProgress(
+                    stage="upgrading", progress=progress,
+                    message=line[:200],
+                ))
+
+            await process.wait()
+            if process.returncode != 0:
+                tail = "\n".join(lines_buffer[-10:])
+                logger.error(f"PyTorch 업그레이드 실패 (exit {process.returncode})")
+                await self._emit_progress(on_progress, InstallProgress(
+                    stage="error", progress=0,
+                    message="PyTorch 업그레이드 실패",
+                    error=tail,
+                ))
+                return False
+        except Exception as e:
+            logger.error(f"PyTorch 업그레이드 중 예외: {e}")
+            await self._emit_progress(on_progress, InstallProgress(
+                stage="error", progress=0,
+                message="업그레이드 중 오류 발생",
+                error=str(e),
+            ))
+            return False
+
+        # 3단계: 검증
+        await self._emit_progress(on_progress, InstallProgress(
+            stage="verifying", progress=0.90,
+            message="업그레이드 검증 중...",
+        ))
+        new_info = await self.get_pytorch_info()
+        new_ver = new_info.get("version", "unknown")
+        arch_list = new_info.get("arch_list", [])
+
+        logger.info(f"PyTorch 업그레이드 완료: {old_ver} → {new_ver}, archs={arch_list}")
+
+        await self._emit_progress(on_progress, InstallProgress(
+            stage="complete", progress=1.0,
+            message=f"업그레이드 완료! PyTorch {old_ver} → {new_ver}",
+        ))
+        return True
+
+    async def upgrade_arksynth_pytorch(self, on_progress: ProgressCallback) -> bool:
+        """ArkSynth 자체 venv의 PyTorch를 cu128로 업그레이드"""
+        await self._emit_progress(on_progress, InstallProgress(
+            stage="upgrading", progress=0.05,
+            message="ArkSynth PyTorch 업그레이드 중...",
+        ))
+
+        cmd = [
+            sys.executable, "-m", "pip", "install",
+            "torch", "torchvision", "torchaudio",
+            "--index-url", self.PYTORCH_INDEX_URL,
+        ]
+        logger.info(f"ArkSynth PyTorch 업그레이드 명령: {' '.join(cmd)}")
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+
+            while True:
+                line_bytes = await process.stdout.readline()  # type: ignore
+                if not line_bytes:
+                    break
+                line = line_bytes.decode("utf-8", errors="replace").strip()
+                if not line:
+                    continue
+                logger.debug(f"[pip-arksynth] {line}")
+
+                progress = 0.1
+                if "Downloading" in line or "downloading" in line:
+                    progress = 0.4
+                elif "Installing" in line or "installing" in line:
+                    progress = 0.7
+                elif "Successfully" in line:
+                    progress = 0.9
+
+                await self._emit_progress(on_progress, InstallProgress(
+                    stage="upgrading", progress=progress,
+                    message=line[:200],
+                ))
+
+            await process.wait()
+            if process.returncode != 0:
+                await self._emit_progress(on_progress, InstallProgress(
+                    stage="error", progress=0,
+                    message="ArkSynth PyTorch 업그레이드 실패",
+                    error=f"pip exit code: {process.returncode}",
+                ))
+                return False
+        except Exception as e:
+            await self._emit_progress(on_progress, InstallProgress(
+                stage="error", progress=0,
+                message="업그레이드 중 오류 발생",
+                error=str(e),
+            ))
+            return False
+
+        await self._emit_progress(on_progress, InstallProgress(
+            stage="complete", progress=1.0,
+            message="ArkSynth PyTorch 업그레이드 완료!",
+        ))
+        return True
+
     def cleanup(self):
         """설치 폴더 정리 (삭제)"""
         if self.install_path.exists():

@@ -965,6 +965,149 @@ async def cleanup_gpt_sovits_install():
 
 
 # ============================================================================
+# PyTorch 업그레이드
+# ============================================================================
+
+_pytorch_upgrade_task: Optional[asyncio.Task] = None
+_pytorch_upgrade_queue: Optional[asyncio.Queue] = None
+
+
+@router.get("/gpt-sovits/pytorch-info")
+async def get_gpt_sovits_pytorch_info():
+    """GPT-SoVITS runtime의 PyTorch 정보 조회"""
+    from ...voice.gpt_sovits.installer import get_installer
+
+    installer = get_installer()
+    if not installer.is_installed():
+        return {
+            "installed": False,
+            "version": None,
+            "cuda_version": None,
+            "arch_list": [],
+            "compatible": None,
+        }
+
+    info = await installer.get_pytorch_info()
+    return {"installed": True, **info}
+
+
+@router.post("/pytorch-upgrade")
+async def start_pytorch_upgrade():
+    """ArkSynth + GPT-SoVITS PyTorch 업그레이드 시작"""
+    global _pytorch_upgrade_task, _pytorch_upgrade_queue
+
+    if _pytorch_upgrade_task and not _pytorch_upgrade_task.done():
+        return {"status": "already_running", "message": "업그레이드가 이미 진행 중입니다."}
+
+    _pytorch_upgrade_queue = asyncio.Queue()
+
+    from ...voice.gpt_sovits.installer import get_installer
+
+    async def _upgrade_task():
+        from ...voice.gpt_sovits.installer import InstallProgress as IP
+
+        installer = get_installer()
+        queue = _pytorch_upgrade_queue
+
+        # 1단계: ArkSynth PyTorch
+        await queue.put(IP(
+            stage="arksynth", progress=0.01,
+            message="ArkSynth PyTorch 업그레이드 시작...",
+        ))
+
+        async def arksynth_cb(p):
+            # 0~50% 구간으로 매핑
+            mapped = IP(
+                stage=f"arksynth_{p.stage}",
+                progress=p.progress * 0.5,
+                message=f"[ArkSynth] {p.message}",
+                error=p.error,
+            )
+            await queue.put(mapped)
+
+        ok1 = await installer.upgrade_arksynth_pytorch(arksynth_cb)
+
+        if not ok1:
+            await queue.put(IP(
+                stage="error", progress=0,
+                message="ArkSynth PyTorch 업그레이드 실패. GPT-SoVITS는 건너뜁니다.",
+            ))
+            # ArkSynth 실패해도 GPT-SoVITS는 시도
+
+        # 2단계: GPT-SoVITS PyTorch
+        if installer.is_installed():
+            async def gpt_cb(p):
+                mapped = IP(
+                    stage=f"gptsovits_{p.stage}",
+                    progress=0.5 + p.progress * 0.5,
+                    message=f"[GPT-SoVITS] {p.message}",
+                    error=p.error,
+                )
+                await queue.put(mapped)
+
+            ok2 = await installer.upgrade_pytorch(gpt_cb)
+        else:
+            ok2 = True  # GPT-SoVITS 미설치면 건너뜀
+
+        # 완료
+        await queue.put(IP(
+            stage="complete", progress=1.0,
+            message="PyTorch 업그레이드 완료! 앱을 재시작해주세요.",
+        ))
+
+    _pytorch_upgrade_task = asyncio.create_task(_upgrade_task())
+    return {"status": "started", "message": "PyTorch 업그레이드를 시작합니다."}
+
+
+@router.get("/pytorch-upgrade/stream")
+async def stream_pytorch_upgrade():
+    """PyTorch 업그레이드 진행률 SSE 스트림"""
+    import json
+    from starlette.responses import StreamingResponse
+
+    queue = _pytorch_upgrade_queue
+    if queue is None:
+        return StreamingResponse(
+            iter(["event: error\ndata: {\"error\": \"업그레이드가 시작되지 않았습니다.\"}\n\n"]),
+            media_type="text/event-stream",
+        )
+
+    async def event_generator():
+        while True:
+            try:
+                progress = await asyncio.wait_for(queue.get(), timeout=30)
+                data = {
+                    "stage": progress.stage,
+                    "progress": progress.progress,
+                    "message": progress.message,
+                }
+                if progress.error:
+                    data["error"] = progress.error
+
+                if progress.stage == "complete":
+                    yield f"event: progress\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+                    yield f"event: complete\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+                    break
+                elif progress.stage == "error" and progress.error:
+                    yield f"event: error\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+                    break
+                else:
+                    yield f"event: progress\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+            except asyncio.TimeoutError:
+                yield "event: ping\ndata: {}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ============================================================================
 # 음성 추출 관련 엔드포인트
 # ============================================================================
 
@@ -1461,42 +1604,55 @@ async def cancel_image_extraction():
 
 @router.get("/gpu-info")
 async def get_gpu_info():
-    """GPU VRAM 정보 조회"""
+    """GPU VRAM 정보 및 호환성 조회"""
+    unavailable = {
+        "available": False,
+        "name": None,
+        "vram_total_gb": 0,
+        "vram_free_gb": 0,
+        "compute_capability": None,
+        "pytorch_version": None,
+        "cuda_version": None,
+        "compatible": None,
+    }
     try:
         import torch
         if not torch.cuda.is_available():
-            return {
-                "available": False,
-                "name": None,
-                "vram_total_gb": 0,
-                "vram_free_gb": 0,
-            }
+            return {**unavailable, "pytorch_version": torch.__version__}
 
         device = torch.cuda.current_device()
         name = torch.cuda.get_device_name(device)
         free, total = torch.cuda.mem_get_info(device)
+        props = torch.cuda.get_device_properties(device)
+
+        # 호환성 판단: GPU sm 버전이 PyTorch 지원 범위 내인지
+        gpu_sm = props.major * 10 + props.minor
+        try:
+            arch_list = torch.cuda.get_arch_list()
+            supported = [
+                int(a.replace("sm_", "").rstrip("a"))
+                for a in arch_list
+                if a.startswith("sm_")
+            ]
+            compatible = gpu_sm <= max(supported) if supported else True
+        except Exception:
+            compatible = True  # 판단 불가 시 호환으로 간주
 
         return {
             "available": True,
             "name": name,
             "vram_total_gb": round(total / (1024 ** 3), 1),
             "vram_free_gb": round(free / (1024 ** 3), 1),
+            "compute_capability": f"{props.major}.{props.minor}",
+            "pytorch_version": torch.__version__,
+            "cuda_version": torch.version.cuda,
+            "compatible": compatible,
         }
     except ImportError:
-        return {
-            "available": False,
-            "name": None,
-            "vram_total_gb": 0,
-            "vram_free_gb": 0,
-        }
+        return unavailable
     except Exception as e:
         logger.warning(f"GPU 정보 조회 실패: {e}")
-        return {
-            "available": False,
-            "name": None,
-            "vram_total_gb": 0,
-            "vram_free_gb": 0,
-        }
+        return unavailable
 
 
 # ============================================================================

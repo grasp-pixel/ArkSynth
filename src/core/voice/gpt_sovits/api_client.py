@@ -162,6 +162,11 @@ class GPTSoVITSAPIClient:
                 str(self.config.api_port),
             ]
 
+            # FP32 모드: 환경변수(is_half) + CLI 플래그(-fp) 이중 적용
+            from ...backend.config import config as server_config
+            if not server_config.gpu_half_precision:
+                cmd.append("-fp")
+
             logger.info(f"GPT-SoVITS API 서버 시작: {' '.join(cmd)}")
             logger.info(f"  작업 디렉토리: {cwd_abs}")
 
@@ -186,7 +191,6 @@ class GPTSoVITSAPIClient:
                     "Write-Host '이 창을 닫으려면 아무 키나 누르세요...'; "
                     "$null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')"
                 )
-                from ...backend.config import config as server_config
                 env = {
                     **os.environ,
                     "PYTHONIOENCODING": "utf-8",

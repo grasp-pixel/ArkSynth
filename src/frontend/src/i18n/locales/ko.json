@@ -304,7 +304,14 @@
       "whisperFp32Desc": "Whisper 전처리를 FP32 정밀도로 실행합니다. 전처리 안정성이 높아지지만, VRAM 사용량이 증가하고 속도가 느려집니다.",
       "cudaMemory": "CUDA 메모리 최적화",
       "cudaMemoryDesc": "PyTorch 메모리 할당 방식을 최적화합니다. 신형 GPU에서 메모리 단편화를 줄여주며, 성능 영향은 거의 없습니다.",
-      "restartRequired": "재시작 필요"
+      "restartRequired": "재시작 필요",
+      "incompatibleWarning": "현재 PyTorch({{version}})가 이 GPU(sm_{{sm}})를 지원하지 않습니다.",
+      "upgradeRequired": "PyTorch 2.7.0+cu128 이상으로 업그레이드해야 음성 합성이 정상 작동합니다.",
+      "upgradeButton": "PyTorch 업그레이드",
+      "upgradeConfirm": "ArkSynth와 GPT-SoVITS의 PyTorch를 업그레이드합니다. 약 4~6GB를 다운로드하며 시간이 소요됩니다. 계속하시겠습니까?",
+      "upgradeProgress": "PyTorch 업그레이드 중...",
+      "upgradeComplete": "업그레이드 완료! 앱을 재시작해주세요.",
+      "retryUpgrade": "재시도"
     },
     "update": {
       "description": "GitHub에서 최신 버전을 확인합니다.",
@@ -737,7 +744,9 @@
     "gpu": {
       "noGpu": "GPU 없음",
       "free": "여유",
-      "vramWarning": "VRAM {{min}}GB 미만 — 학습/합성 시 문제가 발생할 수 있습니다"
+      "vramWarning": "VRAM {{min}}GB 미만 — 학습/합성 시 문제가 발생할 수 있습니다",
+      "incompatible": "GPU sm_{{sm}}은 현재 PyTorch({{version}})에서 지원되지 않습니다",
+      "incompatibleShort": "비호환"
     }
   },
   "install": {

@@ -1834,6 +1834,33 @@ function GpuCompatibilitySection({
   onSettingsChange: () => void
 }) {
   const { t } = useTranslation()
+  const [gpuInfo, setGpuInfo] = useState<{
+    name: string | null
+    compatible: boolean | null
+    compute_capability: string | null
+    pytorch_version: string | null
+    cuda_version: string | null
+  } | null>(null)
+  const [upgrading, setUpgrading] = useState(false)
+  const [upgradeMsg, setUpgradeMsg] = useState('')
+  const [upgradeProgress, setUpgradeProgress] = useState(0)
+  const [upgradeError, setUpgradeError] = useState('')
+  const [upgradeDone, setUpgradeDone] = useState(false)
+
+  useEffect(() => {
+    settingsApi.getGpuInfo().then((info) => {
+      if (info.available) {
+        setGpuInfo({
+          name: info.name,
+          compatible: info.compatible,
+          compute_capability: info.compute_capability,
+          pytorch_version: info.pytorch_version,
+          cuda_version: info.cuda_version,
+        })
+      }
+    }).catch(() => {})
+  }, [upgradeDone])
+
   if (!settings) return null
 
   const isMaxCompat =
@@ -1863,6 +1890,39 @@ function GpuCompatibilitySection({
     }
   }
 
+  const handlePytorchUpgrade = async () => {
+    if (!confirm(t('settings.gpuCompat.upgradeConfirm'))) return
+    setUpgrading(true)
+    setUpgradeMsg(t('settings.gpuCompat.upgradeProgress'))
+    setUpgradeProgress(0)
+    setUpgradeError('')
+
+    try {
+      await settingsApi.startPytorchUpgrade()
+
+      const { createPytorchUpgradeStream } = await import('../services/api')
+      createPytorchUpgradeStream({
+        onProgress: (p) => {
+          setUpgradeMsg(p.message)
+          setUpgradeProgress(Math.round(p.progress * 100))
+        },
+        onComplete: () => {
+          setUpgrading(false)
+          setUpgradeDone(true)
+          setUpgradeMsg(t('settings.gpuCompat.upgradeComplete'))
+        },
+        onError: (err) => {
+          setUpgrading(false)
+          setUpgradeError(err)
+        },
+      })
+      // stream will auto-close on complete/error
+    } catch (e) {
+      setUpgrading(false)
+      setUpgradeError(String(e))
+    }
+  }
+
   return (
     <section>
       <h3 className="text-sm font-medium text-ark-white mb-2">
@@ -1871,6 +1931,62 @@ function GpuCompatibilitySection({
       <p className="text-[11px] text-ark-gray/70 mb-3">
         {t('settings.gpuCompat.description')}
       </p>
+
+      {/* GPU / PyTorch / CUDA 버전 정보 */}
+      {gpuInfo && (
+        <div className="mb-3 px-3 py-2 bg-ark-panel rounded border border-ark-border text-[11px] text-ark-gray font-mono flex flex-wrap gap-x-4 gap-y-0.5">
+          <span>{gpuInfo.name} (sm_{gpuInfo.compute_capability})</span>
+          <span>PyTorch {gpuInfo.pytorch_version}</span>
+          <span>CUDA {gpuInfo.cuda_version}</span>
+        </div>
+      )}
+
+      {/* GPU 비호환 경고 배너 */}
+      {gpuInfo?.compatible === false && (
+        <div className="mb-3 p-3 bg-red-900/30 border border-red-500/50 rounded">
+          <p className="text-sm text-red-400 font-medium mb-1">
+            {t('settings.gpuCompat.incompatibleWarning', {
+              sm: gpuInfo.compute_capability,
+              version: gpuInfo.pytorch_version,
+            })}
+          </p>
+          <p className="text-[11px] text-red-400/80 mb-2">
+            {t('settings.gpuCompat.upgradeRequired')}
+          </p>
+
+          {upgrading ? (
+            <div className="space-y-1">
+              <div className="w-full bg-ark-border rounded-full h-2">
+                <div
+                  className="bg-ark-orange h-2 rounded-full transition-all"
+                  style={{ width: `${upgradeProgress}%` }}
+                />
+              </div>
+              <p className="text-[11px] text-ark-gray">{upgradeMsg}</p>
+            </div>
+          ) : upgradeError ? (
+            <div>
+              <p className="text-[11px] text-red-400 mb-1">{upgradeError}</p>
+              <button
+                onClick={handlePytorchUpgrade}
+                className="text-[11px] px-3 py-1 bg-red-600 hover:bg-red-500 text-white rounded"
+              >
+                {t('settings.gpuCompat.retryUpgrade')}
+              </button>
+            </div>
+          ) : upgradeDone ? (
+            <p className="text-[11px] text-green-400">{upgradeMsg}</p>
+          ) : (
+            <button
+              onClick={handlePytorchUpgrade}
+              className="text-[11px] px-3 py-1.5 bg-ark-orange hover:bg-ark-orange/80 text-black font-medium rounded"
+            >
+              {t('settings.gpuCompat.upgradeButton')}
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="space-y-2">
         {/* 최대호환성 모드 (일괄 토글) */}
         <div className="flex items-start justify-between p-3 bg-ark-panel rounded border-2 border-ark-orange/30">

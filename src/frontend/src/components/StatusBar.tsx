@@ -8,6 +8,10 @@ interface GpuInfo {
   name: string | null
   vram_total_gb: number
   vram_free_gb: number
+  compute_capability?: string | null
+  pytorch_version?: string | null
+  cuda_version?: string | null
+  compatible?: boolean | null
 }
 
 export default function StatusBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
@@ -53,6 +57,7 @@ export default function StatusBar({ onOpenSettings }: { onOpenSettings?: () => v
   }, [backendStatus])
 
   const vramWarning = gpuInfo?.available && gpuInfo.vram_total_gb < 8
+  const gpuIncompatible = gpuInfo?.available && gpuInfo.compatible === false
 
   return (
     <footer className="ark-statusbar px-4 py-2 flex items-center justify-between text-xs">
@@ -96,6 +101,8 @@ export default function StatusBar({ onOpenSettings }: { onOpenSettings?: () => v
             className={`flex items-center gap-1.5 ${
               !gpuInfo.available
                 ? 'text-red-400'
+                : gpuIncompatible
+                ? 'text-red-400'
                 : vramWarning
                 ? 'text-ark-orange'
                 : 'text-ark-gray'
@@ -103,6 +110,11 @@ export default function StatusBar({ onOpenSettings }: { onOpenSettings?: () => v
             title={
               !gpuInfo.available
                 ? t('status.gpu.noGpu')
+                : gpuIncompatible
+                ? t('status.gpu.incompatible', {
+                    sm: gpuInfo.compute_capability,
+                    version: gpuInfo.pytorch_version,
+                  })
                 : vramWarning
                 ? t('status.gpu.vramWarning', { min: 8 })
                 : `${gpuInfo.name} — ${t('status.gpu.free')}: ${gpuInfo.vram_free_gb}GB / ${gpuInfo.vram_total_gb}GB`
@@ -116,9 +128,12 @@ export default function StatusBar({ onOpenSettings }: { onOpenSettings?: () => v
               <span>{t('status.gpu.noGpu')}</span>
             ) : (
               <>
-                {vramWarning && <span>!</span>}
+                {(gpuIncompatible || vramWarning) && <span>!</span>}
                 <span>{gpuInfo.name?.replace(/NVIDIA |GeForce /g, '')}</span>
                 <span className="font-mono">{gpuInfo.vram_total_gb}GB</span>
+                {gpuIncompatible && (
+                  <span className="text-[10px] font-bold">{t('status.gpu.incompatibleShort')}</span>
+                )}
               </>
             )}
           </div>

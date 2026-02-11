@@ -304,7 +304,14 @@
       "whisperFp32Desc": "Whisper前処理をFP32精度で実行します。前処理の安定性は向上しますが、VRAM使用量が増加し速度が低下します。",
       "cudaMemory": "CUDAメモリ最適化",
       "cudaMemoryDesc": "PyTorchのメモリ割り当て方式を最適化します。新型GPUでのメモリ断片化を軽減し、性能への影響はほぼありません。",
-      "restartRequired": "再起動必要"
+      "restartRequired": "再起動必要",
+      "incompatibleWarning": "現在のPyTorch（{{version}}）はこのGPU（sm_{{sm}}）をサポートしていません。",
+      "upgradeRequired": "音声合成を正常に動作させるには、PyTorch 2.7.0+cu128以上へのアップグレードが必要です。",
+      "upgradeButton": "PyTorchアップグレード",
+      "upgradeConfirm": "ArkSynthとGPT-SoVITSのPyTorchをアップグレードします。約4～6GBのダウンロードが必要です。続行しますか？",
+      "upgradeProgress": "PyTorchアップグレード中...",
+      "upgradeComplete": "アップグレード完了！アプリを再起動してください。",
+      "retryUpgrade": "再試行"
     },
     "update": {
       "description": "GitHubで最新バージョンを確認します。",
@@ -737,7 +744,9 @@
     "gpu": {
       "noGpu": "GPU なし",
       "free": "空き",
-      "vramWarning": "VRAM {{min}}GB未満 — 学習・合成で問題が発生する可能性があります"
+      "vramWarning": "VRAM {{min}}GB未満 — 学習・合成で問題が発生する可能性があります",
+      "incompatible": "GPU sm_{{sm}}は現在のPyTorch（{{version}}）でサポートされていません",
+      "incompatibleShort": "非互換"
     }
   },
   "install": {

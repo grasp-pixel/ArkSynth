@@ -77,16 +77,37 @@ def _log_system_info() -> None:
     try:
         import torch
         if torch.cuda.is_available():
+            # 지원 아키텍처 목록
+            try:
+                arch_list = torch.cuda.get_arch_list()
+                supported_sms = [
+                    int(a.replace("sm_", "").rstrip("a"))
+                    for a in arch_list if a.startswith("sm_")
+                ]
+                max_sm = max(supported_sms) if supported_sms else 0
+            except Exception:
+                supported_sms, max_sm = [], 0
+
             for i in range(torch.cuda.device_count()):
                 props = torch.cuda.get_device_properties(i)
                 vram_gb = props.total_memory / (1024**3)
                 free, _ = torch.cuda.mem_get_info(i)
                 free_gb = free / (1024**3)
+                gpu_sm = props.major * 10 + props.minor
                 lines.append(
                     f"GPU[{i}]: {props.name} "
                     f"(VRAM {vram_gb:.1f}GB, free {free_gb:.1f}GB, "
-                    f"CUDA {props.major}.{props.minor})"
+                    f"sm_{gpu_sm})"
                 )
+                if max_sm and gpu_sm > max_sm:
+                    lines.append(
+                        f"  !! GPU 비호환: sm_{gpu_sm}은 현재 "
+                        f"PyTorch({torch.__version__})에서 지원되지 않습니다. "
+                        f"(최대 sm_{max_sm})"
+                    )
+                    lines.append(
+                        "  -> PyTorch 2.7.0+cu128 이상으로 업그레이드가 필요합니다."
+                    )
             lines.append(f"PyTorch: {torch.__version__} (CUDA {torch.version.cuda})")
         else:
             lines.append("GPU: CUDA not available")
