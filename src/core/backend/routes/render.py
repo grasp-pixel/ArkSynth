@@ -413,6 +413,15 @@ async def render_progress_stream(episode_id: str):
                 }
                 yield f"event: progress\ndata: {json.dumps(data)}\n\n"
 
+                # 이미 완료/취소/실패 상태면 즉시 complete 이벤트 발행 후 종료
+                if initial.status in (
+                    RenderStatus.COMPLETED,
+                    RenderStatus.CANCELLED,
+                    RenderStatus.FAILED,
+                ):
+                    yield f"event: complete\ndata: {json.dumps(data)}\n\n"
+                    return
+
             while True:
                 try:
                     progress = await asyncio.wait_for(queue.get(), timeout=30.0)

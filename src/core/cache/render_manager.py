@@ -262,6 +262,21 @@ class RenderManager:
                         return True
                 return False
 
+            # 렌더링 전 모든 매핑된 캐릭터 일괄 사전 준비
+            unique_char_ids = set(job.voice_assignments.values())
+            if job.default_char_id:
+                unique_char_ids.add(job.default_char_id)
+            logger.info(f"[RenderManager] 사전 준비 시작 - 고유 캐릭터: {len(unique_char_ids)}명")
+            ready_chars: set[str] = set()
+            for cid in unique_char_ids:
+                if self._cancel_requested:
+                    break
+                if await ensure_char_ready(cid):
+                    ready_chars.add(cid)
+                else:
+                    logger.warning(f"[RenderManager] 사전 준비 실패: {cid}")
+            logger.info(f"[RenderManager] 사전 준비 완료 - 준비됨: {len(ready_chars)}/{len(unique_char_ids)}")
+
             for dialogue in job.dialogues:
                 if self._cancel_requested:
                     self._progress.status = RenderStatus.CANCELLED

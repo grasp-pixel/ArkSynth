@@ -2433,13 +2433,33 @@ export const useAppStore = create<AppState>((set, get) => ({
           }))
 
           // 렌더링 시작
-          await renderApi.startRender(
+          const renderResult = await renderApi.startRender(
             ep.episodeId,
             get().voiceLanguage,
             Object.keys(voiceAssignments).length > 0 ? voiceAssignments : undefined,
             defaultCharId || undefined,
             force,
           )
+
+          // 이미 완료된 경우 SSE 대기 없이 바로 다음 에피소드로
+          if (renderResult.status === 'completed') {
+            set(state => ({
+              groupRenderState: state.groupRenderState ? {
+                ...state.groupRenderState,
+                currentDialogueText: null,
+                episodes: state.groupRenderState.episodes.map((e, idx) =>
+                  idx === i ? {
+                    ...e,
+                    status: 'completed' as const,
+                    completedDialogues: renderResult.completed ?? renderResult.total ?? dialogueCount,
+                    totalDialogues: renderResult.total ?? dialogueCount,
+                  } : e
+                ),
+              } : null,
+            }))
+            console.log(`[startGroupRender] 에피소드 이미 완료됨 (캐시): ${ep.episodeId}`)
+            continue
+          }
 
           // SSE로 대사별 진행률 수신하며 완료 대기
           await new Promise<void>((resolve, reject) => {
