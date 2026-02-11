@@ -8,6 +8,7 @@ import {
   imageExtractApi,
   createImageExtractStream,
   createFFmpegInstallStream,
+  createFlatcInstallStream,
   gamedataApi,
   createGamedataUpdateStream,
   voiceApi,
@@ -64,6 +65,10 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [ffmpegInstallMsg, setFFmpegInstallMsg] = useState<string | null>(null);
   const [ffmpegInstallError, setFFmpegInstallError] = useState<string | null>(null);
   const ffmpegInstallStreamRef = useRef<{ close: () => void } | null>(null);
+  const [isInstallingFlatc, setIsInstallingFlatc] = useState(false);
+  const [flatcInstallMsg, setFlatcInstallMsg] = useState<string | null>(null);
+  const [flatcInstallError, setFlatcInstallError] = useState<string | null>(null);
+  const flatcInstallStreamRef = useRef<{ close: () => void } | null>(null);
   const [isRefreshingCharacters, setIsRefreshingCharacters] = useState(false);
 
   // 닉네임 관련 상태 (언어별)
@@ -243,6 +248,31 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     } catch (err) {
       setIsInstallingFFmpeg(false);
       setFFmpegInstallError(err instanceof Error ? err.message : t('settings.ffmpeg.startFailed'));
+    }
+  };
+
+  const startFlatcInstall = async () => {
+    setIsInstallingFlatc(true);
+    setFlatcInstallMsg(t('settings.flatc.installing'));
+    setFlatcInstallError(null);
+    try {
+      await settingsApi.startFlatcInstall();
+      flatcInstallStreamRef.current = createFlatcInstallStream({
+        onProgress: (p) => setFlatcInstallMsg(p.message),
+        onComplete: () => {
+          setIsInstallingFlatc(false);
+          setFlatcInstallMsg(t('settings.flatc.installed'));
+          loadSettings();
+        },
+        onError: (error) => {
+          setIsInstallingFlatc(false);
+          setFlatcInstallError(error);
+          setFlatcInstallMsg(null);
+        },
+      });
+    } catch (err) {
+      setIsInstallingFlatc(false);
+      setFlatcInstallError(err instanceof Error ? err.message : t('settings.flatc.startFailed'));
     }
   };
 
@@ -689,12 +719,21 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           </button>
                         )}
                         {!dep.installed && dep.name === "flatc" && (
-                          <button
-                            onClick={loadFlatcGuide}
-                            className="text-xs text-ark-orange hover:underline"
-                          >
-                            {t('settings.installMethod')}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={startFlatcInstall}
+                              disabled={isInstallingFlatc}
+                              className="text-xs text-ark-orange hover:underline disabled:opacity-50"
+                            >
+                              {isInstallingFlatc ? t('settings.installing') : t('settings.autoInstall')}
+                            </button>
+                            <button
+                              onClick={loadFlatcGuide}
+                              className="text-xs text-ark-gray hover:underline"
+                            >
+                              {t('settings.manual')}
+                            </button>
+                          </div>
                         )}
                         {!dep.installed && dep.name === "GPT-SoVITS" && (
                           <button
@@ -787,6 +826,27 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       )}
                       {ffmpegInstallError && (
                         <p className="text-xs text-red-400">{ffmpegInstallError}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* flatc 설치 진행/결과 */}
+                  {(isInstallingFlatc || flatcInstallMsg || flatcInstallError) && (
+                    <div className="mt-3 p-3 bg-ark-panel rounded border border-ark-border">
+                      {isInstallingFlatc && (
+                        <div className="flex items-center gap-2">
+                          <svg className="animate-spin w-4 h-4 text-ark-orange" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                          <span className="text-xs text-ark-white">{flatcInstallMsg}</span>
+                        </div>
+                      )}
+                      {!isInstallingFlatc && flatcInstallMsg && (
+                        <p className="text-xs text-green-400">{flatcInstallMsg}</p>
+                      )}
+                      {flatcInstallError && (
+                        <p className="text-xs text-red-400">{flatcInstallError}</p>
                       )}
                     </div>
                   )}
