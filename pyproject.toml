@@ -39,6 +39,8 @@ dependencies = [
     # Whisper 전처리 (학습 데이터 준비용)
     "faster-whisper>=1.0.0",
     "ctranslate2>=4.0.0",
+    # huggingface_hub/urllib3의 brotli 호환성 (brotlicffi 등과의 충돌 방지)
+    "brotli>=1.1.0",
     # 게임 데이터 다운로드 (게임 서버 직접)
     "arkprts[assets]",
 ]
