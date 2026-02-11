@@ -755,6 +755,7 @@
       "downloading": "ダウンロード",
       "extracting": "解凍",
       "verifying": "検証",
+      "pytorchUpgrade": "PyTorchアップグレード",
       "complete": "完了"
     },
     "error": {

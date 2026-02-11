@@ -1186,7 +1186,7 @@ export interface GptSovitsInstallInfo {
 }
 
 export interface InstallProgress {
-  stage: 'downloading_python' | 'downloading' | 'extracting' | 'verifying' | 'complete' | 'error'
+  stage: 'downloading_python' | 'downloading' | 'extracting' | 'verifying' | 'pytorch_upgrade' | 'checking' | 'upgrading' | 'complete' | 'error'
   progress: number
   message: string
   error?: string

@@ -20,16 +20,22 @@ export default function GPTSoVITSInstallDialog({
   const [error, setError] = useState<string | null>(null)
   const streamRef = useRef<{ close: () => void } | null>(null)
 
+  // PyTorch 업그레이드 단계 감지 (GPU 비호환 시에만 서버에서 전송)
+  const [hasPytorchUpgrade, setHasPytorchUpgrade] = useState(false)
+
   const STAGES = [
     { id: 'downloading', label: t('install.stage.downloading') },
     { id: 'extracting', label: t('install.stage.extracting') },
     { id: 'verifying', label: t('install.stage.verifying') },
+    ...(hasPytorchUpgrade ? [{ id: 'pytorch_upgrade', label: t('install.stage.pytorchUpgrade') }] : []),
     { id: 'complete', label: t('install.stage.complete') },
   ]
 
   function getStageIndex(stage: string | undefined): number {
     if (!stage) return -1
-    const index = STAGES.findIndex(s => s.id === stage)
+    // upgrade_pytorch 내부 stage를 pytorch_upgrade로 매핑
+    const mapped = (stage === 'upgrading' || stage === 'checking') ? 'pytorch_upgrade' : stage
+    const index = STAGES.findIndex(s => s.id === mapped)
     return index
   }
 
@@ -68,6 +74,9 @@ export default function GPTSoVITSInstallDialog({
       streamRef.current = createInstallStream({
         onProgress: (p) => {
           setProgress(p)
+          if (p.stage === 'pytorch_upgrade' || p.stage === 'upgrading') {
+            setHasPytorchUpgrade(true)
+          }
           if (p.error) {
             setError(p.error)
           }
@@ -247,7 +256,7 @@ export default function GPTSoVITSInstallDialog({
               </div>
 
               {/* 단계 표시 */}
-              <div className="grid grid-cols-4 gap-1">
+              <div className={`grid gap-1 ${hasPytorchUpgrade ? 'grid-cols-5' : 'grid-cols-4'}`}>
                 {STAGES.map((stage, i) => (
                   <div key={stage.id} className="text-center">
                     <div

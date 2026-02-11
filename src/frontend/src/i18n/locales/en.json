@@ -755,6 +755,7 @@
       "downloading": "Download",
       "extracting": "Extract",
       "verifying": "Verify",
+      "pytorchUpgrade": "PyTorch Upgrade",
       "complete": "Complete"
     },
     "error": {

@@ -136,12 +136,31 @@ class GPTSoVITSInstaller:
             verify_result = await self._verify_installation(on_progress)
 
             if verify_result:
+                self._log("설치 완료!")
+
+                # GPU 비호환 시 PyTorch 자동 업그레이드
+                if await self._needs_pytorch_upgrade():
+                    await self._emit_progress(on_progress, InstallProgress(
+                        stage="pytorch_upgrade",
+                        progress=0.0,
+                        message="GPU 호환성을 위해 PyTorch를 업그레이드합니다...",
+                    ))
+                    upgrade_ok = await self.upgrade_pytorch(on_progress)
+                    if not upgrade_ok:
+                        # 업그레이드 실패해도 설치 자체는 성공
+                        self._log("PyTorch 업그레이드 실패 — 수동 업그레이드 필요")
+                        await self._emit_progress(on_progress, InstallProgress(
+                            stage="complete",
+                            progress=1.0,
+                            message="설치 완료 (PyTorch 업그레이드 실패 — 설정에서 수동 업그레이드 필요)",
+                        ))
+                        return True
+
                 await self._emit_progress(on_progress, InstallProgress(
                     stage="complete",
                     progress=1.0,
                     message="설치 완료!"
                 ))
-                self._log("설치 완료!")
                 return True
             else:
                 await self._emit_progress(on_progress, InstallProgress(
@@ -445,6 +464,43 @@ class GPTSoVITSInstaller:
         return info
 
     PYTORCH_INDEX_URL = "https://download.pytorch.org/whl/cu128"
+
+    async def _needs_pytorch_upgrade(self) -> bool:
+        """현재 GPU가 GPT-SoVITS 번들 PyTorch와 호환되지 않는지 확인.
+
+        ArkSynth 쪽 torch를 사용하여 GPU compute capability를 조회하고,
+        GPT-SoVITS 런타임의 PyTorch arch_list와 비교합니다.
+        """
+        try:
+            import torch
+            if not torch.cuda.is_available():
+                return False
+            props = torch.cuda.get_device_properties(0)
+            gpu_sm = props.major * 10 + props.minor
+        except Exception:
+            return False
+
+        # GPT-SoVITS 런타임의 PyTorch가 이 GPU를 지원하는지 확인
+        gpt_info = await self.get_pytorch_info()
+        arch_list = gpt_info.get("arch_list", [])
+        if not arch_list:
+            return False  # 판단 불가 시 업그레이드 안 함
+
+        supported = [
+            int(a.replace("sm_", "").rstrip("a"))
+            for a in arch_list
+            if a.startswith("sm_")
+        ]
+        if not supported:
+            return False
+
+        needs = gpu_sm > max(supported)
+        if needs:
+            logger.info(
+                f"GPU sm_{gpu_sm} > PyTorch max sm_{max(supported)} "
+                f"— PyTorch 업그레이드 필요"
+            )
+        return needs
 
     async def get_pytorch_info(self) -> dict:
         """GPT-SoVITS runtime의 PyTorch 정보 조회"""
