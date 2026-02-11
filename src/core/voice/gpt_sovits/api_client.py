@@ -179,7 +179,12 @@ class GPTSoVITSAPIClient:
                     "chcp 65001 | Out-Null; "
                     "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
                     f"& {cmd_escaped} 2>&1"
-                    f" | Tee-Object -FilePath '{log_path}'"
+                    f" | Tee-Object -FilePath '{log_path}'; "
+                    "$ec = $LASTEXITCODE; "
+                    "Write-Host ''; "
+                    "Write-Host \"GPT-SoVITS 프로세스가 종료되었습니다. (exit code: $ec)\" -ForegroundColor Red; "
+                    "Write-Host '이 창을 닫으려면 아무 키나 누르세요...'; "
+                    "$null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')"
                 )
                 from ...backend.config import config as server_config
                 env = {
