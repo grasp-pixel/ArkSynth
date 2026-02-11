@@ -3,6 +3,7 @@
 import logging
 import asyncio
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -68,6 +69,23 @@ class UpdateSettingsRequest(BaseModel):
     """설정 업데이트 요청"""
     gpt_sovits_path: Optional[str] = None
     gpt_sovits_language: Optional[str] = None
+
+
+def _refresh_path_from_registry():
+    """Windows 레지스트리에서 최신 PATH를 읽어 os.environ 갱신 (설치 직후 반영용)"""
+    if sys.platform != "win32":
+        return
+    try:
+        import winreg
+        # System PATH
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment") as key:
+            system_path = winreg.QueryValueEx(key, "Path")[0]
+        # User PATH
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Environment") as key:
+            user_path = winreg.QueryValueEx(key, "Path")[0]
+        os.environ["PATH"] = system_path + ";" + user_path
+    except Exception:
+        pass
 
 
 def check_ffmpeg() -> DependencyStatus:
@@ -136,6 +154,30 @@ def check_gpt_sovits() -> DependencyStatus:
     return DependencyStatus(name="GPT-SoVITS", installed=False)
 
 
+def check_flatc() -> DependencyStatus:
+    """flatc (FlatBuffers 컴파일러) 설치 확인"""
+    try:
+        result = subprocess.run(
+            ["flatc", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            version = result.stdout.strip().split()[-1] if result.stdout.strip() else "unknown"
+            path = shutil.which("flatc")
+            return DependencyStatus(
+                name="flatc",
+                installed=True,
+                version=version,
+                path=path,
+            )
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    return DependencyStatus(name="flatc", installed=False)
+
+
 def check_7zip() -> DependencyStatus:
     """7-Zip 설치 확인"""
     # 일반적인 7-Zip 설치 경로
@@ -199,6 +241,7 @@ async def get_settings():
         check_ffmpeg(),
         check_ffprobe(),
         check_7zip(),
+        check_flatc(),
         check_gpt_sovits(),
     ]
 
@@ -349,6 +392,7 @@ async def check_dependencies():
             check_ffmpeg(),
             check_ffprobe(),
             check_7zip(),
+            check_flatc(),
             check_gpt_sovits(),
         ]
     }
@@ -357,10 +401,12 @@ async def check_dependencies():
 @router.post("/refresh-dependencies")
 async def refresh_dependencies():
     """의존성 재검사 + GPT-SoVITS 재초기화"""
+    _refresh_path_from_registry()
     deps = [
         check_ffmpeg(),
         check_ffprobe(),
         check_7zip(),
+        check_flatc(),
         check_gpt_sovits(),
     ]
     return {"dependencies": deps}
@@ -371,11 +417,13 @@ async def refresh_all():
     """전체 새로고침: shared_loaders 리셋 + 의존성 재검사 + GPT-SoVITS 재초기화"""
     from ..shared_loaders import reset_all
     reset_all()
+    _refresh_path_from_registry()
 
     deps = [
         check_ffmpeg(),
         check_ffprobe(),
         check_7zip(),
+        check_flatc(),
         check_gpt_sovits(),
     ]
     return {"dependencies": deps, "message": "전체 새로고침 완료"}
@@ -556,6 +604,25 @@ async def stream_ffmpeg_install():
             "X-Accel-Buffering": "no",
         }
     )
+
+
+@router.get("/flatc/install-guide")
+async def flatc_install_guide():
+    """flatc (FlatBuffers 컴파일러) 설치 가이드"""
+    return {
+        "name": "flatc",
+        "description": "arkprts 데이터 소스를 사용하려면 flatc (FlatBuffers 컴파일러)가 필요합니다. GitHub 소스를 사용하면 flatc 없이도 데이터를 다운로드할 수 있습니다.",
+        "windows": {
+            "method": "winget",
+            "command": "winget install Google.FlatBuffers",
+        },
+        "manual_steps": [
+            "1. https://github.com/google/flatbuffers/releases 에서 다운로드",
+            "2. Windows: flatc_windows.zip 선택",
+            "3. 압축 해제 후 flatc.exe를 PATH 환경변수에 추가",
+            "4. 터미널 재시작 후 'flatc --version' 으로 확인",
+        ],
+    }
 
 
 @router.get("/7zip/install-guide")

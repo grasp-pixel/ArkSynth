@@ -4,9 +4,9 @@
   "gamedata_repo": "ArknightsAssets/ArknightsGamedata",
   "default_tts_engine": "gpt_sovits",
   "nickname": {
-    "ko": "",
-    "ja": "",
-    "en": ""
+    "ko": "오라클",
+    "ja": "オラクル",
+    "en": "Oracle"
   },
   "gamedata_branch": "master",
   "gamedata_source": "arkprts"

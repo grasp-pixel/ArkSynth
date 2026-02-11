@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import shutil
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -97,6 +98,15 @@ async def start_update(request: UpdateRequest):
 
     source = get_source()
     logger.info(f"[data.py] Got source: {source.source_type}, gamedata_path: {source.gamedata_path}")
+
+    # arkprts 소스는 flatc 필수
+    if source.source_type == "arkprts" and not shutil.which("flatc"):
+        raise HTTPException(
+            status_code=400,
+            detail="arkprts 데이터 소스를 사용하려면 flatc가 필요합니다. "
+                   "설정 → 의존성에서 flatc 설치 방법을 확인하거나, "
+                   "데이터 소스를 GitHub로 변경해주세요.",
+        )
 
     # 진행률 큐 생성
     _update_progress_queue = asyncio.Queue()
