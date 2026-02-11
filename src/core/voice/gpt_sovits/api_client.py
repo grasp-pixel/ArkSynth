@@ -162,9 +162,9 @@ class GPTSoVITSAPIClient:
                 str(self.config.api_port),
             ]
 
-            # FP32 모드: 환경변수(is_half) + CLI 플래그(-fp) 이중 적용
+            # FP32 모드: api.py만 -fp 플래그 지원 (api_v2.py는 미지원)
             from ...backend.config import config as server_config
-            if not server_config.gpu_half_precision:
+            if not server_config.gpu_half_precision and api_script.name == "api.py":
                 cmd.append("-fp")
 
             logger.info(f"GPT-SoVITS API 서버 시작: {' '.join(cmd)}")
@@ -196,8 +196,9 @@ class GPTSoVITSAPIClient:
                     "PYTHONIOENCODING": "utf-8",
                     "is_half": str(server_config.gpu_half_precision),
                 }
-                if server_config.cuda_memory_optimization:
-                    env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+                # PYTORCH_CUDA_ALLOC_CONF는 GPT-SoVITS에 전달하지 않음
+                # (구형 PyTorch 2.0에서 expandable_segments 미지원으로 RuntimeError 발생)
+                env.pop("PYTORCH_CUDA_ALLOC_CONF", None)
                 logger.info(
                     f"  is_half={env['is_half']}, "
                     f"CUDA_ALLOC_CONF={env.get('PYTORCH_CUDA_ALLOC_CONF', 'default')}"
