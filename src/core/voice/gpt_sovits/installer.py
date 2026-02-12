@@ -43,15 +43,28 @@ class GPTSoVITSInstaller:
     # 기본 설치 경로
     DEFAULT_INSTALL_PATH = Path("tools/gpt_sovits")
 
-    # GPT-SoVITS v2pro Windows 통합 패키지 (7z 형식)
-    # Hugging Face에서 호스팅 - 2025.06 최신 버전
-    INTEGRATED_PACKAGE_URL = "https://huggingface.co/lj1995/GPT-SoVITS-windows-package/resolve/main/GPT-SoVITS-v2pro-20250604.7z"
-    INTEGRATED_FOLDER = "GPT-SoVITS-v2pro-20250604"
     ARCHIVE_FILENAME = "gpt_sovits_package.7z"
+
+    # 패키지 변형별 설정 (URL, 최소 파일 크기, 압축 해제 후 폴더명)
+    PACKAGE_VARIANTS: dict[str, dict] = {
+        "standard": {
+            "url": "https://huggingface.co/lj1995/GPT-SoVITS-windows-package/resolve/main/GPT-SoVITS-v2pro-20250604.7z",
+            "folder": "GPT-SoVITS-v2pro-20250604",
+            "min_size": 7_500_000_000,  # ~7.8GB
+        },
+        "nvidia50": {
+            "url": "https://huggingface.co/lj1995/GPT-SoVITS-windows-package/resolve/main/GPT-SoVITS-v2pro-20250604-nvidia50.7z",
+            "folder": "GPT-SoVITS-v2pro-20250604-nvidia50",
+            "min_size": 8_500_000_000,  # ~8.8GB
+        },
+    }
+    # 모든 알려진 폴더명 (설치 감지용)
+    KNOWN_FOLDERS = [v["folder"] for v in PACKAGE_VARIANTS.values()]
 
     def __init__(self, install_path: Optional[Path] = None):
         self.install_path = install_path or self.DEFAULT_INSTALL_PATH
         self._cancelled = False
+        self._variant: str = "standard"  # 현재 설치에 사용할 패키지 변형
 
     @property
     def python_exe(self) -> Path:
@@ -60,8 +73,16 @@ class GPTSoVITSInstaller:
 
     @property
     def gpt_sovits_path(self) -> Path:
-        """GPT-SoVITS 경로"""
-        return self.install_path / self.INTEGRATED_FOLDER
+        """GPT-SoVITS 경로 (실제 존재하는 폴더 자동 탐색)"""
+        # 1) 이미 설치된 폴더가 있으면 그것을 사용
+        for folder in self.KNOWN_FOLDERS:
+            candidate = self.install_path / folder
+            if candidate.exists():
+                return candidate
+        # 2) 없으면 현재 variant 설정 기반
+        variant_info = self.PACKAGE_VARIANTS.get(self._variant, {})
+        folder = variant_info.get("folder", self.KNOWN_FOLDERS[0])
+        return self.install_path / folder
 
     @property
     def log_file(self) -> Path:
@@ -74,6 +95,27 @@ class GPTSoVITSInstaller:
         if not api_script.exists():
             api_script = self.gpt_sovits_path / "api.py"
         return self.python_exe.exists() and api_script.exists()
+
+    @staticmethod
+    def detect_variant() -> str:
+        """GPU에 따라 권장 패키지 변형 감지.
+
+        RTX 50 시리즈(Blackwell, sm_120+)는 nvidia50 패키지 필요.
+        """
+        try:
+            import torch
+            if not torch.cuda.is_available():
+                return "standard"
+            props = torch.cuda.get_device_properties(0)
+            gpu_sm = props.major * 10 + props.minor
+            if gpu_sm >= 120:
+                logger.info(
+                    f"GPU sm_{gpu_sm} (Blackwell) 감지 → nvidia50 패키지 권장"
+                )
+                return "nvidia50"
+        except Exception:
+            pass
+        return "standard"
 
     def cancel(self):
         """설치 취소"""
@@ -88,18 +130,22 @@ class GPTSoVITSInstaller:
     async def install(
         self,
         on_progress: ProgressCallback,
-        cuda_version: str = "cu121"  # 통합 패키지는 CUDA 포함이므로 무시
+        cuda_version: str = "cu121",  # 통합 패키지는 CUDA 포함이므로 무시
+        variant: Optional[str] = None,
     ) -> bool:
         """GPT-SoVITS 통합 패키지 설치
 
         Args:
             on_progress: 진행 상황 콜백 (동기 또는 비동기)
             cuda_version: 무시됨 (통합 패키지는 CUDA 포함)
+            variant: 패키지 변형 ("standard", "nvidia50", None=자동 감지)
 
         Returns:
             설치 성공 여부
         """
         self._cancelled = False
+        self._variant = variant or self.detect_variant()
+        logger.info(f"설치 패키지 변형: {self._variant}")
 
         try:
             # 설치 디렉토리 생성
@@ -139,7 +185,8 @@ class GPTSoVITSInstaller:
                 self._log("설치 완료!")
 
                 # GPU 비호환 시 PyTorch 자동 업그레이드
-                if await self._needs_pytorch_upgrade():
+                # nvidia50 패키지는 RTX 50용 PyTorch가 이미 포함되어 있으므로 스킵
+                if self._variant != "nvidia50" and await self._needs_pytorch_upgrade():
                     await self._emit_progress(on_progress, InstallProgress(
                         stage="pytorch_upgrade",
                         progress=0.0,
@@ -212,16 +259,20 @@ class GPTSoVITSInstaller:
 
     async def _download_package(self, on_progress: ProgressCallback):
         """통합 패키지 다운로드"""
+        variant_info = self.PACKAGE_VARIANTS[self._variant]
+        download_url = variant_info["url"]
+        min_expected_size = variant_info["min_size"]
+
+        variant_label = "RTX 50 전용" if self._variant == "nvidia50" else "표준"
         await self._emit_progress(on_progress, InstallProgress(
             stage="downloading",
             progress=0.0,
-            message="GPT-SoVITS 통합 패키지 다운로드 준비 중..."
+            message=f"GPT-SoVITS {variant_label} 패키지 다운로드 준비 중..."
         ))
 
         archive_path = self.install_path / self.ARCHIVE_FILENAME
 
-        # 이미 다운로드된 파일이 있으면 스킵 (최소 7.5GB 이상이어야 완료된 것으로 간주)
-        min_expected_size = 7_500_000_000  # 7.5GB (v2pro는 약 7.8GB)
+        # 이미 다운로드된 파일이 있으면 스킵
         if archive_path.exists():
             file_size = archive_path.stat().st_size
             if file_size >= min_expected_size:
@@ -237,7 +288,7 @@ class GPTSoVITSInstaller:
                 self._log(f"부분 다운로드 파일 삭제 ({file_size / (1024**3):.1f}GB)")
                 archive_path.unlink()
 
-        self._log(f"다운로드 시작: {self.INTEGRATED_PACKAGE_URL}")
+        self._log(f"다운로드 시작: {download_url} (variant={self._variant})")
 
         # 대용량 파일 다운로드를 위한 타임아웃 설정
         # 각 청크 읽기마다 타임아웃이 갱신되도록 sock_read 사용
@@ -249,7 +300,7 @@ class GPTSoVITSInstaller:
 
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(self.INTEGRATED_PACKAGE_URL) as resp:
+                async with session.get(download_url) as resp:
                     if resp.status != 200:
                         raise Exception(f"다운로드 실패: HTTP {resp.status}")
 

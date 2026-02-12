@@ -23,6 +23,10 @@ export default function GPTSoVITSInstallDialog({
   // PyTorch 업그레이드 단계 감지 (GPU 비호환 시에만 서버에서 전송)
   const [hasPytorchUpgrade, setHasPytorchUpgrade] = useState(false)
 
+  // 패키지 변형 선택 (standard / nvidia50)
+  const [variant, setVariant] = useState<string>('standard')
+  const [recommendedVariant, setRecommendedVariant] = useState<string>('standard')
+
   const STAGES = [
     { id: 'downloading', label: t('install.stage.downloading') },
     { id: 'extracting', label: t('install.stage.extracting') },
@@ -42,6 +46,7 @@ export default function GPTSoVITSInstallDialog({
   useEffect(() => {
     if (isOpen) {
       loadInstallInfo()
+      loadGpuInfo()
     }
     return () => {
       // 컴포넌트 언마운트 시 스트림 정리
@@ -61,14 +66,25 @@ export default function GPTSoVITSInstallDialog({
     }
   }
 
+  const loadGpuInfo = async () => {
+    try {
+      const gpuInfo = await settingsApi.getGpuInfo()
+      const rec = gpuInfo.recommended_variant || 'standard'
+      setRecommendedVariant(rec)
+      setVariant(rec)
+    } catch {
+      // GPU 정보 로드 실패 시 기본값 유지
+    }
+  }
+
   const handleStartInstall = async () => {
     setIsInstalling(true)
     setProgress({ stage: 'downloading_python', progress: 0, message: t('install.status.starting') })
     setError(null)
 
     try {
-      // 설치 시작 요청
-      await settingsApi.startGptSovitsInstall()
+      // 설치 시작 요청 (선택된 variant 전달)
+      await settingsApi.startGptSovitsInstall(variant)
 
       // SSE 스트림 연결
       streamRef.current = createInstallStream({
@@ -193,7 +209,35 @@ export default function GPTSoVITSInstallDialog({
                   <li>{t('install.item.dependencies')}</li>
                 </ul>
                 <p className="text-xs text-ark-orange mt-2">
-                  {t('install.info.diskSpace')}
+                  {t(`install.info.diskSpace_${variant}`, { defaultValue: t('install.info.diskSpace') })}
+                </p>
+              </div>
+
+              {/* 패키지 변형 선택 */}
+              <div className="p-3 bg-ark-panel rounded border border-ark-border">
+                <label className="text-sm text-ark-white block mb-2">
+                  {t('install.variant.label')}
+                  {recommendedVariant !== 'standard' && (
+                    <span className="ml-2 text-xs text-ark-orange">
+                      ({t('install.variant.autoDetected')})
+                    </span>
+                  )}
+                </label>
+                <select
+                  value={variant}
+                  onChange={(e) => setVariant(e.target.value)}
+                  className="w-full bg-ark-black border border-ark-border rounded px-3 py-2 text-sm text-ark-white"
+                >
+                  <option value="standard">{t('install.variant.standard')}</option>
+                  <option value="nvidia50">{t('install.variant.nvidia50')}</option>
+                </select>
+                {recommendedVariant === 'nvidia50' && (
+                  <p className="text-xs text-ark-orange mt-2">
+                    {t('install.variant.nvidia50Recommended')}
+                  </p>
+                )}
+                <p className="text-xs text-ark-gray mt-2">
+                  {t('install.variant.nvidia50Hint')}
                 </p>
               </div>
 

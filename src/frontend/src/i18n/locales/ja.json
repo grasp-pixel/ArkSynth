@@ -779,8 +779,18 @@
       "cudaAvailable": "CUDA：使用可能",
       "cudaNotAvailable": "CUDA：使用不可",
       "diskSpace": "ダウンロード約8.2GB、解凍後約20GB",
+      "diskSpace_standard": "ダウンロード約7.8GB、解凍後約20GB",
+      "diskSpace_nvidia50": "ダウンロード約8.8GB、解凍後約20GB",
       "gpuSupport": "✓ GPUアクセラレーション対応（CUDA含む）",
       "includedPackages": "統合パッケージにPyTorch + CUDAが含まれています"
+    },
+    "variant": {
+      "label": "パッケージ種類",
+      "standard": "標準",
+      "nvidia50": "RTX 50シリーズ専用",
+      "autoDetected": "GPU自動検出",
+      "nvidia50Recommended": "RTX 50シリーズが検出されたため、専用パッケージが選択されました",
+      "nvidia50Hint": "NVIDIA RTX 50シリーズGPUをお使いの場合は専用パッケージを選択してください"
     },
     "section": {
       "items": "インストール項目"

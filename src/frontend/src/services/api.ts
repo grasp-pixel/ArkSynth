@@ -1281,10 +1281,10 @@ export const settingsApi = {
   },
 
   // GPT-SoVITS 설치 시작
-  startGptSovitsInstall: async (cudaVersion: string = 'cu121') => {
+  startGptSovitsInstall: async (variant?: string) => {
     const res = await api.post<{ status: string; message: string }>(
       '/api/settings/gpt-sovits/install',
-      { cuda_version: cudaVersion }
+      { variant }
     )
     return res.data
   },
@@ -1322,6 +1322,7 @@ export const settingsApi = {
       pytorch_version: string | null
       cuda_version: string | null
       compatible: boolean | null
+      recommended_variant?: string
     }>('/api/settings/gpu-info')
     return res.data
   },

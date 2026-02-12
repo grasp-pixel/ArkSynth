@@ -7,8 +7,11 @@ from pathlib import Path
 
 # 기본 설치 경로 (앱 내 자동 설치 위치)
 DEFAULT_INSTALL_BASE = Path("tools/gpt_sovits")
-# 통합 패키지 경로 (Hugging Face에서 다운로드) - v2pro 최신
-INTEGRATED_PACKAGE_PATH = DEFAULT_INSTALL_BASE / "GPT-SoVITS-v2pro-20250604"
+# 최신 통합 패키지 폴더명 (variant별)
+INTEGRATED_FOLDERS = [
+    "GPT-SoVITS-v2pro-20250604-nvidia50",  # RTX 50 전용 (우선)
+    "GPT-SoVITS-v2pro-20250604",           # 표준
+]
 # 레거시 통합 패키지 경로
 LEGACY_INTEGRATED_PATH = DEFAULT_INSTALL_BASE / "GPT-SoVITS-v2-240821"
 # 소스 설치 경로 (레거시)
@@ -20,7 +23,7 @@ def _get_default_gpt_sovits_path() -> Path:
 
     우선순위:
     1. 환경변수 GPT_SOVITS_PATH
-    2. 최신 통합 패키지 경로 (tools/gpt_sovits/GPT-SoVITS-v2pro-20250604)
+    2. 최신 통합 패키지 경로 (variant별 폴더 자동 탐색)
     3. 레거시 통합 패키지 경로 (tools/gpt_sovits/GPT-SoVITS-v2-240821)
     4. 소스 설치 경로 (tools/gpt_sovits/GPT-SoVITS-main)
     5. 레거시 경로 (C:/GPT-SoVITS)
@@ -30,9 +33,11 @@ def _get_default_gpt_sovits_path() -> Path:
     if env_path:
         return Path(env_path)
 
-    # 최신 통합 패키지 경로 확인 (권장)
-    if INTEGRATED_PACKAGE_PATH.exists():
-        return INTEGRATED_PACKAGE_PATH
+    # 최신 통합 패키지 경로 확인 (variant별 폴더 자동 탐색)
+    for folder in INTEGRATED_FOLDERS:
+        path = DEFAULT_INSTALL_BASE / folder
+        if path.exists():
+            return path
 
     # 레거시 통합 패키지 경로 확인
     if LEGACY_INTEGRATED_PATH.exists():
@@ -47,8 +52,8 @@ def _get_default_gpt_sovits_path() -> Path:
     if legacy_path.exists():
         return legacy_path
 
-    # 기본값 (최신 통합 패키지가 설치될 경로)
-    return INTEGRATED_PACKAGE_PATH
+    # 기본값 (표준 패키지가 설치될 경로)
+    return DEFAULT_INSTALL_BASE / INTEGRATED_FOLDERS[-1]
 
 
 def _get_project_root() -> Path:

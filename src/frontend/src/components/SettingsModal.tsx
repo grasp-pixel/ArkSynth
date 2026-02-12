@@ -735,12 +735,12 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             </button>
                           </div>
                         )}
-                        {!dep.installed && dep.name === "GPT-SoVITS" && (
+                        {dep.name === "GPT-SoVITS" && (
                           <button
                             onClick={() => setShowGptSovitsInstall(true)}
                             className="text-xs text-ark-orange hover:underline"
                           >
-                            {t('settings.autoInstall')}
+                            {dep.installed ? t('install.button.reinstall') : t('settings.autoInstall')}
                           </button>
                         )}
                       </div>

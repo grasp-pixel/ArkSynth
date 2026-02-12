@@ -779,8 +779,18 @@
       "cudaAvailable": "CUDA: Available",
       "cudaNotAvailable": "CUDA: Not Available",
       "diskSpace": "Download ~8.2GB, ~20GB after extraction",
+      "diskSpace_standard": "Download ~7.8GB, ~20GB after extraction",
+      "diskSpace_nvidia50": "Download ~8.8GB, ~20GB after extraction",
       "gpuSupport": "✓ GPU acceleration supported (CUDA included)",
       "includedPackages": "PyTorch + CUDA included in the integrated package"
+    },
+    "variant": {
+      "label": "Package Type",
+      "standard": "Standard",
+      "nvidia50": "RTX 50 Series Dedicated",
+      "autoDetected": "Auto-detected GPU",
+      "nvidia50Recommended": "RTX 50 series detected, dedicated package selected",
+      "nvidia50Hint": "Select the dedicated package if you have an NVIDIA RTX 50 series GPU"
     },
     "section": {
       "items": "Installation Items"

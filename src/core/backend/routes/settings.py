@@ -757,6 +757,7 @@ async def sevenzip_install_guide():
 class InstallRequest(BaseModel):
     """설치 요청"""
     cuda_version: str = "cu121"  # cu121, cu124, cpu
+    variant: str | None = None   # "standard", "nvidia50", None=자동 감지
 
 
 class InstallInfoResponse(BaseModel):
@@ -807,7 +808,8 @@ async def start_gpt_sovits_install(request: InstallRequest):
         try:
             result = await installer.install(
                 on_progress=progress_callback,
-                cuda_version=request.cuda_version
+                cuda_version=request.cuda_version,
+                variant=request.variant,
             )
             return result
         except Exception as e:
@@ -1629,6 +1631,9 @@ async def get_gpu_info():
         except Exception:
             compatible = True  # 판단 불가 시 호환으로 간주
 
+        # RTX 50 시리즈(Blackwell, sm_120+) 감지 → nvidia50 패키지 권장
+        recommended_variant = "nvidia50" if gpu_sm >= 120 else "standard"
+
         return {
             "available": True,
             "name": name,
@@ -1638,6 +1643,7 @@ async def get_gpu_info():
             "pytorch_version": torch.__version__,
             "cuda_version": torch.version.cuda,
             "compatible": compatible,
+            "recommended_variant": recommended_variant,
         }
     except ImportError:
         return unavailable
