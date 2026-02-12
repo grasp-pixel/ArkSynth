@@ -162,10 +162,17 @@ class GPTSoVITSAPIClient:
                 str(self.config.api_port),
             ]
 
-            # FP32 모드: api.py만 -fp 플래그 지원 (api_v2.py는 미지원)
+            # FP16/FP32 모드 설정
             from ...backend.config import config as server_config
+
+            # api.py: -fp CLI 플래그로 FP32 전환
             if not server_config.gpu_half_precision and api_script.name == "api.py":
                 cmd.append("-fp")
+
+            # api_v2.py: tts_infer.yaml의 custom 섹션에 is_half 주입
+            # (환경변수 is_half는 config.py에서 GPU 감지 결과로 덮어씌워져 무시됨)
+            if api_script.name == "api_v2.py":
+                self._inject_tts_config(cwd_abs, server_config.gpu_half_precision)
 
             logger.info(f"GPT-SoVITS API 서버 시작: {' '.join(cmd)}")
             logger.info(f"  작업 디렉토리: {cwd_abs}")
@@ -234,6 +241,44 @@ class GPTSoVITSAPIClient:
         except Exception as e:
             logger.exception(f"API 서버 시작 실패: {e}")
             return False
+
+    @staticmethod
+    def _inject_tts_config(gpt_sovits_dir: Path, is_half: bool):
+        """GPT-SoVITS tts_infer.yaml의 custom 섹션에 is_half/device 주입.
+
+        api_v2.py는 환경변수 is_half를 읽지 않고 이 YAML 파일에서 설정을 읽으므로,
+        프로세스 시작 전 직접 수정해야 합니다.
+        """
+        yaml_path = gpt_sovits_dir / "GPT_SoVITS" / "configs" / "tts_infer.yaml"
+        if not yaml_path.exists():
+            logger.warning(f"tts_infer.yaml 없음: {yaml_path}")
+            return
+
+        try:
+            lines = yaml_path.read_text(encoding="utf-8").splitlines(keepends=True)
+            is_half_str = "true" if is_half else "false"
+            in_custom = False
+            modified = False
+
+            for i, line in enumerate(lines):
+                # 최상위 섹션 (들여쓰기 없음, 콜론으로 끝남) 감지
+                stripped = line.rstrip()
+                if stripped and not stripped[0].isspace() and stripped.endswith(":"):
+                    in_custom = stripped == "custom:"
+
+                # custom 섹션 내의 is_half 교체
+                if in_custom and line.lstrip().startswith("is_half:"):
+                    new_line = f"  is_half: {is_half_str}\n"
+                    if lines[i] != new_line:
+                        lines[i] = new_line
+                        modified = True
+                    break
+
+            if modified:
+                yaml_path.write_text("".join(lines), encoding="utf-8")
+                logger.info(f"tts_infer.yaml 갱신: is_half -> {is_half_str}")
+        except Exception as e:
+            logger.warning(f"tts_infer.yaml 수정 실패: {e}")
 
     def get_api_status(self) -> dict:
         """API 서버 상태 정보 조회"""
